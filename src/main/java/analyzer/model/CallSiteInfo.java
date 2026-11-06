@@ -29,6 +29,16 @@ public final class CallSiteInfo {
     /** 수신 타입(확인된 경우) */
     public String receiverType;
     public Origin targetOrigin;
+    /**
+     * 본문 없는 인터페이스/추상 메서드 호출에서 source-root 내 유일 구현으로 연결한 구현 메서드 (없으면 null).
+     * target-method-id(선언 대상)는 그대로 두고, expansion 은 이 구현 메서드 기준으로 판정한다.
+     */
+    public String implementationMethodId;
+    /** 구현 연결 근거: SINGLE_SOURCE_IMPLEMENTATION | NO_SOURCE_IMPLEMENTATION | MULTIPLE_SOURCE_IMPLEMENTATIONS | ... */
+    public String implementationBasis;
+    public String implementationReason;
+    /** 구현 탐색에서 발견한 구현 클래스 (연결 여부와 무관) */
+    public final List<String> implementationCandidates = new ArrayList<>();
     public Expansion expansion;
     /** SHARED 인 경우 전개된 호출 위치 ID */
     public String expandedAt;
@@ -40,5 +50,14 @@ public final class CallSiteInfo {
     public final List<String> conditions = new ArrayList<>();
     /** 람다 본문 등 정의 시점이 아닌 나중에 실행되는 위치 */
     public boolean deferred;
+    /** 인자 표현식 원문 */
+    public final List<String> arguments = new ArrayList<>();
+    /** 반환값 사용: assigned:변수 | returned | argument | condition | discarded | expression */
+    public String resultUsage;
     public SourceLocation location;
+
+    /** 전개 판정 대상: 구현 연결이 있으면 구현 메서드, 아니면 선언 대상 */
+    public String expansionTargetId() {
+        return implementationMethodId != null ? implementationMethodId : targetMethodId;
+    }
 }

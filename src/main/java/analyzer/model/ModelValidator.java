@@ -50,6 +50,24 @@ public final class ModelValidator {
             if (s.targetMethodId == null && s.resolution == ResolutionStatus.RESOLVED) {
                 e.add(s.id + ": RESOLVED 인데 target 이 없음");
             }
+            if (s.implementationMethodId != null) {
+                MethodInfo impl = r.method(s.implementationMethodId);
+                MethodInfo decl = s.targetMethodId == null ? null : r.method(s.targetMethodId);
+                if (impl == null) {
+                    e.add(s.id + ": implementation " + s.implementationMethodId + " 없음");
+                } else if (!impl.hasBody) {
+                    e.add(s.id + ": implementation " + impl.id + " 에 본문이 없음");
+                }
+                if (decl == null || decl.hasBody) {
+                    e.add(s.id + ": 본문 있는 선언 대상에 구현 연결이 존재");
+                }
+            }
+            if (s.expansion == Expansion.EXPANDED) {
+                MethodInfo x = s.expansionTargetId() == null ? null : r.method(s.expansionTargetId());
+                if (x == null || !s.id.equals(x.expandedAt)) {
+                    e.add(s.id + ": EXPANDED 인데 전개 대상의 expanded-at 불일치");
+                }
+            }
             if (s.expandedAt != null && r.callSite(s.expandedAt) == null) {
                 e.add(s.id + ": expanded-at " + s.expandedAt + " 없음");
             }
@@ -152,6 +170,55 @@ public final class ModelValidator {
             if (p.callSiteId != null && r.callSite(p.callSiteId) == null) {
                 e.add(p.id + ": call-site " + p.callSiteId + " 없음");
             }
+        }
+        for (ObjectInfo o : r.objects) {
+            if (o.classId != null && r.clazz(o.classId) == null) {
+                e.add(o.id + ": class " + o.classId + " 없음");
+            }
+            for (String bid : o.bindingIds) {
+                Binding b = r.binding(bid);
+                if (b == null || !o.id.equals(b.objectId)) {
+                    e.add(o.id + ": binding " + bid + " 불일치");
+                }
+            }
+        }
+        for (Binding b : r.bindings) {
+            if (r.object(b.objectId) == null) {
+                e.add(b.id + ": object " + b.objectId + " 없음");
+            }
+            if (r.method(b.methodId) == null) {
+                e.add(b.id + ": method " + b.methodId + " 없음");
+            }
+            if (b.callSiteId != null && r.callSite(b.callSiteId) == null) {
+                e.add(b.id + ": call-site " + b.callSiteId + " 없음");
+            }
+            if (b.controlBlockId != null && (r.block(b.controlBlockId) == null
+                    || !r.block(b.controlBlockId).methodId.equals(b.methodId))) {
+                e.add(b.id + ": control-block " + b.controlBlockId + " 불일치");
+            }
+            for (ValueSource v : b.sources) {
+                if (v.parameterId() != null && r.parameter(v.parameterId()) == null) {
+                    e.add(b.id + ": request parameter " + v.parameterId() + " 없음");
+                }
+                v.via().forEach(sid -> {
+                    if (r.callSite(sid) == null) {
+                        e.add(b.id + ": via " + sid + " 없음");
+                    }
+                });
+            }
+        }
+        for (RequestSpecEntry q : r.requestSpec) {
+            for (String pid : q.parameterIds) {
+                RequestParameterInfo p = r.parameter(pid);
+                if (p == null || !q.name.equals(p.name)) {
+                    e.add(q.id + ": parameter " + pid + " 불일치");
+                }
+            }
+            q.bindingIds.forEach(bid -> {
+                if (r.binding(bid) == null) {
+                    e.add(q.id + ": binding " + bid + " 없음");
+                }
+            });
         }
         return e;
     }

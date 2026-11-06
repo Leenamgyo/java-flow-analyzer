@@ -339,6 +339,7 @@ public final class MethodBodyWalker {
             }
             typesOfCatch.forEach(x -> cb.exceptionTypes.add(x.asString()));
             catchTypes.put(cb.id, typesOfCatch);
+            describeHandler(c, cb);
             tb.catchBlockIds.add(cb.id);
             WalkContext cc = ctx.at(cb, "BODY")
                     .conditionalWith("catch (" + String.join(" | ", cb.exceptionTypes) + ")")
@@ -477,6 +478,8 @@ public final class MethodBodyWalker {
         site.conditions.addAll(ctx.guards());
         site.deferred = ctx.deferred();
         site.location = SourceLocation.of(mc, file);
+        mc.getArguments().forEach(a -> site.arguments.add(text(a)));
+        site.resultUsage = resultUsage(mc);
         result.callSites.add(site);
         result.index(site.id, site);
         if (ctx.block() != null) {
@@ -589,6 +592,63 @@ public final class MethodBodyWalker {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    private static final java.util.Set<String> LOG_METHODS = java.util.Set.of(
+            "trace", "debug", "info", "warn", "error", "fatal", "printStackTrace");
+    private static final java.util.Set<String> ERROR_RESPONSE_METHODS = java.util.Set.of(
+            "setAttribute", "sendError", "setStatus", "sendRedirect", "findForward", "saveErrors", "addMessage",
+            "status", "badRequest", "internalServerError");
+
+    /** catch 본문의 호출을 처리 방식(로그/오류 응답) 근거로 기록한다. 라이브러리 호출도 포함(소스 원문 기준). */
+    private void describeHandler(CatchClause c, ControlBlock cb) {
+        for (MethodCallExpr mc : c.getBody().findAll(MethodCallExpr.class)) {
+            String t = text(mc);
+            cb.handlerCalls.add(t);
+            String name = mc.getNameAsString();
+            String scope = mc.getScope().map(Node::toString).orElse("").toLowerCase();
+            if (LOG_METHODS.contains(name) && (scope.contains("log") || name.equals("printStackTrace"))
+                    || name.toLowerCase().contains("log")) {
+                cb.logCalls.add(t);
+            }
+            if (ERROR_RESPONSE_METHODS.contains(name)) {
+                cb.errorResponseCalls.add(t);
+            }
+        }
+    }
+
+    /** 호출 결과가 어떻게 쓰이는지 (괄호·캐스트는 건너뜀) */
+    private static String resultUsage(MethodCallExpr mc) {
+        Node cur = mc;
+        Node p = cur.getParentNode().orElse(null);
+        while (p instanceof com.github.javaparser.ast.expr.EnclosedExpr || p instanceof com.github.javaparser.ast.expr.CastExpr) {
+            cur = p;
+            p = p.getParentNode().orElse(null);
+        }
+        if (p instanceof VariableDeclarator v) {
+            return "assigned:" + v.getNameAsString();
+        }
+        if (p instanceof com.github.javaparser.ast.expr.AssignExpr a && a.getValue() == cur) {
+            return "assigned:" + text(a.getTarget());
+        }
+        if (p instanceof ReturnStmt) {
+            return "returned";
+        }
+        if (p instanceof ExpressionStmt) {
+            return "discarded";
+        }
+        if (p instanceof MethodCallExpr outer && outer.getArguments().contains(cur)
+                || p instanceof ObjectCreationExpr) {
+            return "argument";
+        }
+        if (p instanceof IfStmt || p instanceof WhileStmt || p instanceof ConditionalExpr c && c.getCondition() == cur
+                || p instanceof BinaryExpr || p instanceof com.github.javaparser.ast.expr.UnaryExpr) {
+            return "condition";
+        }
+        if (p instanceof MethodCallExpr outer && outer.getScope().filter(x -> x == mc).isPresent()) {
+            return "receiver";
+        }
+        return "expression";
+    }
 
     private ControlBlock newBlock(BlockType type, WalkContext ctx, ControlBlock branchParent, Node node) {
         ControlBlock b = new ControlBlock();

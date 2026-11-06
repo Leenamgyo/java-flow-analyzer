@@ -42,6 +42,12 @@ public final class ControlBlock {
     public boolean rethrows;
     public boolean throwsNewException;
     public boolean containsReturn;
+    /** catch 본문의 모든 메서드 호출 원문 (라이브러리 호출 포함) */
+    public final List<String> handlerCalls = new ArrayList<>();
+    /** catch 본문의 로그 출력 호출 */
+    public final List<String> logCalls = new ArrayList<>();
+    /** catch 본문의 오류 응답/화면 이동 관련 호출 (setAttribute, sendError, setStatus, findForward …) */
+    public final List<String> errorResponseCalls = new ArrayList<>();
     public boolean containsThrow;
 
     // ---- return / throw ----

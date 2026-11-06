@@ -61,9 +61,9 @@ public final class Main {
         List<Path> files = new OutputWriter().write(result, cfg, outDir);
 
         System.out.println("분석 완료: " + target.qualifiedName + " → " + outDir);
-        System.out.printf("  classes=%d methods=%d calls=%d blocks=%d parameters=%d unresolved=%d%n",
+        System.out.printf("  classes=%d methods=%d calls=%d blocks=%d parameters=%d objects=%d bindings=%d unresolved-calls=%d%n",
                 result.classes().size(), result.methods().size(), result.callSites.size(), result.blocks.size(),
-                result.parameters.size(),
+                result.parameters.size(), result.objects.size(), result.bindings.size(),
                 result.callSites.stream().filter(s -> s.resolution != analyzer.model.ResolutionStatus.RESOLVED).count());
         files.forEach(f -> System.out.println("  - " + f.getFileName()));
         return 0;

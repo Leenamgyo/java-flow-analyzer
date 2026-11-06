@@ -1,7 +1,9 @@
-# example: legacy-shop 의 주문 목록 Action 분석
+# example: legacy-shop 분석
+#   기본: 주문 등록 Action (요청 파라미터 25개 → VO·DTO·Command 바인딩(setter·builder·생성자), Service/Biz/Mapper, 결제 다중 구현)
+#   --class OrderListAction                       주문 목록 Action
 target:
   source-root: example/legacy-shop/src/main/java
-  class: OrderListAction
+  class: OrderRegisterAction
   entry-method: execute
 
 analysis:
@@ -11,14 +13,23 @@ analysis:
   include-exceptions: true
   include-request-parameters: true
   include-external-library-calls: false
+  # max-depth 를 넘어도 본문을 분석할 역할 (Util 등은 제외 → depth-limit)
+  expand-roles: [Service, Biz, DAO, Repository, Mapper]
+  # 인터페이스 호출: source-root 내 구현 클래스가 정확히 1개면 구현 후보로 연결 (런타임 DI 확정 아님)
+  link-single-implementation: true
+  # VO/DTO/Command/Map 바인딩(setter·builder·생성자·필드 대입·put·copyProperties) 수집 + 값 출처·변환·조건 추적
+  include-bindings: true
 
 request-parameter-rules:
   - class: ParamUtil
     methods:
       - { name: getInt,    name-arg-index: 1, default-arg-index: 2, type: int }
       - { name: getString, name-arg-index: 1, default-arg-index: 2, type: String }
+      - { name: getLong,    name-arg-index: 1, default-arg-index: 2, type: long }
+      - { name: getBoolean, name-arg-index: 1, default-arg-index: 2, type: boolean }
+      - { name: getDate,    name-arg-index: 1, default-arg-index: 2, type: String }
 
 output:
   directory: example/output
   tree-include-control-blocks: true
-  direction: TD
+  direction: LR

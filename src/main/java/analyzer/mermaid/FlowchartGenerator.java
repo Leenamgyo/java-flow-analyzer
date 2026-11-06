@@ -3,8 +3,6 @@ package analyzer.mermaid;
 import analyzer.model.AnalysisResult;
 import analyzer.model.BlockType;
 import analyzer.model.CallSiteInfo;
-import analyzer.model.ClassInfo;
-import analyzer.model.ClassRole;
 import analyzer.model.ControlBlock;
 import analyzer.model.Expansion;
 import analyzer.model.MethodInfo;
@@ -12,6 +10,7 @@ import analyzer.model.ResolutionStatus;
 import analyzer.mermaid.MermaidGraph.EdgeStyle;
 import analyzer.mermaid.MermaidGraph.Shape;
 import analyzer.mermaid.MermaidGraph.Subgraph;
+import analyzer.serializer.FlowView;
 import analyzer.serializer.Labels;
 
 import java.util.ArrayList;
@@ -22,9 +21,13 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 공통 분석 모델 → Mermaid flowchart. 소스를 다시 분석하지 않는다.
- * 노드 ID 는 YAML ID 를 그대로 사용하고, subgraph 는 "sg_" + ID 를 사용한다.
- * 실선(-->) = 정상 흐름, 굵은선(==>) = 메서드 호출, 점선(-.->) = 예외 흐름.
+ * 공통 분석 모델 → Mermaid flowchart (소스를 다시 분석하지 않는다).
+ * <ul>
+ *   <li>subgraph 는 분석한 메서드당 1개뿐 (중첩 최소화). 노드 ID = YAML ID</li>
+ *   <li>if/else-if/switch/반복문 = 조건 노드 + 분기 간선(Yes/No, case), try → catch 는 점선</li>
+ *   <li>실선(-->) 정상 흐름, 굵은선(==>) 본문을 전개한 메서드 호출, 점선(-.->) 예외 흐름</li>
+ *   <li>객체 바인딩은 객체당 요약 노드 1개 (setter 를 각각 노드로 만들지 않음) — 상세는 mapping.md / analysis.yaml</li>
+ * </ul>
  */
 public final class FlowchartGenerator {
 
@@ -40,6 +43,15 @@ public final class FlowchartGenerator {
         CLASS_DEFS.put("ret", "fill:#dcfce7,stroke:#15803d");
         CLASS_DEFS.put("throw", "fill:#fee2e2,stroke:#b91c1c");
         CLASS_DEFS.put("exc", "fill:#fee2e2,stroke:#b91c1c,stroke-dasharray:4 3");
+        CLASS_DEFS.put("req", "fill:#ccfbf1,stroke:#0f766e,stroke-width:2px");
+        CLASS_DEFS.put("bind", "fill:#faf5ff,stroke:#a78bfa,color:#5b21b6");
+    }
+
+    /** 다음 요소로 이어질 열린 끝 (노드 + 간선 라벨/스타일) */
+    private record End(String node, String label, EdgeStyle style) {
+        End(String node) {
+            this(node, null, EdgeStyle.FLOW);
+        }
     }
 
     private AnalysisResult r;
@@ -50,19 +62,21 @@ public final class FlowchartGenerator {
         this.r = result;
         this.g = new MermaidGraph();
         methodGraphs.clear();
-        for (ClassRole role : ClassRole.values()) {
-            List<ClassInfo> classes = r.classes().stream().filter(c -> c.role == role).toList();
-            if (classes.isEmpty()) {
+        Set<String> skip = FlowView.bindingMethods(r);
+        for (MethodInfo m : r.methods()) {
+            if (!m.analyzed || skip.contains(m.id)) {
                 continue;
             }
-            Subgraph rs = g.subgraph(g.root(), "role_" + role.name(), role.label());
-            for (ClassInfo c : classes) {
-                String title = c.name + " «" + role.label() + "»" + (c.origin.name().equals("SOURCE") ? "" : " (external)");
-                Subgraph cs = g.subgraph(rs, "sg_" + c.id, title);
-                for (String mid : c.methodIds) {
-                    method(cs, r.method(mid));
-                }
+            String cls = r.classOf(m).name;
+            Subgraph ms = g.subgraph(g.root(), "sg_" + m.id, cls + "." + m.name + "() «" + r.classOf(m).role.label() + "»");
+            methodGraphs.put(m.id, ms);
+            List<String> lines = new ArrayList<>(List.of(cls + "." + m.signature, m.visibility.text() + " · D" + m.depth));
+            String req = Labels.methodRequestTag(r, m);
+            if (req != null) {
+                lines.add(Labels.truncate(req, 120));
             }
+            g.node(ms, m.id, lines, Shape.STADIUM, m.id.equals(r.entryMethodId) ? "entry" : "method");
+            emit(ms, m, null, List.of(new End(m.id)));
         }
         return g;
     }
@@ -77,31 +91,35 @@ public final class FlowchartGenerator {
         return graph.render(direction, CLASS_DEFS);
     }
 
-    /** YAML ID ↔ Mermaid 노드 매핑 검증 */
+    /** YAML ID ↔ Mermaid 노드 매핑 검증 (흐름에서 뺀 바인딩 코드는 제외, else/case 는 간선으로 표현) */
     public static List<String> checkMapping(AnalysisResult r, MermaidGraph graph) {
         List<String> e = new ArrayList<>();
-        r.methods().forEach(m -> {
+        Set<String> skip = FlowView.bindingMethods(r);
+        r.methods().stream().filter(m -> m.analyzed && !skip.contains(m.id)).forEach(m -> {
             if (!graph.has(m.id)) {
                 e.add("메서드 노드 누락: " + m.id);
             }
         });
-        r.callSites.forEach(s -> {
+        r.callSites.stream().filter(s -> !FlowView.hidden(r, s)).forEach(s -> {
             if (!graph.has(s.id)) {
                 e.add("호출 노드 누락: " + s.id);
             }
         });
-        r.blocks.forEach(b -> {
-            if (!graph.has(b.id)) {
-                e.add("블록 노드 누락: " + b.id);
-            }
-            if (!b.type.isLeaf() && !graph.has("sg_" + b.id)) {
-                e.add("블록 subgraph 누락: sg_" + b.id);
+        r.blocks.stream().filter(b -> !FlowView.hidden(r, b) && b.type != BlockType.ELSE && b.type != BlockType.CASE)
+                .forEach(b -> {
+                    if (!graph.has(b.id)) {
+                        e.add("블록 노드 누락: " + b.id);
+                    }
+                });
+        FlowView.summaries(r).forEach(s -> {
+            if (!graph.has(s.id())) {
+                e.add("바인딩 요약 노드 누락: " + s.id());
             }
         });
         for (var ed : graph.edges()) {
             if (ed.style() == EdgeStyle.CALL) {
                 CallSiteInfo s = r.callSite(ed.from());
-                if (s == null || !ed.to().equals(s.targetMethodId)) {
+                if (s == null || !(ed.to().equals(s.targetMethodId) || ed.to().equals(s.implementationMethodId))) {
                     e.add("모델에 없는 호출 엣지: " + ed.from() + " ==> " + ed.to());
                 }
             }
@@ -109,122 +127,130 @@ public final class FlowchartGenerator {
         return e;
     }
 
-    private void method(Subgraph cs, MethodInfo m) {
-        boolean entry = m.id.equals(r.entryMethodId);
-        if (m.analyzed) {
-            Subgraph ms = g.subgraph(cs, "sg_" + m.id, m.signature);
-            methodGraphs.put(m.id, ms);
-            g.node(ms, m.id, List.of(m.signature, m.visibility.text() + " · D" + m.depth), Shape.STADIUM,
-                    entry ? "entry" : "method");
-            container(ms, m, null, m.id, null);
-        } else {
-            String reason = m.notAnalyzedReason == null ? "" : m.notAnalyzedReason.name().toLowerCase().replace('_', '-');
-            String css = m.notAnalyzedReason == Expansion.DEPTH_LIMIT ? "depth" : "external";
-            g.node(cs, m.id, List.of(m.signature, m.visibility.text() + " · D" + m.depth + " · " + reason), Shape.RECT, css);
-        }
-    }
+    // ------------------------------------------------------------------ flow
 
-    /** 메서드/블록 본문 요소를 seq 순으로 연결하고 마지막 요소(다음 연결 시작점)를 반환 */
-    private String container(Subgraph sg, MethodInfo m, ControlBlock parent, String prev, String firstLabel) {
+    private List<End> emit(Subgraph sg, MethodInfo m, ControlBlock parent, List<End> in) {
         Set<String> header = parent == null ? Set.of() : headerPositions(parent.type);
-        String label = firstLabel;
-        for (Object o : Labels.elements(r, m.id, parent == null ? null : parent.id, false)) {
-            if (o instanceof CallSiteInfo s) {
+        List<End> cur = in;
+        for (Object o : FlowView.elements(r, m.id, parent == null ? null : parent.id, false)) {
+            if (o instanceof FlowView.Summary sm) {
+                g.node(sg, sm.id(), Labels.bindingSummary(r, sm.object(), sm.bindings()), Shape.SUBROUTINE, "bind");
+                cur = link(cur, sm.id());
+            } else if (o instanceof CallSiteInfo s) {
                 if (header.contains(s.position)) {
                     continue;
                 }
                 callNode(sg, s);
-                if (prev != null) {
-                    g.edge(prev, s.id, label, EdgeStyle.FLOW);
-                }
-                label = null;
-                prev = s.id;
+                cur = link(cur, s.id);
             } else {
-                ControlBlock b = (ControlBlock) o;
-                if (b.type.isLeaf()) {
-                    prev = container(sg, m, b, prev, label);
-                    label = null;
-                    leaf(sg, m, b, prev);
-                    prev = null; // return/throw 이후 같은 블록의 정상 흐름은 없음
-                } else {
-                    prev = block(sg, m, b, prev, label);
-                    label = null;
-                }
+                cur = block(sg, m, (ControlBlock) o, cur);
             }
         }
-        return prev;
+        return cur;
     }
 
-    private String block(Subgraph parentSg, MethodInfo m, ControlBlock b, String prev, String inLabel) {
-        Subgraph sg = g.subgraph(parentSg, "sg_" + b.id, b.id + " · " + b.type.yamlName());
-        String p = headerCalls(sg, b, prev, inLabel, EdgeStyle.FLOW);
-        g.node(sg, b.id, headerLines(b), shape(b), null);
-        g.edge(p, b.id, p == prev ? inLabel : null, EdgeStyle.FLOW);
-
+    private List<End> block(Subgraph sg, MethodInfo m, ControlBlock b, List<End> in) {
         switch (b.type) {
             case IF -> {
-                container(sg, m, b, b.id, "true");
-                String from = b.id;
-                for (ControlBlock child : branches(b)) {
-                    branch(sg, m, child, from, "false", EdgeStyle.FLOW);
-                    from = child.id;
-                }
-            }
-            case SWITCH -> {
-                for (ControlBlock child : branches(b)) {
-                    branch(sg, m, child, b.id, null, EdgeStyle.FLOW);
-                }
-            }
-            case TRY -> {
-                container(sg, m, b, b.id, null);
-                for (ControlBlock child : branches(b)) {
-                    if (child.type == BlockType.CATCH) {
-                        branch(sg, m, child, b.id, String.join(" | ", child.exceptionTypes), EdgeStyle.EXCEPTION);
+                decision(sg, b, in);
+                List<End> out = new ArrayList<>(emit(sg, m, b, List.of(new End(b.id, "Yes", EdgeStyle.FLOW))));
+                End no = new End(b.id, "No", EdgeStyle.FLOW);
+                for (ControlBlock c : branches(b)) {
+                    if (c.type == BlockType.ELSE_IF) {
+                        decision(sg, c, List.of(no));
+                        out.addAll(emit(sg, m, c, List.of(new End(c.id, "Yes", EdgeStyle.FLOW))));
+                        no = new End(c.id, "No", EdgeStyle.FLOW);
                     } else {
-                        branch(sg, m, child, b.id, "always", EdgeStyle.FLOW);
+                        out.addAll(emit(sg, m, c, List.of(no)));
+                        no = null;
                     }
                 }
+                if (no != null) {
+                    out.add(no);
+                }
+                return out;
             }
-            case FOR, FOREACH, WHILE -> container(sg, m, b, b.id, "loop");
-            default -> container(sg, m, b, b.id, null);
+            case SWITCH -> {
+                decision(sg, b, in);
+                List<End> out = new ArrayList<>();
+                boolean hasDefault = false;
+                for (ControlBlock c : branches(b)) {
+                    hasDefault |= c.isDefault || c.caseLabels.isEmpty();
+                    out.addAll(emit(sg, m, c, List.of(new End(b.id, Labels.truncate(Labels.blockHeader(c), 40), EdgeStyle.FLOW))));
+                }
+                if (!hasDefault) {
+                    out.add(new End(b.id, "no match", EdgeStyle.FLOW));
+                }
+                return out;
+            }
+            case FOR, FOREACH, WHILE, DO_WHILE -> {
+                decision(sg, b, in);
+                for (End e : emit(sg, m, b, List.of(new End(b.id, "loop", EdgeStyle.FLOW)))) {
+                    g.edge(e.node(), b.id, e.label() == null ? "next" : e.label(), e.style());
+                }
+                return List.of(new End(b.id, "done", EdgeStyle.FLOW));
+            }
+            case TRY -> {
+                g.node(sg, b.id, headerLines(b), Shape.HEX, null);
+                link(in, b.id);
+                List<End> out = new ArrayList<>(emit(sg, m, b, List.of(new End(b.id))));
+                ControlBlock fin = null;
+                for (ControlBlock c : branches(b)) {
+                    if (c.type == BlockType.CATCH) {
+                        g.node(sg, c.id, headerLines(c), Shape.ROUND, "exc");
+                        g.edge(b.id, c.id, String.join(" | ", c.exceptionTypes), EdgeStyle.EXCEPTION);
+                        out.addAll(emit(sg, m, c, List.of(new End(c.id))));
+                    } else {
+                        fin = c;
+                    }
+                }
+                if (fin != null) {
+                    g.node(sg, fin.id, headerLines(fin), Shape.ROUND, null);
+                    link(out, fin.id);
+                    return emit(sg, m, fin, List.of(new End(fin.id)));
+                }
+                return out;
+            }
+            case RETURN, THROW -> {
+                List<End> p = emit(sg, m, b, in);
+                leaf(sg, m, b);
+                link(p, b.id);
+                return List.of();
+            }
+            default -> {
+                return emit(sg, m, b, in);
+            }
         }
-        return sg.id();
     }
 
-    private void branch(Subgraph parentSg, MethodInfo m, ControlBlock b, String from, String label, EdgeStyle style) {
-        Subgraph sg = g.subgraph(parentSg, "sg_" + b.id, b.id + " · " + b.type.yamlName());
-        String p = headerCalls(sg, b, from, label, style);
-        g.node(sg, b.id, headerLines(b), shape(b), null);
-        g.edge(p, b.id, p == from ? label : null, p == from ? style : EdgeStyle.FLOW);
-        container(sg, m, b, b.id, b.type == BlockType.ELSE_IF ? "true" : null);
-    }
-
-    /** 조건식 등 헤더 위치 호출을 블록 헤더 앞에 연결 */
-    private String headerCalls(Subgraph sg, ControlBlock b, String prev, String label, EdgeStyle style) {
-        Set<String> header = headerPositions(b.type);
-        String p = prev;
-        boolean first = true;
+    /** 헤더 위치 호출(조건식 안 호출 등) → 조건 노드 */
+    private void decision(Subgraph sg, ControlBlock b, List<End> in) {
+        List<End> cur = in;
         for (String cid : b.callIds) {
             CallSiteInfo s = r.callSite(cid);
-            if (!header.contains(s.position)) {
-                continue;
+            if (headerPositions(b.type).contains(s.position) && !FlowView.hidden(r, s)) {
+                callNode(sg, s);
+                cur = link(cur, s.id);
             }
-            callNode(sg, s);
-            g.edge(p, s.id, first ? label : null, first ? style : EdgeStyle.FLOW);
-            first = false;
-            p = s.id;
         }
-        return p;
+        g.node(sg, b.id, headerLines(b), Shape.DIAMOND, null);
+        link(cur, b.id);
     }
 
-    private void leaf(Subgraph sg, MethodInfo m, ControlBlock b, String prev) {
+    private List<End> link(List<End> from, String to) {
+        for (End e : from) {
+            g.edge(e.node(), to, e.label(), e.style());
+        }
+        return List.of(new End(to));
+    }
+
+    private void leaf(Subgraph sg, MethodInfo m, ControlBlock b) {
         List<String> lines = new ArrayList<>(List.of(Labels.blockHeader(b)));
         if (b.type == BlockType.THROW && b.exceptionResolution == ResolutionStatus.UNRESOLVED) {
             lines.add("(catch 경로 unresolved)");
         }
         g.node(sg, b.id, lines, b.type == BlockType.RETURN ? Shape.STADIUM : Shape.ASYM,
                 b.type == BlockType.RETURN ? "ret" : "throw");
-        g.edge(prev, b.id, null, EdgeStyle.FLOW);
         EdgeStyle finStyle = b.type == BlockType.THROW ? EdgeStyle.EXCEPTION : EdgeStyle.FLOW;
         for (String f : b.executesFinally) {
             g.edge(b.id, f, "via finally", finStyle);
@@ -246,29 +272,41 @@ public final class FlowchartGenerator {
         List<String> lines = new ArrayList<>();
         lines.add("#" + s.order + " " + Labels.callTarget(r, s));
         StringBuilder info = new StringBuilder(Labels.callTags(r, s));
-        if (s.conditional && !s.conditions.isEmpty()) {
-            info.append(" if: ").append(Labels.truncate(s.conditions.get(s.conditions.size() - 1), 50));
-        } else if (s.conditional) {
-            info.append(" conditional");
+        switch (s.expansion) {
+            case DEPTH_LIMIT -> info.append(" depth-limit");
+            case NO_BODY -> info.append(" no body");
+            case CYCLE -> info.append(" cycle");
+            default -> {
+            }
         }
         if (s.deferred) {
             info.append(" deferred");
         }
         lines.add(info.toString());
+        String impl = Labels.implementationTarget(r, s);
+        if (impl != null) {
+            lines.add("impl 후보: " + Labels.truncate(impl, 60));
+        }
+        String req = Labels.requestTag(r, s);
+        if (req != null) {
+            lines.add(req);
+        }
         String css = switch (s.expansion) {
             case NOT_APPLICABLE -> "unresolved";
             case CYCLE -> "cycle";
-            default -> s.resolution == ResolutionStatus.RESOLVED ? null : "unresolved";
+            case DEPTH_LIMIT -> req != null ? "req" : "depth";
+            case EXTERNAL, NO_BODY -> req != null ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "external" : "unresolved";
+            default -> req != null ? "req" : s.resolution == ResolutionStatus.RESOLVED ? null : "unresolved";
         };
         g.node(sg, s.id, lines, Shape.RECT, css);
-        if (s.targetMethodId != null) {
+        if (s.targetMethodId != null && (s.expansion == Expansion.EXPANDED || s.expansion == Expansion.SHARED
+                || s.expansion == Expansion.CYCLE)) {
             String label = switch (s.expansion) {
+                case SHARED -> "shared";
                 case CYCLE -> "cycle";
-                case DEPTH_LIMIT -> "depth-limit";
-                case NO_BODY -> "no body";
-                default -> null;
+                default -> s.implementationMethodId != null ? "impl 후보" : null;
             };
-            g.edge(s.id, s.targetMethodId, label, EdgeStyle.CALL);
+            g.edge(s.id, s.expansionTargetId(), label, EdgeStyle.CALL);
         }
     }
 
@@ -285,17 +323,9 @@ public final class FlowchartGenerator {
         return l;
     }
 
-    private static Shape shape(ControlBlock b) {
-        return switch (b.type) {
-            case IF, ELSE_IF, SWITCH -> Shape.DIAMOND;
-            case ELSE, CASE -> Shape.ROUND;
-            default -> Shape.HEX;
-        };
-    }
-
     private static Set<String> headerPositions(BlockType t) {
         return switch (t) {
-            case IF, ELSE_IF, WHILE -> Set.of("CONDITION");
+            case IF, ELSE_IF, WHILE, DO_WHILE -> Set.of("CONDITION");
             case FOR -> Set.of("INITIALIZER", "CONDITION");
             case FOREACH -> Set.of("ITERABLE");
             case SWITCH -> Set.of("SELECTOR");

@@ -39,6 +39,12 @@ public final class ClassRoleClassifier {
         SUFFIXES.put("Dao", ClassRole.DAO);
         SUFFIXES.put("Repository", ClassRole.REPOSITORY);
         SUFFIXES.put("Mapper", ClassRole.MAPPER);
+        SUFFIXES.put("VO", ClassRole.VO);
+        SUFFIXES.put("Vo", ClassRole.VO);
+        SUFFIXES.put("DTO", ClassRole.VO);
+        SUFFIXES.put("Dto", ClassRole.VO);
+        SUFFIXES.put("Form", ClassRole.VO);
+        SUFFIXES.put("Command", ClassRole.VO);
         SUFFIXES.put("Utils", ClassRole.UTIL);
         SUFFIXES.put("Util", ClassRole.UTIL);
     }

@@ -7,6 +7,7 @@ import analyzer.controlflow.WalkContext;
 import analyzer.model.AnalysisResult;
 import analyzer.model.CallRelation;
 import analyzer.model.CallSiteInfo;
+import analyzer.model.ClassRole;
 import analyzer.model.ClassInfo;
 import analyzer.model.Expansion;
 import analyzer.model.MethodInfo;
@@ -21,6 +22,7 @@ import analyzer.parser.ProjectSources;
 import analyzer.parser.TypeNames;
 import analyzer.resolver.CallResolver;
 import analyzer.resolver.CallTarget;
+import analyzer.resolver.ImplementationFinder;
 import analyzer.resolver.TypeLookup;
 import com.github.javaparser.ast.AccessSpecifier;
 import com.github.javaparser.ast.body.AnnotationDeclaration;
@@ -46,7 +48,9 @@ import java.util.stream.Collectors;
 
 /**
  * 지정 Action/Controller 의 진입 메서드에서 시작해 BFS 로 호출 관계를 분석한다.
- * - 메서드 본문 분석 조건: 대상 Depth < max-depth, 또는 (expand-same-class-methods && 호출자와 같은 클래스)
+ * - 메서드 본문 분석 조건: 대상 Depth < max-depth, 또는 (expand-same-class-methods && 호출자와 같은 클래스),
+ *   또는 대상 클래스 역할이 expand-roles 에 포함
+ * - link-single-implementation: 본문 없는 인터페이스/추상 메서드 호출은 source-root 내 유일 구현을 구현 후보로 연결해 전개 판정
  * - Depth 는 최단 호출 경로 기준이며 동일 클래스 확장 여부와 무관하게 실제 값을 유지한다.
  */
 public final class FlowAnalyzer {
@@ -61,6 +65,9 @@ public final class FlowAnalyzer {
     private final ClassRoleClassifier classifier = new ClassRoleClassifier();
     private final AnalysisResult result = new AnalysisResult();
     private final RequestParameterExtractor params;
+    private final ImplementationFinder implementations;
+    /** max-depth 를 넘어도 본문을 분석할 역할 */
+    private final java.util.Set<ClassRole> expandRoles;
 
     private final Deque<Work> queue = new ArrayDeque<>();
     private final Map<String, Work> scheduled = new HashMap<>();
@@ -68,6 +75,10 @@ public final class FlowAnalyzer {
     private final Map<String, String> expansionParent = new HashMap<>();
     /** methodId → 분석기 AST 상의 선언 (source 메서드만) */
     private final Map<String, MethodDeclaration> declarations = new HashMap<>();
+    /** 호출 표현식(노드 동일성) → 그 호출에서 읽은 Request Parameter. JavaParser Node.equals 는 구조 비교라 IdentityHashMap 사용 */
+    private final Map<MethodCallExpr, List<analyzer.model.RequestParameterInfo>> paramsByCall = new java.util.IdentityHashMap<>();
+    /** callSiteId → 호출 표현식 (값 추적용) */
+    private final Map<String, MethodCallExpr> callExprs = new HashMap<>();
 
     public FlowAnalyzer(AnalyzerConfig cfg) {
         this.cfg = cfg;
@@ -76,6 +87,10 @@ public final class FlowAnalyzer {
         this.types = new TypeLookup(sources);
         this.resolver = new CallResolver(sources, types);
         this.params = new RequestParameterExtractor(result, types, cfg.requestParameterRules);
+        this.implementations = new ImplementationFinder(sources);
+        this.expandRoles = cfg.analysis.expandRoles.stream()
+                .map(x -> ClassRole.fromLabel(x).orElseThrow(() -> new IllegalArgumentException("알 수 없는 역할: " + x)))
+                .collect(Collectors.toCollection(() -> java.util.EnumSet.noneOf(ClassRole.class)));
     }
 
     public ProjectSources sources() {
@@ -101,6 +116,23 @@ public final class FlowAnalyzer {
             analyzeBody(queue.poll());
         }
         finish();
+        if (cfg.analysis.includeBindings) {
+            new analyzer.binding.BindingCollector(result, declarations, paramsByCall, callExprs, types, params,
+                    new analyzer.binding.BindingCollector.Types() {
+                        @Override
+                        public boolean isVo(TypeDeclaration<?> td) {
+                            return classify(td).role() == ClassRole.VO;
+                        }
+
+                        @Override
+                        public ClassInfo register(TypeDeclaration<?> td) {
+                            return sourceClass(td);
+                        }
+                    }).collect();
+        }
+        if (cfg.analysis.includeRequestParameters) {
+            analyzer.binding.RequestSpecBuilder.build(result);
+        }
         result.notes.addAll(sources.parseProblems().stream().map(p -> "파싱 문제: " + p).toList());
         return result;
     }
@@ -114,6 +146,9 @@ public final class FlowAnalyzer {
         s.put("include-exceptions", a.includeExceptions);
         s.put("include-request-parameters", a.includeRequestParameters);
         s.put("include-external-library-calls", a.includeExternalLibraryCalls);
+        s.put("expand-roles", a.expandRoles);
+        s.put("link-single-implementation", a.linkSingleImplementation);
+        s.put("include-bindings", a.includeBindings);
         s.put("classpath-jars", a.classpathJars);
         result.settings = s;
     }
@@ -135,8 +170,6 @@ public final class FlowAnalyzer {
         MethodDeclaration md = w.declaration();
         TypeDeclaration<?> callerType = md.findAncestor(TypeDeclaration.class).map(t -> (TypeDeclaration<?>) t).orElseThrow();
         String file = sources.relativeFile(md);
-        Map<MethodCallExpr, List<analyzer.model.RequestParameterInfo>> paramsByCall = new HashMap<>();
-
         if (cfg.analysis.includeRequestParameters) {
             params.fromAnnotations(md, caller, file);
         }
@@ -145,10 +178,14 @@ public final class FlowAnalyzer {
             @Override
             public CallSiteInfo resolve(MethodCallExpr call, WalkContext ctx) {
                 CallTarget t = resolver.resolve(call, callerType);
+                boolean readsRequest = false;
                 if (cfg.analysis.includeRequestParameters) {
-                    paramsByCall.put(call, params.fromCall(call, t, caller, callerType, file));
+                    List<analyzer.model.RequestParameterInfo> read = params.fromCall(call, t, caller, callerType, file);
+                    paramsByCall.put(call, read);
+                    readsRequest = !read.isEmpty();
                 }
-                if (!cfg.analysis.includeExternalLibraryCalls && t.origin() == Origin.LIBRARY) {
+                // Request 를 읽는 호출(getParameter 등)은 요청 스펙의 근거이므로 외부 라이브러리 제외 대상이어도 남긴다
+                if (!cfg.analysis.includeExternalLibraryCalls && t.origin() == Origin.LIBRARY && !readsRequest) {
                     result.excludedExternalCalls++;
                     return null;
                 }
@@ -158,18 +195,22 @@ public final class FlowAnalyzer {
             @Override
             public void recorded(CallSiteInfo site, MethodCallExpr call) {
                 paramsByCall.getOrDefault(call, List.of()).forEach(p -> p.callSiteId = site.id);
+                callExprs.put(site.id, call);
                 site.depth = w.depth() + 1;
                 if (site.targetMethodId == null) {
                     return;
                 }
-                MethodInfo target = result.method(site.targetMethodId);
+                MethodInfo declared = result.method(site.targetMethodId);
+                declared.depth = Math.min(declared.depth, site.depth);
+                MethodInfo target = result.method(site.expansionTargetId());
                 target.depth = Math.min(target.depth, site.depth);
                 if (target.origin != Origin.SOURCE || !target.hasBody || scheduled.containsKey(target.id)) {
                     return; // 최종 Expansion 은 finish() 에서 결정
                 }
                 boolean byDepth = site.depth < cfg.analysis.maxDepth;
                 boolean sameClass = cfg.analysis.expandSameClassMethods && target.classId.equals(caller.classId);
-                if (byDepth || sameClass) {
+                boolean byRole = expandRoles.contains(result.clazz(target.classId).role);
+                if (byDepth || sameClass || byRole) {
                     schedule(target, declarations.get(target.id), site.depth, site, caller);
                 }
             }
@@ -188,13 +229,26 @@ public final class FlowAnalyzer {
         s.targetOrigin = t.origin();
         s.candidates.addAll(t.candidates());
         if (t.status() == ResolutionStatus.RESOLVED && t.sourceDeclaration() != null) {
-            s.targetMethodId = sourceMethod(t.sourceDeclaration()).id;
+            MethodInfo declared = sourceMethod(t.sourceDeclaration());
+            s.targetMethodId = declared.id;
+            if (cfg.analysis.linkSingleImplementation && !declared.hasBody && !declared.isStatic) {
+                linkImplementation(s, t.sourceDeclaration());
+            }
         } else if (t.status() == ResolutionStatus.RESOLVED && t.libraryDeclaration() != null) {
             s.targetMethodId = libraryMethod(t.libraryDeclaration()).id;
         } else if (t.status() == ResolutionStatus.PARTIALLY_RESOLVED && t.declaringType() != null) {
             s.targetMethodId = partialMethod(t, call.getNameAsString(), call.getArguments().size()).id;
         }
         return s;
+    }
+
+    /** source-root 내 유일 구현이 있으면 구현 후보로 연결한다. 선언 대상(target-method-id)은 바꾸지 않는다. */
+    private void linkImplementation(CallSiteInfo s, MethodDeclaration declaration) {
+        ImplementationFinder.Result f = implementations.find(declaration);
+        s.implementationBasis = f.basis();
+        s.implementationReason = f.reason();
+        s.implementationCandidates.addAll(f.candidates());
+        f.method().ifPresent(md -> s.implementationMethodId = sourceMethod(md).id);
     }
 
     // ------------------------------------------------------------------ registration
@@ -230,12 +284,24 @@ public final class FlowAnalyzer {
             c.kind = "UNKNOWN";
         }
         td.getAnnotations().forEach(a -> c.annotations.add(a.getNameAsString()));
-        List<String> supers = new ArrayList<>(c.extendsTypes);
-        supers.addAll(c.implementsTypes);
-        applyRole(c, classifier.classify(c.name, c.annotations, supers));
+        applyRole(c, classify(td));
         c.location = SourceLocation.of(td, sources.relativeFile(td));
         register(c, "C");
         return c;
+    }
+
+    private ClassRoleClassifier.Classification classify(TypeDeclaration<?> td) {
+        List<String> annotations = td.getAnnotations().stream().map(a -> a.getNameAsString()).toList();
+        List<String> supers = new ArrayList<>();
+        if (td instanceof ClassOrInterfaceDeclaration ci) {
+            ci.getExtendedTypes().forEach(t -> supers.add(t.asString()));
+            ci.getImplementedTypes().forEach(t -> supers.add(t.asString()));
+        } else if (td instanceof EnumDeclaration e) {
+            e.getImplementedTypes().forEach(t -> supers.add(t.asString()));
+        } else if (td instanceof RecordDeclaration rd) {
+            rd.getImplementedTypes().forEach(t -> supers.add(t.asString()));
+        }
+        return classifier.classify(td.getNameAsString(), annotations, supers);
     }
 
     private ClassInfo externalClass(String typeName, Origin origin, ResolvedReferenceTypeDeclaration decl) {
@@ -411,7 +477,7 @@ public final class FlowAnalyzer {
                 s.expansion = Expansion.NOT_APPLICABLE;
                 continue;
             }
-            MethodInfo t = result.method(s.targetMethodId);
+            MethodInfo t = result.method(s.expansionTargetId());
             if (t.origin != Origin.SOURCE) {
                 s.expansion = Expansion.EXTERNAL;
             } else if (!t.hasBody) {

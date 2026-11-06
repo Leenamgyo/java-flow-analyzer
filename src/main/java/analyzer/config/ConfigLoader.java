@@ -1,5 +1,6 @@
 package analyzer.config;
 
+import analyzer.model.ClassRole;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -38,6 +39,12 @@ public final class ConfigLoader {
         }
         if (!DIRECTIONS.contains(cfg.output.direction)) {
             throw new IllegalArgumentException("output.direction 은 " + DIRECTIONS + " 중 하나여야 합니다.");
+        }
+        for (String role : cfg.analysis.expandRoles) {
+            if (ClassRole.fromLabel(role).isEmpty()) {
+                throw new IllegalArgumentException("analysis.expand-roles 의 알 수 없는 역할: " + role
+                        + " (가능: " + java.util.Arrays.stream(ClassRole.values()).map(ClassRole::label).toList() + ")");
+            }
         }
         for (var rule : cfg.requestParameterRules) {
             if (rule.className == null || rule.methods == null || rule.methods.isEmpty()) {

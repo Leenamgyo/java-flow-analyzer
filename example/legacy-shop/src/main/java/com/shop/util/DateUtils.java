@@ -5,6 +5,10 @@ public final class DateUtils {
         return java.time.LocalDate.now().toString();
     }
 
+    public static String now() {
+        return java.time.LocalDateTime.now().toString();
+    }
+
     public static java.time.LocalDate parse(String s) {
         return java.time.LocalDate.parse(s);
     }

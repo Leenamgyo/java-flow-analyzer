@@ -4,6 +4,13 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.List;
+import javax.servlet.http.HttpServletRequest;
+import com.example.biz.NoticeBiz;
+import com.example.model.SearchVO;
+import com.example.model.AppCommand;
+import java.util.HashMap;
+import java.util.Map;
+import org.springframework.beans.BeanUtils;
 import com.example.exception.BizException;
 import com.example.vendor.*;
 
@@ -138,6 +145,13 @@ public class CaseAction {
         items.forEach(x -> release());
     }
 
+    // ---- 구현 클래스가 2개인 인터페이스 호출
+    private NoticeBiz noticeBiz;
+
+    public void multipleImplementations() {
+        noticeBiz.list("main");
+    }
+
     // ---- 미해결 / 부분 해결
     public void unresolvedCalls() {
         var client = SdkClient.getInstance();
@@ -161,5 +175,45 @@ public class CaseAction {
     }
 
     private void logError(Exception e) {
+    }
+
+    // ---- VO setter 와 Request Parameter 출처 추적
+    public void voBinding(HttpServletRequest request) {
+        SearchVO vo = new SearchVO();
+        vo.setKeyword(request.getParameter("keyword"));      // DIRECT_READ
+        int page = Integer.parseInt(request.getParameter("page"));
+        vo.setPage(page - 1);                                 // LOCAL_VARIABLE, derived
+        String sort = request.getParameter("sort");
+        if (sort == null) {
+            sort = "date";
+        }
+        vo.setSort(sort);                                     // reassigned
+        vo.setMode("LIST");                                   // LITERAL
+        fill(vo, request.getParameter("url"));
+        vo.getKeyword();
+    }
+
+    private void fill(SearchVO target, String u) {
+        target.setURL(u.trim());                              // via CALL, derived
+    }
+
+    // ---- 바인딩 종류: 생성자 / setter 재할당(조건부) / 필드 직접 대입 / builder / Map.put / copyProperties
+    private static final String KEY_PD = "pd";
+
+    public void bindingKinds(HttpServletRequest request) {
+        String shopId = request.getParameter("shopId");
+        String pd = request.getParameter("pd");
+        AppCommand cmd = new AppCommand(request.getParameter("appId"), shopId);
+        cmd.setShopId(shopId);
+        if ("1".equals(pd)) {
+            cmd.setShopId("testShop");
+        }
+        cmd.memo = request.getParameter("memo");
+        SearchVO built = SearchVO.builder().keyword(shopId).page(1).build();
+        Map<String, Object> m = new HashMap<>();
+        m.put("shop", shopId);
+        m.put(KEY_PD, pd);
+        SearchVO copy = new SearchVO();
+        BeanUtils.copyProperties(cmd, copy);
     }
 }

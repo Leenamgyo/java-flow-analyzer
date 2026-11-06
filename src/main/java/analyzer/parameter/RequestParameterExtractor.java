@@ -175,6 +175,22 @@ public final class RequestParameterExtractor {
         return null;
     }
 
+    /** 문자열 리터럴 또는 static final String 상수(같은 클래스/상위/다른 source 타입) 값. Map 키 해석에도 사용 */
+    public Optional<String> stringValue(Expression arg, TypeDeclaration<?> callerType, Node context) {
+        if (arg instanceof StringLiteralExpr s) {
+            return Optional.of(s.asString());
+        }
+        if (arg instanceof NameExpr n && callerType != null) {
+            return constantValue(callerType, n.getNameAsString(), new HashSet<>());
+        }
+        if (arg instanceof FieldAccessExpr f) {
+            return types.resolveTypeName(f.getScope().toString(), context)
+                    .filter(TypeRef::inSource)
+                    .flatMap(ref -> constantValue(ref.declaration(), f.getNameAsString(), new HashSet<>()));
+        }
+        return Optional.empty();
+    }
+
     private void resolveName(Expression arg, TypeDeclaration<?> callerType, Node context, RequestParameterInfo p) {
         if (arg instanceof StringLiteralExpr s) {
             p.name = s.asString();

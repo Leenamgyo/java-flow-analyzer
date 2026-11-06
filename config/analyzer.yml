@@ -13,6 +13,12 @@ analysis:
   include-exceptions: true
   include-request-parameters: true
   include-external-library-calls: false
+  # max-depth 를 넘어도 본문을 분석할 역할 (Util 등은 제외 → depth-limit)
+  expand-roles: [Service, Biz, DAO, Repository, Mapper]
+  # 인터페이스 호출: source-root 내 구현 클래스가 정확히 1개면 구현 후보로 연결 (런타임 DI 확정 아님)
+  link-single-implementation: true
+  # VO/DTO/Command/Map 바인딩(setter·builder·생성자·필드 대입·put·copyProperties) 수집 + 값 출처·변환·조건 추적
+  include-bindings: true
   classpath-jars: []                 # 선택: 심볼 해석용 의존 jar (읽기 전용)
 
 # 사용자 정의 Request 유틸리티 (HttpServletRequest.getParameter/Values/Map 은 기본 내장)
@@ -26,8 +32,8 @@ request-parameter-rules:
 
 output:
   directory: output
-  yaml: true
-  tree: true
+  yaml: true            # analysis.yaml
+  tree: true            # call-tree.txt
   tree-include-control-blocks: true
   mermaid: true
-  direction: TD
+  direction: LR

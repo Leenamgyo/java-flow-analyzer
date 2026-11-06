@@ -25,15 +25,20 @@ public final class CallTreeWriter {
         ClassInfo target = r.clazz(r.targetClassId);
         MethodInfo entry = r.method(r.entryMethodId);
         sb.append(target.name).append(" [").append(target.role.label()).append("]\n");
-        sb.append("└── ").append(entry.signature).append(" [").append(entry.visibility.text()).append(", D0]\n");
+        sb.append("└── ").append(entry.signature).append(" [").append(entry.visibility.text()).append(", D0]");
+        String req = Labels.methodRequestTag(r, entry);
+        if (req != null) {
+            sb.append("  ⇐ ").append(req);
+        }
+        sb.append('\n');
         renderMethod(entry, "    ");
         return sb.toString();
     }
 
     private void renderMethod(MethodInfo m, String prefix) {
         List<Object> items = includeBlocks
-                ? Labels.elements(r, m.id, null, true)
-                : r.callSitesOf(m.id).stream().map(s -> (Object) s).toList();
+                ? FlowView.elements(r, m.id, null, true)
+                : r.callSitesOf(m.id).stream().filter(s -> !FlowView.hidden(r, s)).map(s -> (Object) s).toList();
         renderItems(m, items, prefix);
     }
 
@@ -43,16 +48,20 @@ public final class CallTreeWriter {
             String branch = last ? "└── " : "├── ";
             String childPrefix = prefix + (last ? "    " : "│   ");
             Object o = items.get(i);
-            if (o instanceof CallSiteInfo s) {
+            if (o instanceof FlowView.Summary sm) {
+                sb.append(prefix).append(branch).append("✎ ")
+                        .append(String.join(" · ", Labels.bindingSummary(r, sm.object(), sm.bindings())))
+                        .append("  (").append(sm.object().id).append(")\n");
+            } else if (o instanceof CallSiteInfo s) {
                 sb.append(prefix).append(branch).append(callLine(s)).append('\n');
                 if (s.expansion == Expansion.EXPANDED) {
-                    renderMethod(r.method(s.targetMethodId), childPrefix);
+                    renderMethod(r.method(s.expansionTargetId()), childPrefix);
                 }
             } else {
                 ControlBlock b = (ControlBlock) o;
                 sb.append(prefix).append(branch).append(Labels.blockHeader(b)).append("  (").append(b.id).append(")")
                         .append(Labels.blockNotes(b)).append('\n');
-                renderItems(m, Labels.elements(r, m.id, b.id, true), childPrefix);
+                renderItems(m, FlowView.elements(r, m.id, b.id, true), childPrefix);
             }
         }
     }
@@ -70,11 +79,21 @@ public final class CallTreeWriter {
             l.append(" ~deferred");
         }
         l.append("  (").append(s.id).append(')');
+        String req = Labels.requestTag(r, s);
+        if (req != null) {
+            l.append("  ⇐ ").append(req);
+        }
+        String impl = Labels.implementationTarget(r, s);
+        if (impl != null) {
+            l.append("  ⇒ 구현 후보 ").append(impl);
+        }
+        String skipped = Labels.implementationSkipped(s);
         switch (s.expansion) {
             case CYCLE -> l.append("  ↺ cycle");
             case SHARED -> l.append("  → ").append(s.expandedAt).append(" 에서 전개됨");
             case DEPTH_LIMIT -> l.append("  ⋯ depth-limit");
-            case NO_BODY -> l.append("  ⋯ abstract/interface (구현체 미확정)");
+            case NO_BODY -> l.append("  ⋯ abstract/interface (")
+                    .append(skipped != null ? skipped : "구현체 미확정").append(')');
             case NOT_APPLICABLE -> l.append("  ✗ unresolved");
             default -> {
             }

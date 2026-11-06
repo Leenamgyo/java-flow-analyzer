@@ -21,6 +21,12 @@ public final class AnalysisResult {
     public final List<CallRelation> relations = new ArrayList<>();
     public final List<ControlBlock> blocks = new ArrayList<>();
     public final List<RequestParameterInfo> parameters = new ArrayList<>();
+    /** 바인딩 대상 객체 (O*) */
+    public final List<ObjectInfo> objects = new ArrayList<>();
+    /** 객체 필드 할당 (B*) */
+    public final List<Binding> bindings = new ArrayList<>();
+    /** 이름별 요청 스펙 (RQ*) — parameters 의 집계 */
+    public final List<RequestSpecEntry> requestSpec = new ArrayList<>();
     /** 분석 중 생략/제약 사항 */
     public final List<String> notes = new ArrayList<>();
     public int excludedExternalCalls;
@@ -73,6 +79,27 @@ public final class AnalysisResult {
 
     public List<CallSiteInfo> callSitesOf(String methodId) {
         return callSites.stream().filter(c -> c.callerMethodId.equals(methodId)).toList();
+    }
+
+    /** 이 호출 위치에서 읽은 Request Parameter */
+    public List<RequestParameterInfo> parametersAt(String callSiteId) {
+        return parameters.stream().filter(p -> callSiteId.equals(p.callSiteId)).toList();
+    }
+
+    public ObjectInfo object(String id) {
+        return (ObjectInfo) byId.get(id);
+    }
+
+    public Binding binding(String id) {
+        return (Binding) byId.get(id);
+    }
+
+    public List<Binding> bindingsOf(ObjectInfo o) {
+        return o.bindingIds.stream().map(this::binding).toList();
+    }
+
+    public RequestParameterInfo parameter(String id) {
+        return (RequestParameterInfo) byId.get(id);
     }
 
     public List<ControlBlock> blocksOf(String methodId) {

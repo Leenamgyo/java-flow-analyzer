@@ -29,7 +29,7 @@ final class Y extends LinkedHashMap<String, Object> {
         if (l == null) {
             return null;
         }
-        return map().put2("file", l.file()).put2("begin-line", l.beginLine()).put2("begin-column", l.beginColumn())
-                .put2("end-line", l.endLine()).put2("end-column", l.endColumn());
+        return map().put2("file", l.file()).put2("beginLine", l.beginLine()).put2("beginColumn", l.beginColumn())
+                .put2("endLine", l.endLine()).put2("endColumn", l.endColumn());
     }
 }

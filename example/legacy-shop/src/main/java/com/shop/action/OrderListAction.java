@@ -17,6 +17,7 @@ import com.shop.dao.OrderDAO;
 import com.shop.service.OrderService;
 import com.shop.util.DateUtils;
 import com.shop.util.ParamUtil;
+import com.shop.vo.OrderSearchVO;
 
 /** 주문 목록 조회 Action (Struts 1 스타일) */
 public class OrderListAction extends BaseAction {
@@ -42,6 +43,7 @@ public class OrderListAction extends BaseAction {
         try {
             validate(status, page);
             Map<String, Object> cond = buildCondition(status, from, categories);
+            request.setAttribute("search", toSearchVO(userId, status, page, size, sortKey, from));
             switch (status) {
                 case "CANCELED":
                     orders = orderService.findCanceledOrders(cond, page, size);
@@ -93,6 +95,18 @@ public class OrderListAction extends BaseAction {
             cond.put("categories", normalize(categories));
         }
         return cond;
+    }
+
+    /** 화면 재표시용 검색 조건 VO (size 는 MAX_PAGE_SIZE 로 보정될 수 있음) */
+    private OrderSearchVO toSearchVO(String userId, String status, int page, int size, String sortKey, String from) {
+        OrderSearchVO vo = new OrderSearchVO();
+        vo.setMemberId(userId);
+        vo.setStatus(status);
+        vo.setOffset((page - 1) * size);
+        vo.setLimit(size);
+        vo.setSortKey(sortKey == null ? "orderDate" : sortKey);
+        vo.setFromDate(from);
+        return vo;
     }
 
     private List<String> normalize(String[] values) {

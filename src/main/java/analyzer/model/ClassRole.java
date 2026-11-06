@@ -8,6 +8,8 @@ public enum ClassRole {
     DAO("DAO"),
     REPOSITORY("Repository"),
     MAPPER("Mapper"),
+    /** 값 객체: VO / DTO / Command / (Struts) Form */
+    VO("VO"),
     UTIL("Util"),
     OTHER("Other");
 
@@ -19,5 +21,15 @@ public enum ClassRole {
 
     public String label() {
         return label;
+    }
+
+    /** 표시명(대소문자 무시) 또는 enum 이름으로 찾는다. */
+    public static java.util.Optional<ClassRole> fromLabel(String s) {
+        for (ClassRole r : values()) {
+            if (r.label.equalsIgnoreCase(s) || r.name().equalsIgnoreCase(s)) {
+                return java.util.Optional.of(r);
+            }
+        }
+        return java.util.Optional.empty();
     }
 }

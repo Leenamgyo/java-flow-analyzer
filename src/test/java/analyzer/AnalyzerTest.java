@@ -132,6 +132,67 @@ class AnalyzerTest {
     }
 
     @Nested
+    class RoleExpansionAndImplementationLink {
+        final AnalysisResult r = analyze("ScpAppListAction", "execute", c -> {
+            c.analysis.expandRoles = List.of("Service", "Biz", "DAO", "Mapper");
+            c.analysis.linkSingleImplementation = true;
+        });
+
+        @Test
+        void singleImplementationIsLinkedAndExpandedByRole() {
+            MethodInfo decl = method(r, "ScpAppListBiz", "getAppList(AppListCommand)");
+            MethodInfo impl = method(r, "ScpAppListBizImpl", "getAppList(AppListCommand)");
+            CallSiteInfo site = callsTo(r, decl).get(0);
+            assertEquals(decl.id, site.targetMethodId); // 선언 대상은 그대로
+            assertEquals(impl.id, site.implementationMethodId);
+            assertEquals("SINGLE_SOURCE_IMPLEMENTATION", site.implementationBasis);
+            assertEquals(List.of("com.example.biz.ScpAppListBizImpl"), site.implementationCandidates);
+            assertEquals(Expansion.EXPANDED, site.expansion);
+            assertTrue(impl.analyzed);
+            assertEquals(1, impl.depth);
+            assertFalse(decl.analyzed);
+            assertEquals(Expansion.NO_BODY, decl.notAnalyzedReason);
+        }
+
+        @Test
+        void daoReachedThroughImplementationIsExpandedBeyondMaxDepth() {
+            MethodInfo select = method(r, "ScpAppDAO", "selectApps(String)");
+            CallSiteInfo site = callsTo(r, select).get(0);
+            assertEquals(2, site.depth);
+            assertEquals(method(r, "ScpAppListBizImpl", "getAppList(AppListCommand)").id, site.callerMethodId);
+            assertTrue(select.analyzed);
+        }
+
+        @Test
+        void utilOutsideExpandRolesStaysDepthLimited() {
+            MethodInfo getString = method(r, "RequestUtil", "getString(HttpServletRequest, String, String)");
+            assertFalse(getString.analyzed);
+            assertEquals(Expansion.DEPTH_LIMIT, getString.notAnalyzedReason);
+        }
+
+        @Test
+        void multipleImplementationsAreNotLinked() {
+            AnalysisResult r2 = analyze("CaseAction", "multipleImplementations", c -> {
+                c.analysis.expandRoles = List.of("Biz");
+                c.analysis.linkSingleImplementation = true;
+            });
+            CallSiteInfo site = callsTo(r2, method(r2, "NoticeBiz", "list(String)")).get(0);
+            assertNull(site.implementationMethodId);
+            assertEquals("MULTIPLE_SOURCE_IMPLEMENTATIONS", site.implementationBasis);
+            assertEquals(List.of("com.example.biz.NoticeBizCache", "com.example.biz.NoticeBizDb"), site.implementationCandidates);
+            assertEquals(Expansion.NO_BODY, site.expansion);
+            assertTrue(r2.classes().stream().noneMatch(c -> c.name.startsWith("NoticeBiz") && !c.name.equals("NoticeBiz")));
+        }
+
+        @Test
+        void unknownRoleInConfigIsRejected() {
+            var cfg = Fixtures.config("ScpAppListAction", "execute");
+            cfg.analysis.expandRoles = List.of("Helper");
+            assertThrows(IllegalArgumentException.class, () -> analyzer.config.ConfigLoader.validate(cfg));
+        }
+    }
+
+    @Nested
     class Calls {
         @Test
         void overloadsAreDistinctMethods() {
@@ -352,6 +413,98 @@ class AnalyzerTest {
             assertEquals("PARAMETER_NAME", byVar.get("page").nameResolution);
             assertEquals("X-Device", byVar.get("device").name);
             assertEquals("@ModelAttribute", byVar.get("cmd").extraction);
+            // 객체 바인딩은 개별 요청 파라미터가 아니므로 요청 스펙 항목에서 제외
+            assertTrue(r.requestSpec.stream().noneMatch(e -> e.name.equals("cmd")));
+            assertTrue(r.requestSpec.stream().anyMatch(e -> e.name.equals("category")));
+        }
+    }
+
+    @Nested
+    class Bindings {
+        final AnalysisResult r = analyze("CaseAction", "voBinding");
+
+        analyzer.model.Binding field(AnalysisResult res, String cls, String name) {
+            return res.bindings.stream().filter(b -> b.field.equals(name) && res.object(b.objectId).className.equals(cls))
+                    .findFirst().orElseThrow(() -> new AssertionError("no binding " + cls + "." + name));
+        }
+
+        List<String> sources(analyzer.model.Binding b) {
+            return b.sources.stream().map(analyzer.model.ValueSource::display).toList();
+        }
+
+        @Test
+        void setterBindingsTraceRequestSourcesAndTransforms() {
+            assertEquals("request.keyword", sources(field(r, "SearchVO", "keyword")).get(0));
+            var page = field(r, "SearchVO", "page");
+            assertEquals(List.of("request.page"), sources(page));
+            assertTrue(page.transforms.contains("Integer.parseInt()"), page.transforms.toString());
+            var sort = field(r, "SearchVO", "sort");
+            assertEquals(List.of("request.sort", "literal:date"), sources(sort));
+            assertTrue(sort.reassigned);
+            assertEquals(List.of("literal:LIST"), sources(field(r, "SearchVO", "mode")));
+            assertEquals("always", analyzer.serializer.Labels.bindingCondition(field(r, "SearchVO", "mode")));
+        }
+
+        @Test
+        void objectPassedAsArgumentIsSameObject() {
+            assertEquals(1, r.objects.size());
+            var url = field(r, "SearchVO", "URL");
+            assertEquals("fill", r.method(url.methodId).name);
+            assertEquals("request.url", url.sources.get(0).display());
+            assertEquals(1, url.sources.get(0).via().size());
+            assertTrue(url.transforms.contains(".trim()"));
+            assertEquals("vo", r.objects.get(0).variable);
+        }
+
+        @Test
+        void requestCallsAreKeptAndSpecLinksBindings() {
+            assertTrue(r.parameters.stream().allMatch(p -> p.callSiteId != null));
+            assertEquals(List.of("keyword", "page", "sort", "url"), r.requestSpec.stream().map(e -> e.name).toList());
+            var sortSpec = r.requestSpec.stream().filter(e -> e.name.equals("sort")).findFirst().orElseThrow();
+            assertEquals(List.of(field(r, "SearchVO", "sort").id), sortSpec.bindingIds);
+        }
+
+        @Test
+        void allAssignmentKinds() {
+            AnalysisResult k = analyze("CaseAction", "bindingKinds");
+            var shop = k.bindings.stream().filter(b -> b.field.equals("shopId")).toList();
+            assertEquals(List.of("CONSTRUCTOR", "SETTER", "SETTER"), shop.stream().map(b -> b.assignment).toList());
+            assertEquals(List.of("\"1\".equals(pd)"), shop.get(2).conditions);
+            assertEquals("literal:testShop", shop.get(2).sources.get(0).display());
+            assertEquals("request.appId", field(k, "AppCommand", "appId").sources.get(0).display());
+            assertEquals("FIELD", field(k, "AppCommand", "memo").assignment);
+
+            var keyword = field(k, "SearchVO", "keyword");
+            assertEquals("BUILDER", keyword.assignment);
+            assertEquals(ResolutionStatus.PARTIALLY_RESOLVED, keyword.resolution); // builder 가 소스에 없음
+            assertEquals("literal:1", field(k, "SearchVO", "page").sources.get(0).display());
+
+            assertEquals("MAP_PUT", field(k, "Map<String,Object>", "shop").assignment);
+            assertEquals("request.pd", field(k, "Map<String,Object>", "pd").sources.get(0).display()); // 상수 키 KEY_PD → "pd"
+
+            var copy = k.bindings.stream().filter(b -> b.assignment.equals("COPY")).findFirst().orElseThrow();
+            assertEquals("*", copy.field);
+            assertEquals("new:AppCommand", copy.sources.get(0).display());
+        }
+
+        @Test
+        void fieldCoverageSeparatesDeclaredAssignedInitialAndUnassigned() {
+            AnalysisResult k = analyze("CaseAction", "bindingKinds");
+            var cmd = k.objects.stream().filter(o -> o.className.equals("AppCommand")).findFirst().orElseThrow();
+            assertEquals(List.of("appId", "shopId", "memo", "extra", "createdAt"), cmd.declaredFields);
+            assertEquals(List.of("appId", "shopId", "memo"), cmd.assignedFields);
+            assertEquals(List.of("createdAt"), cmd.initialOnlyFields);
+            assertEquals(List.of("extra"), cmd.unassignedFields);
+            assertEquals("VO", k.clazz(cmd.classId).role.label()); // *Command 도 VO 역할
+            var copied = k.objects.stream().filter(o -> o.variable.equals("copy")).findFirst().orElseThrow();
+            assertFalse(copied.unknownFields.isEmpty()); // copyProperties 대상은 필드별 매핑 확인 불가
+        }
+
+        @Test
+        void disabledBindings() {
+            AnalysisResult off = analyze("CaseAction", "voBinding", c -> c.analysis.includeBindings = false);
+            assertTrue(off.bindings.isEmpty());
+            assertEquals(4, off.requestSpec.size());
         }
     }
 }

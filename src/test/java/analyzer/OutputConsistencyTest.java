@@ -7,7 +7,12 @@ import analyzer.model.AnalysisResult;
 import analyzer.model.CallSiteInfo;
 import analyzer.model.ControlBlock;
 import analyzer.model.MethodInfo;
+import analyzer.serializer.AnalysisSchema;
+import analyzer.serializer.AnalysisYamlWriter;
 import analyzer.serializer.CallTreeWriter;
+import analyzer.serializer.FlowView;
+import analyzer.serializer.MappingReportWriter;
+import analyzer.model.Expansion;
 import analyzer.serializer.OutputWriter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -39,61 +44,51 @@ class OutputConsistencyTest {
         Path dir = Main.outputDir(cfg, "ScpAppListAction");
         new OutputWriter().write(r, cfg, dir);
 
-        for (String f : List.of("classes.yaml", "call-relations.yaml", "control-blocks.yaml", "parameters.yaml",
-                "call-tree.txt", "flowchart.mmd", "analysis.md")) {
+        for (String f : List.of("analysis.yaml", "call-tree.txt", "flowchart.mmd", "mapping.md", "analysis.md")) {
             assertTrue(Files.exists(dir.resolve(f)), f);
         }
-        ObjectMapper y = new ObjectMapper(new YAMLFactory());
-        Map<String, Object> classes = y.readValue(dir.resolve("classes.yaml").toFile(), Map.class);
-        Map<String, Object> calls = y.readValue(dir.resolve("call-relations.yaml").toFile(), Map.class);
-        Map<String, Object> blocks = y.readValue(dir.resolve("control-blocks.yaml").toFile(), Map.class);
+        assertFalse(Files.exists(dir.resolve("comparison.md"))); // 신규 프로젝트 데이터가 없으면 만들지 않음
+        Map<String, Object> doc = new ObjectMapper(new YAMLFactory()).readValue(dir.resolve("analysis.yaml").toFile(), Map.class);
+        assertEquals("1.0", doc.get("schemaVersion"));
+        assertEquals(List.of(), AnalysisSchema.validate(doc));
 
         Set<String> methodIds = new HashSet<>();
-        for (Map<String, Object> c : (List<Map<String, Object>>) classes.get("classes")) {
-            for (Map<String, Object> m : (List<Map<String, Object>>) c.get("methods")) {
-                methodIds.add((String) m.get("id"));
-            }
-        }
-        Set<String> blockIds = new HashSet<>();
-        for (Map<String, Object> b : (List<Map<String, Object>>) blocks.get("blocks")) {
-            blockIds.add((String) b.get("id"));
-        }
+        ((List<Map<String, Object>>) doc.get("methods")).forEach(m -> methodIds.add((String) m.get("id")));
         String mmd = Files.readString(dir.resolve("flowchart.mmd"));
         String tree = Files.readString(dir.resolve("call-tree.txt"));
-        assertTrue(mmd.startsWith("flowchart TD"));
-
-        for (Map<String, Object> c : (List<Map<String, Object>>) calls.get("calls")) {
+        assertTrue(mmd.startsWith("flowchart LR"));
+        for (Map<String, Object> c : (List<Map<String, Object>>) doc.get("calls")) {
             String id = (String) c.get("id");
             assertTrue(methodIds.contains((String) c.get("from")));
-            if (c.get("to") != null) {
-                assertTrue(methodIds.contains((String) c.get("to")));
-                assertTrue(mmd.contains(id + " ==>"), "Mermaid call edge for " + id);
+            if (FlowView.hidden(r, r.callSite(id))) {
+                continue;
             }
-            if (c.get("control-block-id") != null) {
-                assertTrue(blockIds.contains((String) c.get("control-block-id")));
-            }
-            assertTrue(mmd.contains("    " + id + "[") || mmd.contains(" " + id + "[\""), "Mermaid node " + id);
+            assertTrue(mmd.contains("    " + id + "[\""), "Mermaid node " + id);
             assertTrue(tree.contains("(" + id + ")"), "tree " + id);
         }
-        for (String m : methodIds) {
-            assertTrue(mmd.matches("(?s).*\\b" + m + "[\\[(].*"), "Mermaid method node " + m);
+        for (MethodInfo m : r.methods()) {
+            if (m.analyzed && !FlowView.bindingMethods(r).contains(m.id)) {
+                assertTrue(mmd.contains("    " + m.id + "([\""), "Mermaid method node " + m.id);
+            }
         }
-        for (String b : blockIds) {
-            assertTrue(mmd.contains(b), "Mermaid block " + b);
-            assertTrue(tree.contains("(" + b + ")"), "tree block " + b);
+        for (ControlBlock b : r.blocks) {
+            assertTrue(tree.contains("(" + b.id + ")") || FlowView.hidden(r, b), "tree block " + b.id);
         }
-        // Mermaid 의 모든 호출 엣지는 모델에 존재하는 호출 관계여야 함
+        // 호출 엣지(==>)는 본문을 전개한 호출만, 모델의 대상과 일치
         MermaidGraph g = new FlowchartGenerator().build(r);
         assertEquals(List.of(), g.validate());
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         long callEdges = g.edges().stream().filter(e -> e.style() == MermaidGraph.EdgeStyle.CALL).count();
-        assertEquals(r.callSites.stream().filter(s -> s.targetMethodId != null).count(), callEdges);
+        assertEquals(r.callSites.stream().filter(s -> !FlowView.hidden(r, s) && (s.expansion == Expansion.EXPANDED
+                || s.expansion == Expansion.SHARED || s.expansion == Expansion.CYCLE)).count(), callEdges);
+        // 서브그래프는 메서드당 1개 (중첩 없음)
+        assertEquals(0, mmd.lines().filter(l -> l.startsWith("        subgraph")).count());
     }
 
     @ParameterizedTest
     @CsvSource({"CaseAction,overload", "CaseAction,duplicate", "CaseAction,recursive", "CaseAction,mutualA",
             "CaseAction,tryWithResources", "CaseAction,returnWithFinally", "CaseAction,finallyOverridesReturn",
-            "CaseAction,throwCases", "CaseAction,switchAndLoop", "CaseAction,unresolvedCalls", "AppController,list"})
+            "CaseAction,throwCases", "CaseAction,switchAndLoop", "CaseAction,unresolvedCalls", "CaseAction,voBinding", "CaseAction,bindingKinds", "AppController,list"})
     void everyFixtureProducesValidMermaidAndTree(String clazz, String method) {
         AnalysisResult r = Fixtures.analyze(clazz, method);
         MermaidGraph g = new FlowchartGenerator().build(r);
@@ -101,11 +96,30 @@ class OutputConsistencyTest {
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         String tree = new CallTreeWriter(true).render(r);
         for (CallSiteInfo s : r.callSites) {
-            assertTrue(tree.contains("(" + s.id + ")"), s.id);
+            // 바인딩 코드(setter 등)는 객체 요약 1줄로 접혀 개별 ID 를 표시하지 않음
+            assertTrue(tree.contains("(" + s.id + ")") || FlowView.hidden(r, s), s.id);
         }
         for (ControlBlock b : r.blocks) {
-            assertTrue(tree.contains("(" + b.id + ")"), b.id);
+            assertTrue(tree.contains("(" + b.id + ")") || FlowView.hidden(r, b), b.id);
         }
+    }
+
+    @Test
+    void implementationLinkIsConsistentAcrossOutputs() {
+        AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute", c -> {
+            c.analysis.expandRoles = List.of("Service", "DAO");
+            c.analysis.linkSingleImplementation = true;
+        });
+        CallSiteInfo site = r.callSites.stream().filter(s -> s.implementationMethodId != null).findFirst().orElseThrow();
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(site.id) && e.to().equals(site.implementationMethodId)));
+        String tree = new CallTreeWriter(true).render(r);
+        assertTrue(tree.contains("(" + site.id + ")  ⇒ 구현 후보 ScpAppListBizImpl.getAppList(AppListCommand)"), tree);
+        assertTrue(tree.contains("ScpAppDAO.selectApps(String)"), tree);
+        Map<String, Object> doc = new AnalysisYamlWriter().document(r);
+        assertTrue(doc.get("calls").toString().contains("implementationMethodId=" + site.implementationMethodId));
     }
 
     @Test
@@ -152,5 +166,67 @@ class OutputConsistencyTest {
         assertEquals(a.methods().stream().map(m -> m.id + "=" + m.key).toList(),
                 b.methods().stream().map(m -> m.id + "=" + m.key).toList());
         assertTrue(a.methods().stream().map(m -> m.key).distinct().count() == a.methods().size());
+    }
+
+    @Test
+    void bindingIsOneSummaryNodePerObjectAndMappingIsComplete() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "voBinding");
+        String tree = new CallTreeWriter(true).render(r);
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        for (var b : r.bindings) {
+            if (b.callSiteId != null) {
+                assertFalse(g.has(b.callSiteId), "setter 는 개별 노드가 아님: " + b.callSiteId);
+                assertFalse(tree.contains("(" + b.callSiteId + ")"));
+            }
+        }
+        var summaries = FlowView.summaries(r);
+        // voBinding 본문의 SearchVO 요약 1개 + 바인딩 메서드 fill() 호출 위치의 요약 1개
+        assertEquals(2, summaries.size());
+        summaries.forEach(sm -> assertTrue(g.has(sm.id())));
+        assertTrue(tree.contains("✎ SearchVO (vo) · 4 fields assigned"), tree);
+        // 본문이 setter 뿐인 fill() 은 흐름도에 메서드로 그리지 않음
+        var fill = Fixtures.method(r, "CaseAction", "fill(SearchVO, String)");
+        assertFalse(g.has(fill.id));
+        assertTrue(tree.contains("⇐ REQ page"), tree);       // 단독 Request 읽기는 흐름에 남음
+        assertFalse(tree.contains("⇐ REQ keyword"), tree);   // setter 인자 안의 읽기는 바인딩으로 접힘
+        // mapping.md 는 모든 바인딩을 생략 없이 포함
+        String mapping = new MappingReportWriter().render(r);
+        r.bindings.forEach(b -> assertTrue(mapping.contains("| " + b.id + " |"), b.id));
+        String md = new analyzer.serializer.AnalysisReportWriter().render(r, tree, "flowchart LR\n", "SKIPPED");
+        for (String section : List.of("## 1. 분석 개요", "## 2. 실행 흐름도", "## 3. Request Parameter 분석",
+                "## 4. VO / DTO / Command 바인딩 명세", "## 5. 메서드 호출 관계", "## 6. 예외 처리")) {
+            assertTrue(md.contains(section), section);
+        }
+    }
+
+    @Test
+    void multipleAssignmentsKeepOrderAndFinalValue() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "bindingKinds");
+        String mapping = new MappingReportWriter().render(r);
+        assertTrue(mapping.contains("`\"1\".equals(pd)` → literal:testShop"), mapping);
+        assertTrue(mapping.contains("그 외 → request.shopId"), mapping);
+        assertTrue(mapping.contains("는 이후 무조건 할당"), mapping); // 생성자 할당은 setter 로 덮어써짐
+        assertEquals(List.of(), AnalysisSchema.validate(yamlRoundTrip(r)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> yamlRoundTrip(AnalysisResult r) {
+        try {
+            ObjectMapper m = new ObjectMapper(new YAMLFactory());
+            return m.readValue(m.writeValueAsString(new AnalysisYamlWriter().document(r)), Map.class);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Test
+    void schemaRejectsBrokenDocument() {
+        Map<String, Object> doc = yamlRoundTrip(Fixtures.analyze("CaseAction", "voBinding"));
+        doc.put("schemaVersion", "2.0");
+        ((Map<String, Object>) (Object) ((List<?>) doc.get("calls")).get(0)).put("from", "M999");
+        List<String> errors = AnalysisSchema.validate(doc);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("schemaVersion")), errors.toString());
     }
 }

@@ -16,4 +16,9 @@ public final class RequestParameterInfo {
     public String defaultValue;
     public Boolean required;
     public SourceLocation location;
+
+    /** 이름이 확정된 개별 요청 값인지 (UNKNOWN·전체 조회·body·@ModelAttribute 객체 바인딩이 아님) */
+    public boolean named() {
+        return name != null && !"UNKNOWN".equals(nameResolution) && !"@ModelAttribute".equals(extraction);
+    }
 }

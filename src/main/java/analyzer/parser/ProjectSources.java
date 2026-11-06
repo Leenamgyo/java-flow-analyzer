@@ -76,6 +76,11 @@ public final class ProjectSources {
         }
     }
 
+    /** source-root 의 모든 .java 파일 (경로순, 결정적) */
+    public List<Path> allFiles() {
+        return filesBySimpleName.values().stream().flatMap(List::stream).sorted().toList();
+    }
+
     public Path sourceRoot() {
         return sourceRoot;
     }
