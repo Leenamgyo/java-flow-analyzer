@@ -1,0 +1,24 @@
+# example: legacy-shop 의 주문 목록 Action 분석
+target:
+  source-root: example/legacy-shop/src/main/java
+  class: OrderListAction
+  entry-method: execute
+
+analysis:
+  max-depth: 1
+  expand-same-class-methods: true
+  include-conditions: true
+  include-exceptions: true
+  include-request-parameters: true
+  include-external-library-calls: false
+
+request-parameter-rules:
+  - class: ParamUtil
+    methods:
+      - { name: getInt,    name-arg-index: 1, default-arg-index: 2, type: int }
+      - { name: getString, name-arg-index: 1, default-arg-index: 2, type: String }
+
+output:
+  directory: example/output
+  tree-include-control-blocks: true
+  direction: TD

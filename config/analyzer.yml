@@ -1,0 +1,33 @@
+# Java Action 정적 분석기 설정
+target:
+  source-root: src/test/resources/sample-project/src/main/java   # 읽기 전용 접근
+  class: ScpAppListAction            # 단순명 또는 FQN (후보가 여러 개면 FQN 필요)
+  entry-method: execute
+  # 오버로딩된 진입 메서드일 때만 지정 (단순 타입명)
+  # entry-method-parameter-types: [HttpServletRequest, HttpServletResponse]
+
+analysis:
+  max-depth: 1
+  expand-same-class-methods: true
+  include-conditions: true
+  include-exceptions: true
+  include-request-parameters: true
+  include-external-library-calls: false
+  classpath-jars: []                 # 선택: 심볼 해석용 의존 jar (읽기 전용)
+
+# 사용자 정의 Request 유틸리티 (HttpServletRequest.getParameter/Values/Map 은 기본 내장)
+request-parameter-rules:
+  - class: RequestUtil
+    methods:
+      - { name: getString, name-arg-index: 1, default-arg-index: 2, type: String }
+  - class: ParameterUtil
+    methods:
+      - { name: getInt, name-arg-index: 1, default-arg-index: 2, type: int }
+
+output:
+  directory: output
+  yaml: true
+  tree: true
+  tree-include-control-blocks: true
+  mermaid: true
+  direction: TD

@@ -1,0 +1,49 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'analyzer'
+version = '0.1.0'
+
+repositories {
+    // 사내 승인 저장소가 있다면 여기에 교체/추가한다. (로컬 캐시 우선 사용)
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'com.github.javaparser:javaparser-symbol-solver-core:3.26.4'
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.21.4'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.21.4'
+
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.junit.jupiter:junit-jupiter-params'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+    // 설치된 JDK 버전과 무관하게 Java 21 바이트코드/API로 컴파일한다.
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+    options.encoding = 'UTF-8'
+}
+
+application {
+    mainClass = 'analyzer.Main'
+}
+
+tasks.named('run') {
+    workingDir = projectDir
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    workingDir = projectDir
+    testLogging {
+        events 'failed'
+        exceptionFormat 'full'
+    }
+}
