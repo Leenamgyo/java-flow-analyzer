@@ -32,4 +32,4 @@ request-parameter-rules:
 output:
   directory: example/output
   tree-include-control-blocks: true
-  direction: LR
+  direction: TD

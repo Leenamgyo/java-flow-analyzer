@@ -44,7 +44,6 @@ public final class FlowchartGenerator {
         CLASS_DEFS.put("throw", "fill:#fee2e2,stroke:#b91c1c");
         CLASS_DEFS.put("exc", "fill:#fee2e2,stroke:#b91c1c,stroke-dasharray:4 3");
         CLASS_DEFS.put("req", "fill:#ccfbf1,stroke:#0f766e,stroke-width:2px");
-        CLASS_DEFS.put("bind", "fill:#faf5ff,stroke:#a78bfa,color:#5b21b6");
     }
 
     /** 다음 요소로 이어질 열린 끝 (노드 + 간선 라벨/스타일) */
@@ -111,11 +110,6 @@ public final class FlowchartGenerator {
                         e.add("블록 노드 누락: " + b.id);
                     }
                 });
-        FlowView.summaries(r).forEach(s -> {
-            if (!graph.has(s.id())) {
-                e.add("바인딩 요약 노드 누락: " + s.id());
-            }
-        });
         for (var ed : graph.edges()) {
             if (ed.style() == EdgeStyle.CALL) {
                 CallSiteInfo s = r.callSite(ed.from());
@@ -133,9 +127,8 @@ public final class FlowchartGenerator {
         Set<String> header = parent == null ? Set.of() : headerPositions(parent.type);
         List<End> cur = in;
         for (Object o : FlowView.elements(r, m.id, parent == null ? null : parent.id, false)) {
-            if (o instanceof FlowView.Summary sm) {
-                g.node(sg, sm.id(), Labels.bindingSummary(r, sm.object(), sm.bindings()), Shape.SUBROUTINE, "bind");
-                cur = link(cur, sm.id());
+            if (o instanceof FlowView.Summary) {
+                continue; // 바인딩(set/builder/put)은 흐름도에 그리지 않음 — mapping.md / call-tree 에서 확인
             } else if (o instanceof CallSiteInfo s) {
                 if (header.contains(s.position)) {
                     continue;

@@ -36,4 +36,4 @@ output:
   tree: true            # call-tree.txt
   tree-include-control-blocks: true
   mermaid: true
-  direction: LR
+  direction: TD

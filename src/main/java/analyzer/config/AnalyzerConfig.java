@@ -47,7 +47,7 @@ public class AnalyzerConfig {
         public boolean tree = true;
         public boolean treeIncludeControlBlocks = true;
         public boolean mermaid = true;
-        public String direction = "LR";
+        public String direction = "TD";
     }
 
     /** 사용자 정의 Request 유틸리티 규칙 */

@@ -56,7 +56,7 @@ class OutputConsistencyTest {
         ((List<Map<String, Object>>) doc.get("methods")).forEach(m -> methodIds.add((String) m.get("id")));
         String mmd = Files.readString(dir.resolve("flowchart.mmd"));
         String tree = Files.readString(dir.resolve("call-tree.txt"));
-        assertTrue(mmd.startsWith("flowchart LR"));
+        assertTrue(mmd.startsWith("flowchart TD"));
         for (Map<String, Object> c : (List<Map<String, Object>>) doc.get("calls")) {
             String id = (String) c.get("id");
             assertTrue(methodIds.contains((String) c.get("from")));
@@ -184,7 +184,7 @@ class OutputConsistencyTest {
         var summaries = FlowView.summaries(r);
         // voBinding 본문의 SearchVO 요약 1개 + 바인딩 메서드 fill() 호출 위치의 요약 1개
         assertEquals(2, summaries.size());
-        summaries.forEach(sm -> assertTrue(g.has(sm.id())));
+        summaries.forEach(sm -> assertFalse(g.has(sm.id()), "흐름도에는 바인딩 요약 노드 없음"));
         assertTrue(tree.contains("✎ SearchVO (vo) · 4 fields assigned"), tree);
         // 본문이 setter 뿐인 fill() 은 흐름도에 메서드로 그리지 않음
         var fill = Fixtures.method(r, "CaseAction", "fill(SearchVO, String)");
