@@ -63,11 +63,12 @@ class OutputConsistencyTest {
             if (FlowView.hidden(r, r.callSite(id))) {
                 continue;
             }
-            assertTrue(mmd.contains("    " + id + "[\""), "Mermaid node " + id);
             assertTrue(tree.contains("(" + id + ")"), "tree " + id);
+            // catch/finally 안 호출은 흐름도에서 생략 (메서드 시작 노드의 ⚠ 요약으로 대체)
+            assertEquals(FlowchartGenerator.drawsCall(r, r.callSite(id)), mmd.contains("    " + id + "[\""), "Mermaid node " + id);
         }
         for (MethodInfo m : r.methods()) {
-            if (m.analyzed && !FlowView.bindingMethods(r).contains(m.id)) {
+            if (m.analyzed && !FlowchartGenerator.skippedMethods(r).contains(m.id)) {
                 assertTrue(mmd.contains("    " + m.id + "([\""), "Mermaid method node " + m.id);
             }
         }
@@ -79,7 +80,7 @@ class OutputConsistencyTest {
         assertEquals(List.of(), g.validate());
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         long callEdges = g.edges().stream().filter(e -> e.style() == MermaidGraph.EdgeStyle.CALL).count();
-        assertEquals(r.callSites.stream().filter(s -> !FlowView.hidden(r, s) && (s.expansion == Expansion.EXPANDED
+        assertEquals(r.callSites.stream().filter(s -> FlowchartGenerator.drawsCall(r, s) && (s.expansion == Expansion.EXPANDED
                 || s.expansion == Expansion.SHARED || s.expansion == Expansion.CYCLE)).count(), callEdges);
         // 서브그래프는 메서드당 1개 (중첩 없음)
         assertEquals(0, mmd.lines().filter(l -> l.startsWith("        subgraph")).count());
@@ -102,6 +103,23 @@ class OutputConsistencyTest {
         for (ControlBlock b : r.blocks) {
             assertTrue(tree.contains("(" + b.id + ")") || FlowView.hidden(r, b), b.id);
         }
+    }
+
+    @Test
+    void tryCatchIsNotDrawnButSummarizedOnMethodNode() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "throwCases");
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        for (ControlBlock b : r.blocks) {
+            if (b.type == analyzer.model.BlockType.TRY || b.type == analyzer.model.BlockType.CATCH
+                    || b.type == analyzer.model.BlockType.FINALLY) {
+                assertFalse(g.has(b.id), "try/catch/finally 노드 없음: " + b.id);
+            }
+        }
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("⚠ catch "), mmd);
+        assertFalse(mmd.contains("|\"caught\"|"), mmd);
     }
 
     @Test

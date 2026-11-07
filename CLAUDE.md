@@ -23,13 +23,13 @@
 ./gradlew test                                   # 전체 테스트 (JUnit 5)
 ./gradlew run                                    # config/analyzer.yml 로 실행 → output/<Class>/
 ./gradlew run --args="--config config/analyzer.yml --class CaseAction --method throwCases"
-#   옵션: --config --source-root --class --method --output
+#   옵션: --config --source-root(반복 가능) --class --method --output
 ```
 
 - 설치된 JDK 는 26 뿐이라 `options.release = 21` 로 Java 21 타깃 컴파일한다(toolchain 미사용).
 - 샘플 원본 프로젝트(분석 대상, 컴파일하지 않음): `src/test/resources/sample-project/src/main/java`
   - `ScpAppListAction` — 실전형 시나리오, `CaseAction` — 테스트 케이스별 진입 메서드, `AppController` — Spring 어노테이션
-- 예제 프로젝트: `example/legacy-shop` (Struts Action + VO/DTO + Service/Biz/DAO/Mapper/Util), 설정 `example/analyzer.yml`
+- 예제 프로젝트: `example/legacy-shop` — 멀티 모듈 `action/`(Struts Action) + `lib/`(VO/DTO + Service/Biz/DAO/Mapper/Util/common), 각각 `src/main/java`. 설정 `example/analyzer.yml`(`source-roots` 2개)
   - `./gradlew run --args="--config example/analyzer.yml"` → `example/output/OrderRegisterAction/` (요청 파라미터 25개 → VO/DTO/Command 6종 + builder·생성자)
   - `--class OrderListAction` → `example/output/OrderListAction/`
 - Mermaid CLI(`mmdc`)가 PATH 에 있으면 렌더링 검증, 없으면 생략하고 analysis.md 에 기록.
@@ -65,6 +65,8 @@ analyzer/
   **해석 상태(`resolution`)와 전개 상태(`expansion`)는 별개 축** — depth-limit 을 unresolved 와 섞지 않는다.
 
 **해석**
+- 멀티 모듈: `source-roots`(목록, `source-root` 와 합쳐짐) / CLI `--source-root` 반복. 루트마다 `JavaParserTypeSolver`, FQN 조회는 모든 루트. 루트끼리 겹치면 설정 오류, output 이 **어느** 루트 안이어도 거부.
+  같은 FQN 이 2개 이상 루트에 있으면 솔버가 하나를 골라도 `AMBIGUOUS`(`+DUPLICATE_FQN`, 후보=파일들) + notes. `location.file` 은 루트 1개면 그 루트 기준, 여러 개면 공통 상위 기준(`lib/src/main/java/...`). YAML `analysis.sourceRoot`(기준) + `sourceRoots`.
 - 1순위 JavaSymbolSolver. 실패 시 선언부에 명시된 타입(파라미터/지역변수/필드/import/같은 패키지/java.lang)으로 **이름+인자 수** 매칭. 후보 2개 이상이면 `AMBIGUOUS`. 근거는 `resolution-basis` 에 남긴다.
 - source-root 밖 타입(예: `HttpServletRequest`)은 시그니처를 모르므로 `PARTIALLY_RESOLVED` + `signature-resolved: false`, 시그니처는 `getParameter(?)`. 파라미터 타입을 지어내지 않는다.
 - `var`, 체인 호출 결과, 선언 없는 이름 → `UNRESOLVED`.
@@ -112,9 +114,10 @@ analyzer/
 
 **Mermaid (SPEC-v2 §5)**
 - 기본 `TD`(위→아래). subgraph 는 분석한 메서드당 1개(중첩 없음). 본문 미분석 메서드는 노드를 만들지 않고 호출 노드 라벨로만 표시.
-- if/else-if/switch/반복문 = 조건 노드(◇) + 분기 간선(`Yes`/`No`, case 라벨, `loop`/`next`/`done`). else/case 는 노드 없이 간선으로. try → catch 는 `-.->|예외타입|`, finally 로 합류.
+- if/else-if/switch/반복문 = 조건 노드(◇) + 분기 간선(`Yes`/`No`, case 라벨, `loop`/`next`/`done`). else/case 는 노드 없이 간선으로.
+- try/catch/finally 는 **흐름도에 그리지 않는다**(구현 세부). try 본문은 정상 흐름에 이어 붙이고, catch/finally 본문과 그 안에서만 호출되는 메서드(전이적, `skippedMethods`)는 생략. 대신 메서드 시작 노드에 `⚠ catch X → log · error response · rethrow… / finally` 요약. 잡히는 throw 는 노드에 `→ catch X` 표시 후 끊김. 트리·YAML 에는 그대로 남는다.
 - 흐름 연결은 "열린 끝" 목록으로 계산(분기 끝들이 다음 요소로 합류). return/throw 뒤는 끊김.
-- `-->` 정상 흐름, `==>` 본문을 전개한 호출(EXPANDED/SHARED/CYCLE → 메서드 시작 노드), `-.->` 예외 흐름.
+- `-->` 정상 흐름, `==>` 본문을 전개한 호출(EXPANDED/SHARED/CYCLE → 메서드 시작 노드), `-.->` 처리되지 않은 throw(`M*_uncaught`).
 - 라벨 이스케이프는 `#` 먼저 → `#35;` `#quot;` `#lt;` `#gt;` `#124;`. 렌더 전 `MermaidGraph.validate()` + `FlowchartGenerator.checkMapping()` 실패 시 예외.
 
 ## 작업 규칙
@@ -127,6 +130,7 @@ analyzer/
 ## 구현 현황
 
 완료(테스트 통과):
+- 멀티 모듈 소스 루트(`source-roots`, fixture `src/test/resources/multi-module`).
 - v1 흐름 분석 — 대상/진입 메서드 식별(오버로딩·모호성 거부·매핑 어노테이션 추론), 접근 제어자 4종+인터페이스 암묵 제어자, 역할 분류(어노테이션>상위타입>Suffix, 근거·충돌 기록), Depth/동일 클래스 확장/중복/재귀·상호재귀, if·switch·loop·try/catch/finally·try-with-resources·return·throw, Legacy·사용자 규칙·Spring 파라미터, 역할 기반 전개(`expand-roles`)·유일 구현 후보 연결(`link-single-implementation`).
 - v2 바인딩 — setter·builder·생성자·필드 대입·Map.put·copyProperties 수집, 출처/변환/조건/기본값/재대입 추적, 필드 커버리지, 다중 할당 최종 값(mapping.md), catch 처리 방식(로그·오류 응답·재발생·반환), 호출 인자·반환값 사용.
 - 출력 — analysis.yaml(+스키마 검증)·flowchart.mmd(TD, 메서드별 subgraph, 바인딩 노드 없음)·mapping.md·analysis.md(SPEC-v2 §8 구성)·call-tree.txt. 생성 flowchart 는 Mermaid 11.4.1 파서로 문법 확인(임시 검증, 프로젝트에는 mmdc 연동만 존재).

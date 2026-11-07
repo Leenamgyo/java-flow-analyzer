@@ -17,7 +17,7 @@ import java.util.List;
  *   ./gradlew run --args="--config config/analyzer.yml"
  *   ./gradlew run --args="--config config/analyzer.yml --class ScpAppListAction --method execute"
  * </pre>
- * 옵션: --config, --source-root, --class, --method, --output
+ * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output
  */
 public final class Main {
 
@@ -36,12 +36,13 @@ public final class Main {
 
     public static int run(String[] args) throws Exception {
         Path configPath = Path.of("config/analyzer.yml");
-        String sourceRoot = null, clazz = null, method = null, output = null;
+        List<String> sourceRoots = new java.util.ArrayList<>();
+        String clazz = null, method = null, output = null;
         for (int i = 0; i < args.length; i++) {
             String v = i + 1 < args.length ? args[i + 1] : null;
             switch (args[i]) {
                 case "--config" -> { configPath = Path.of(require(v, "--config")); i++; }
-                case "--source-root" -> { sourceRoot = require(v, "--source-root"); i++; }
+                case "--source-root" -> { sourceRoots.add(require(v, "--source-root")); i++; }
                 case "--class" -> { clazz = require(v, "--class"); i++; }
                 case "--method" -> { method = require(v, "--method"); i++; }
                 case "--output" -> { output = require(v, "--output"); i++; }
@@ -49,7 +50,10 @@ public final class Main {
             }
         }
         AnalyzerConfig cfg = ConfigLoader.load(configPath);
-        if (sourceRoot != null) cfg.target.sourceRoot = sourceRoot;
+        if (!sourceRoots.isEmpty()) {   // CLI 지정 시 설정 파일의 루트를 대체
+            cfg.target.sourceRoot = null;
+            cfg.target.sourceRoots = sourceRoots;
+        }
         if (clazz != null) cfg.target.className = clazz;
         if (method != null) cfg.target.entryMethod = method;
         if (output != null) cfg.output.directory = output;
@@ -81,10 +85,12 @@ public final class Main {
 
     /** 원본 소스 디렉터리 안에는 절대 쓰지 않는다. */
     public static Path outputDir(AnalyzerConfig cfg, String className) {
-        Path src = Path.of(cfg.target.sourceRoot).toAbsolutePath().normalize();
         Path out = Path.of(cfg.output.directory).toAbsolutePath().normalize().resolve(className);
-        if (out.startsWith(src)) {
-            throw new IllegalArgumentException("output 디렉터리가 source-root 내부입니다. 원본 프로젝트에는 쓰지 않습니다: " + out);
+        for (String root : cfg.target.effectiveSourceRoots()) {
+            Path src = Path.of(root).toAbsolutePath().normalize();
+            if (out.startsWith(src)) {
+                throw new IllegalArgumentException("output 디렉터리가 source-root 내부입니다. 원본 프로젝트에는 쓰지 않습니다: " + out);
+            }
         }
         return out;
     }

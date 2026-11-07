@@ -13,7 +13,21 @@ public class AnalyzerConfig {
     public List<RequestParameterRule> requestParameterRules = new ArrayList<>();
 
     public static class Target {
+        /** 단일 소스 루트 (source-roots 와 함께 쓰면 맨 앞에 합쳐진다) */
         public String sourceRoot;
+        /** 멀티 모듈: 여러 소스 루트 (예: actions/src/main/java, lib/src/main/java). 모두 읽기 전용 */
+        public List<String> sourceRoots = new ArrayList<>();
+
+        /** 실제 사용할 소스 루트 목록: source-root + source-roots (순서 유지, 중복 제거) */
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        public List<String> effectiveSourceRoots() {
+            java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>();
+            if (sourceRoot != null && !sourceRoot.isBlank()) {
+                all.add(sourceRoot);
+            }
+            sourceRoots.stream().filter(x -> x != null && !x.isBlank()).forEach(all::add);
+            return List.copyOf(all);
+        }
         @JsonProperty("class")
         public String className;
         public String entryMethod;

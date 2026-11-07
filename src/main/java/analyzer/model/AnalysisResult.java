@@ -9,7 +9,10 @@ import java.util.Optional;
 
 /** YAML, 트리, Mermaid 가 공통으로 사용하는 단일 분석 모델. */
 public final class AnalysisResult {
+    /** location.file 의 기준 경로 (루트 1개면 그 루트, 여러 개면 공통 상위 디렉터리) */
     public String sourceRoot;
+    /** 분석에 쓴 소스 루트 전체 (멀티 모듈) */
+    public final java.util.List<String> sourceRoots = new java.util.ArrayList<>();
     public String targetClassId;
     public String entryMethodId;
     public String entrySelection;

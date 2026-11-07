@@ -24,9 +24,11 @@ import java.util.Set;
  * 공통 분석 모델 → Mermaid flowchart (소스를 다시 분석하지 않는다).
  * <ul>
  *   <li>subgraph 는 분석한 메서드당 1개뿐 (중첩 최소화). 노드 ID = YAML ID</li>
- *   <li>if/else-if/switch/반복문 = 조건 노드 + 분기 간선(Yes/No, case), try → catch 는 점선</li>
- *   <li>실선(-->) 정상 흐름, 굵은선(==>) 본문을 전개한 메서드 호출, 점선(-.->) 예외 흐름</li>
- *   <li>객체 바인딩은 객체당 요약 노드 1개 (setter 를 각각 노드로 만들지 않음) — 상세는 mapping.md / analysis.yaml</li>
+ *   <li>if/else-if/switch/반복문 = 조건 노드 + 분기 간선(Yes/No, case)</li>
+ *   <li>try/catch/finally 는 구현 세부라 노드로 그리지 않는다: try 본문은 정상 흐름에 그대로 이어지고,
+ *       catch/finally 본문(과 그 안에서만 호출되는 메서드)은 생략, 메서드 시작 노드에 한 줄 요약(⚠ catch …)</li>
+ *   <li>실선(-->) 정상 흐름, 굵은선(==>) 본문을 전개한 메서드 호출, 점선(-.->) 처리되지 않은 throw</li>
+ *   <li>객체 바인딩(set/builder/put)은 그리지 않는다 — 상세는 mapping.md / analysis.yaml / call-tree</li>
  * </ul>
  */
 public final class FlowchartGenerator {
@@ -61,7 +63,7 @@ public final class FlowchartGenerator {
         this.r = result;
         this.g = new MermaidGraph();
         methodGraphs.clear();
-        Set<String> skip = FlowView.bindingMethods(r);
+        Set<String> skip = skippedMethods(r);
         for (MethodInfo m : r.methods()) {
             if (!m.analyzed || skip.contains(m.id)) {
                 continue;
@@ -74,6 +76,7 @@ public final class FlowchartGenerator {
             if (req != null) {
                 lines.add(Labels.truncate(req, 120));
             }
+            lines.addAll(exceptionNotes(r, m));
             g.node(ms, m.id, lines, Shape.STADIUM, m.id.equals(r.entryMethodId) ? "entry" : "method");
             emit(ms, m, null, List.of(new End(m.id)));
         }
@@ -93,18 +96,19 @@ public final class FlowchartGenerator {
     /** YAML ID ↔ Mermaid 노드 매핑 검증 (흐름에서 뺀 바인딩 코드는 제외, else/case 는 간선으로 표현) */
     public static List<String> checkMapping(AnalysisResult r, MermaidGraph graph) {
         List<String> e = new ArrayList<>();
-        Set<String> skip = FlowView.bindingMethods(r);
+        Set<String> skip = skippedMethods(r);
         r.methods().stream().filter(m -> m.analyzed && !skip.contains(m.id)).forEach(m -> {
             if (!graph.has(m.id)) {
                 e.add("메서드 노드 누락: " + m.id);
             }
         });
-        r.callSites.stream().filter(s -> !FlowView.hidden(r, s)).forEach(s -> {
+        r.callSites.stream().filter(s -> drawn(r, skip, s)).forEach(s -> {
             if (!graph.has(s.id)) {
                 e.add("호출 노드 누락: " + s.id);
             }
         });
-        r.blocks.stream().filter(b -> !FlowView.hidden(r, b) && b.type != BlockType.ELSE && b.type != BlockType.CASE)
+        r.blocks.stream().filter(b -> !FlowView.hidden(r, b) && !skip.contains(b.methodId) && !inHandler(r, b.id)
+                        && b.type != BlockType.ELSE && b.type != BlockType.CASE && b.type != BlockType.TRY)
                 .forEach(b -> {
                     if (!graph.has(b.id)) {
                         e.add("블록 노드 누락: " + b.id);
@@ -119,6 +123,87 @@ public final class FlowchartGenerator {
             }
         }
         return e;
+    }
+
+    // ------------------------------------------------------------------ try/catch 생략 규칙
+
+    /** 블록이 catch/finally 본문 안(자기 자신 포함)인지 */
+    static boolean inHandler(AnalysisResult r, String blockId) {
+        for (String cur = blockId; cur != null; ) {
+            ControlBlock b = r.block(cur);
+            if (b.type == BlockType.CATCH || b.type == BlockType.FINALLY) {
+                return true;
+            }
+            cur = b.parentBlockId;
+        }
+        return false;
+    }
+
+    /** 흐름도에 그리는 호출: 바인딩 코드가 아니고, catch/finally 안이 아니며, 그리는 메서드 안 */
+    private static boolean drawn(AnalysisResult r, Set<String> skip, CallSiteInfo s) {
+        return !FlowView.hidden(r, s) && !skip.contains(s.callerMethodId)
+                && (s.controlBlockId == null || !inHandler(r, s.controlBlockId));
+    }
+
+    /** 흐름도에 노드로 그리는 호출인지 (테스트·검증용) */
+    public static boolean drawsCall(AnalysisResult r, CallSiteInfo s) {
+        return drawn(r, skippedMethods(r), s);
+    }
+
+    /** 그리지 않는 메서드: 바인딩 메서드 + catch/finally 안에서만 호출되는 메서드(전이적으로) */
+    public static Set<String> skippedMethods(AnalysisResult r) {
+        Set<String> skip = new java.util.HashSet<>(FlowView.bindingMethods(r));
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (MethodInfo m : r.methods()) {
+                if (!m.analyzed || skip.contains(m.id) || m.id.equals(r.entryMethodId)) {
+                    continue;
+                }
+                List<CallSiteInfo> in = r.callSites.stream()
+                        .filter(s -> s.targetMethodId != null && m.id.equals(s.expansionTargetId())).toList();
+                if (!in.isEmpty() && in.stream().noneMatch(s -> drawn(r, skip, s))) {
+                    skip.add(m.id);
+                    changed = true;
+                }
+            }
+        }
+        return skip;
+    }
+
+    /** 메서드 시작 노드에 붙는 예외 처리 요약: ⚠ catch SQLException → log · error response / finally */
+    private static List<String> exceptionNotes(AnalysisResult r, MethodInfo m) {
+        List<String> out = new ArrayList<>();
+        for (ControlBlock t : r.blocksOf(m.id)) {
+            if (t.type != BlockType.TRY || FlowView.hidden(r, t) || inHandler(r, t.id)) {
+                continue;
+            }
+            List<String> parts = new ArrayList<>();
+            for (String cid : t.catchBlockIds) {
+                ControlBlock c = r.block(cid);
+                List<String> how = new ArrayList<>();
+                if (!c.logCalls.isEmpty()) {
+                    how.add("log");
+                }
+                if (!c.errorResponseCalls.isEmpty()) {
+                    how.add("error response");
+                }
+                if (c.rethrows) {
+                    how.add("rethrow");
+                } else if (c.throwsNewException) {
+                    how.add("throw new");
+                }
+                if (c.containsReturn) {
+                    how.add("return");
+                }
+                parts.add("catch " + String.join(" | ", c.exceptionTypes) + (how.isEmpty() ? "" : " → " + String.join(" · ", how)));
+            }
+            if (t.finallyBlockId != null) {
+                parts.add("finally");
+            }
+            out.add(Labels.truncate("⚠ " + String.join(" / ", parts), 120));
+        }
+        return out;
     }
 
     // ------------------------------------------------------------------ flow
@@ -184,25 +269,10 @@ public final class FlowchartGenerator {
                 return List.of(new End(b.id, "done", EdgeStyle.FLOW));
             }
             case TRY -> {
-                g.node(sg, b.id, headerLines(b), Shape.HEX, null);
-                link(in, b.id);
-                List<End> out = new ArrayList<>(emit(sg, m, b, List.of(new End(b.id))));
-                ControlBlock fin = null;
-                for (ControlBlock c : branches(b)) {
-                    if (c.type == BlockType.CATCH) {
-                        g.node(sg, c.id, headerLines(c), Shape.ROUND, "exc");
-                        g.edge(b.id, c.id, String.join(" | ", c.exceptionTypes), EdgeStyle.EXCEPTION);
-                        out.addAll(emit(sg, m, c, List.of(new End(c.id))));
-                    } else {
-                        fin = c;
-                    }
-                }
-                if (fin != null) {
-                    g.node(sg, fin.id, headerLines(fin), Shape.ROUND, null);
-                    link(out, fin.id);
-                    return emit(sg, m, fin, List.of(new End(fin.id)));
-                }
-                return out;
+                return emit(sg, m, b, in); // try 본문만 정상 흐름으로, catch/finally 는 시작 노드 요약
+            }
+            case CATCH, FINALLY -> {
+                return in;
             }
             case RETURN, THROW -> {
                 List<End> p = emit(sg, m, b, in);
@@ -242,16 +312,13 @@ public final class FlowchartGenerator {
         if (b.type == BlockType.THROW && b.exceptionResolution == ResolutionStatus.UNRESOLVED) {
             lines.add("(catch 경로 unresolved)");
         }
+        if (b.type == BlockType.THROW && b.caughtBy != null) {
+            lines.add("→ " + Labels.blockHeader(r.block(b.caughtBy)));
+        }
         g.node(sg, b.id, lines, b.type == BlockType.RETURN ? Shape.STADIUM : Shape.ASYM,
                 b.type == BlockType.RETURN ? "ret" : "throw");
-        EdgeStyle finStyle = b.type == BlockType.THROW ? EdgeStyle.EXCEPTION : EdgeStyle.FLOW;
-        for (String f : b.executesFinally) {
-            g.edge(b.id, f, "via finally", finStyle);
-        }
-        if (b.type == BlockType.THROW) {
-            if (b.caughtBy != null) {
-                g.edge(b.id, b.caughtBy, "caught", EdgeStyle.EXCEPTION);
-            } else if (Boolean.TRUE.equals(b.propagatesToCaller)) {
+        if (b.type == BlockType.THROW && b.caughtBy == null) {
+            if (Boolean.TRUE.equals(b.propagatesToCaller)) {
                 String exit = m.id + "_uncaught";
                 if (!g.has(exit)) {
                     g.node(methodGraphs.get(m.id), exit, List.of("uncaught → caller"), Shape.SUBROUTINE, "exc");

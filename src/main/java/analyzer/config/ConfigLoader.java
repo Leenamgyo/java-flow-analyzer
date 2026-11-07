@@ -9,6 +9,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 public final class ConfigLoader {
@@ -28,8 +29,16 @@ public final class ConfigLoader {
     }
 
     public static void validate(AnalyzerConfig cfg) {
-        if (cfg.target.sourceRoot == null || cfg.target.sourceRoot.isBlank()) {
-            throw new IllegalArgumentException("target.source-root 가 필요합니다.");
+        if (cfg.target.effectiveSourceRoots().isEmpty()) {
+            throw new IllegalArgumentException("target.source-root 또는 target.source-roots 가 필요합니다.");
+        }
+        List<Path> roots = cfg.target.effectiveSourceRoots().stream().map(x -> Path.of(x).toAbsolutePath().normalize()).toList();
+        for (Path a : roots) {
+            for (Path b : roots) {
+                if (a != b && b.startsWith(a)) {
+                    throw new IllegalArgumentException("source-roots 가 서로 겹칩니다(한 루트가 다른 루트 안): " + a + " ⊃ " + b);
+                }
+            }
         }
         if (cfg.target.className == null || cfg.target.className.isBlank()) {
             throw new IllegalArgumentException("target.class 가 필요합니다.");

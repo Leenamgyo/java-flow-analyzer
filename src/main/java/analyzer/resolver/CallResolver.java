@@ -37,6 +37,24 @@ public final class CallResolver {
     }
 
     public CallTarget resolve(MethodCallExpr call, TypeDeclaration<?> callerType) {
+        return guardDuplicate(resolveRaw(call, callerType));
+    }
+
+    /** 같은 FQN 이 여러 source-root 에 있으면 솔버가 어느 하나를 골랐더라도 확정하지 않는다 (AMBIGUOUS) */
+    private CallTarget guardDuplicate(CallTarget t) {
+        if (t.declaringType() == null || t.origin() != Origin.SOURCE) {
+            return t;
+        }
+        List<String> files = sources.duplicateFqns().get(t.declaringType());
+        if (files == null) {
+            return t;
+        }
+        return new CallTarget(ResolutionStatus.AMBIGUOUS, t.basis() + "+DUPLICATE_FQN",
+                "같은 FQN 이 여러 source-root 에 있음: " + String.join(", ", files),
+                Origin.SOURCE, t.declaringType(), t.receiverType(), null, null, files);
+    }
+
+    private CallTarget resolveRaw(MethodCallExpr call, TypeDeclaration<?> callerType) {
         String solverError;
         try {
             ResolvedMethodDeclaration rmd = call.resolve();

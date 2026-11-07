@@ -43,6 +43,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -83,7 +84,7 @@ public final class FlowAnalyzer {
     public FlowAnalyzer(AnalyzerConfig cfg) {
         this.cfg = cfg;
         List<Path> jars = cfg.analysis.classpathJars.stream().map(Path::of).toList();
-        this.sources = new ProjectSources(Path.of(cfg.target.sourceRoot), jars);
+        this.sources = new ProjectSources(cfg.target.effectiveSourceRoots().stream().map(Path::of).toList(), jars);
         this.types = new TypeLookup(sources);
         this.resolver = new CallResolver(sources, types);
         this.params = new RequestParameterExtractor(result, types, cfg.requestParameterRules);
@@ -100,7 +101,8 @@ public final class FlowAnalyzer {
     public AnalysisResult analyze() {
         EntryPointLocator.EntryPoint entry = EntryPointLocator.locate(sources, cfg.target.className,
                 cfg.target.entryMethod, cfg.target.entryMethodParameterTypes);
-        result.sourceRoot = sources.sourceRoot().toString();
+        result.sourceRoot = sources.sourceBase().toString();
+        sources.sourceRoots().forEach(p -> result.sourceRoots.add(p.toString()));
         result.entrySelection = entry.selection();
         recordSettings();
 
@@ -134,6 +136,17 @@ public final class FlowAnalyzer {
             analyzer.binding.RequestSpecBuilder.build(result);
         }
         result.notes.addAll(sources.parseProblems().stream().map(p -> "파싱 문제: " + p).toList());
+        java.util.Map<String, List<String>> dups = new java.util.TreeMap<>(sources.duplicateTypes());
+        Set<List<String>> usedDup = result.callSites.stream()
+                .filter(c -> c.resolutionBasis != null && c.resolutionBasis.endsWith("+DUPLICATE_FQN"))
+                .map(c -> List.copyOf(c.candidates)).collect(Collectors.toSet());
+        sources.duplicateFqns().forEach((fqn, files) -> {
+            if (usedDup.contains(files)) {
+                dups.putIfAbsent(fqn, files);
+            }
+        });
+        dups.forEach((fqn, files) -> result.notes.add(
+                "중복 FQN(여러 source-root): " + fqn + " → " + String.join(", ", files) + " — 어느 것이 쓰이는지 확정 불가, 해석하지 않음"));
         return result;
     }
 

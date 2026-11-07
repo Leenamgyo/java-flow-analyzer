@@ -63,6 +63,7 @@ public final class AnalysisYamlWriter {
                         .put2("entrySelection", r.entrySelection)
                         .put2("depth", r.settings.get("max-depth"))
                         .put2("sourceRoot", r.sourceRoot)
+                        .put2("sourceRoots", r.sourceRoots)
                         .put2("settings", r.settings))
                 .put2("classes", classes(r))
                 .put2("methods", methods(r))

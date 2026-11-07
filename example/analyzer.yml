@@ -2,7 +2,10 @@
 #   기본: 주문 등록 Action (요청 파라미터 25개 → VO·DTO·Command 바인딩(setter·builder·생성자), Service/Biz/Mapper, 결제 다중 구현)
 #   --class OrderListAction                       주문 목록 Action
 target:
-  source-root: example/legacy-shop/src/main/java
+  # 멀티 모듈: action(Action) + lib(Service·Biz·DAO·Mapper·VO·Util·common). 같은 FQN 이 두 루트에 있으면 AMBIGUOUS
+  source-roots:
+    - example/legacy-shop/action/src/main/java
+    - example/legacy-shop/lib/src/main/java
   class: OrderRegisterAction
   entry-method: execute
 

@@ -27,28 +27,47 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * source-root 의 Java 파일을 읽기 전용으로 인덱싱하고 필요할 때만 파싱한다.
+ * source-root(들)의 Java 파일을 읽기 전용으로 인덱싱하고 필요할 때만 파싱한다.
  * 참조용으로 읽은 파일은 분석 결과에 자동 포함되지 않는다.
+ * <p>멀티 모듈(예: actions/src/main/java + lib/src/main/java)은 루트를 여러 개 준다. FQN 은 모든 루트에서 찾고,
+ * 같은 FQN 이 2개 이상 루트에 있으면 어느 것이 쓰이는지 확정할 수 없으므로 찾지 못한 것으로 처리한다(추측 금지).
+ * 파일 경로 표시는 루트가 1개면 그 루트 기준, 여러 개면 루트들의 공통 상위 디렉터리 기준(모듈 경로가 보이도록).</p>
  */
 public final class ProjectSources {
-    private final Path sourceRoot;
+    private final List<Path> sourceRoots;
+    private final Path sourceBase;
     private final JavaParser parser;
     private final CombinedTypeSolver typeSolver;
     private final Map<String, List<Path>> filesBySimpleName = new HashMap<>();
     private final Map<Path, Optional<CompilationUnit>> cache = new LinkedHashMap<>();
     private final List<String> parseProblems = new ArrayList<>();
+    private final Map<String, List<String>> duplicateTypes = new java.util.TreeMap<>();
+    /** 파일 경로 기준 최상위 타입 FQN → 파일들 (여러 루트에 있으면 중복) */
+    private final Map<String, List<Path>> filesByFqn = new java.util.TreeMap<>();
 
     public ProjectSources(Path sourceRoot, List<Path> jars) {
-        this.sourceRoot = sourceRoot.toAbsolutePath().normalize();
-        if (!Files.isDirectory(this.sourceRoot)) {
-            throw new IllegalArgumentException("source-root 디렉터리가 없습니다: " + this.sourceRoot);
+        this(List.of(sourceRoot), jars);
+    }
+
+    public ProjectSources(List<Path> roots, List<Path> jars) {
+        if (roots.isEmpty()) {
+            throw new IllegalArgumentException("source-root 가 필요합니다.");
         }
+        this.sourceRoots = roots.stream().map(r -> r.toAbsolutePath().normalize()).distinct().toList();
+        for (Path r : sourceRoots) {
+            if (!Files.isDirectory(r)) {
+                throw new IllegalArgumentException("source-root 디렉터리가 없습니다: " + r);
+            }
+        }
+        this.sourceBase = commonBase(sourceRoots);
         ParserConfiguration plain = new ParserConfiguration()
                 .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
         typeSolver = new CombinedTypeSolver();
         // jreOnly=true: 분석기 자신의 의존성(JavaParser, Jackson)을 원본 프로젝트 타입으로 오인하지 않는다.
         typeSolver.add(new ReflectionTypeSolver(true));
-        typeSolver.add(new JavaParserTypeSolver(this.sourceRoot, plain));
+        for (Path r : sourceRoots) {
+            typeSolver.add(new JavaParserTypeSolver(r, plain));
+        }
         for (Path jar : jars) {
             try {
                 typeSolver.add(new JarTypeSolver(jar));
@@ -63,16 +82,36 @@ public final class ProjectSources {
         indexFiles();
     }
 
+    private static Path commonBase(List<Path> roots) {
+        if (roots.size() == 1) {
+            return roots.get(0);
+        }
+        Path base = roots.get(0);
+        while (base != null) {
+            Path b = base;
+            if (roots.stream().allMatch(r -> r.startsWith(b))) {
+                return base;
+            }
+            base = base.getParent();
+        }
+        return roots.get(0).getRoot();
+    }
+
     private void indexFiles() {
-        try (Stream<Path> walk = Files.walk(sourceRoot)) {
-            walk.filter(p -> p.toString().endsWith(".java") && Files.isRegularFile(p))
-                    .sorted()
-                    .forEach(p -> {
-                        String simple = p.getFileName().toString().replaceFirst("\\.java$", "");
-                        filesBySimpleName.computeIfAbsent(simple, k -> new ArrayList<>()).add(p);
-                    });
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+        for (Path root : sourceRoots) {
+            try (Stream<Path> walk = Files.walk(root)) {
+                walk.filter(p -> p.toString().endsWith(".java") && Files.isRegularFile(p))
+                        .sorted()
+                        .forEach(p -> {
+                            String fqn = root.relativize(p).toString().replace('\\', '/')
+                                    .replaceFirst("\\.java$", "").replace('/', '.');
+                            filesByFqn.computeIfAbsent(fqn, k -> new ArrayList<>()).add(p);
+                            String simple = p.getFileName().toString().replaceFirst("\\.java$", "");
+                            filesBySimpleName.computeIfAbsent(simple, k -> new ArrayList<>()).add(p);
+                        });
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
     }
 
@@ -81,8 +120,30 @@ public final class ProjectSources {
         return filesBySimpleName.values().stream().flatMap(List::stream).sorted().toList();
     }
 
-    public Path sourceRoot() {
-        return sourceRoot;
+    /** 소스 루트 목록 (설정 순서) */
+    public List<Path> sourceRoots() {
+        return sourceRoots;
+    }
+
+    /** 파일 경로 표시 기준 (루트 1개면 그 루트, 여러 개면 공통 상위) */
+    public Path sourceBase() {
+        return sourceBase;
+    }
+
+    /** 같은 FQN 이 여러 루트에 있어 해석하지 않은 타입 (FQN → 파일들) — 실제로 조회된 것만 */
+    public Map<String, List<String>> duplicateTypes() {
+        return duplicateTypes;
+    }
+
+    /** 여러 루트에 같은 경로(=같은 최상위 FQN)로 존재하는 타입 전체 (FQN → 표시 경로들) */
+    public Map<String, List<String>> duplicateFqns() {
+        Map<String, List<String>> out = new java.util.TreeMap<>();
+        filesByFqn.forEach((fqn, files) -> {
+            if (files.size() > 1) {
+                out.put(fqn, files.stream().map(this::relative).toList());
+            }
+        });
+        return out;
     }
 
     public CombinedTypeSolver typeSolver() {
@@ -125,18 +186,28 @@ public final class ProjectSources {
         String[] parts = fqn.split("\\.");
         for (int i = parts.length; i >= 1; i--) {
             String top = String.join("/", java.util.Arrays.copyOfRange(parts, 0, i));
-            Path p = sourceRoot.resolve(top + ".java");
-            if (Files.isRegularFile(p)) {
+            List<Path> hits = sourceRoots.stream().map(r -> r.resolve(top + ".java")).filter(Files::isRegularFile).toList();
+            if (hits.isEmpty()) {
+                continue;
+            }
+            List<TypeDeclaration<?>> found = new ArrayList<>();
+            for (Path p : hits) {
                 Optional<CompilationUnit> cu = parse(p);
-                if (cu.isPresent()) {
-                    for (TypeDeclaration<?> t : cu.get().findAll(TypeDeclaration.class)) {
-                        if (t.getFullyQualifiedName().map(fqn::equals).orElse(false)) {
-                            return Optional.of(t);
-                        }
+                if (cu.isEmpty()) {
+                    continue;
+                }
+                for (TypeDeclaration<?> t : cu.get().findAll(TypeDeclaration.class)) {
+                    if (t.getFullyQualifiedName().map(fqn::equals).orElse(false)) {
+                        found.add(t);
+                        break;
                     }
                 }
+            }
+            if (found.size() > 1) {
+                duplicateTypes.put(fqn, found.stream().map(this::relativeFile).toList());
                 return Optional.empty();
             }
+            return found.stream().findFirst();
         }
         return Optional.empty();
     }
@@ -157,8 +228,13 @@ public final class ProjectSources {
 
     public boolean isInSource(Node node) {
         return node.findCompilationUnit().flatMap(CompilationUnit::getStorage)
-                .map(s -> s.getPath().toAbsolutePath().normalize().startsWith(sourceRoot))
+                .map(s -> isInSource(s.getPath()))
                 .orElse(false);
+    }
+
+    public boolean isInSource(Path file) {
+        Path abs = file.toAbsolutePath().normalize();
+        return sourceRoots.stream().anyMatch(abs::startsWith);
     }
 
     public String relativeFile(Node node) {
@@ -169,7 +245,7 @@ public final class ProjectSources {
 
     public String relative(Path p) {
         Path abs = p.toAbsolutePath().normalize();
-        return abs.startsWith(sourceRoot) ? sourceRoot.relativize(abs).toString().replace('\\', '/') : abs.toString();
+        return isInSource(abs) ? sourceBase.relativize(abs).toString().replace('\\', '/') : abs.toString();
     }
 
     public static boolean isMethod(CallableDeclaration<?> c) {
