@@ -147,7 +147,7 @@ public final class Labels {
                 : (type == null ? "" : type + " ") + var + " = " + requestValue(p));
         VariableInfo v = var == null ? null : r.variableNamed(s.callerMethodId, var);
         if (v != null) {
-            line += " · " + v.id + " 1/" + v.changeIds.size();
+            line += " · " + v.id; // 선언 — 값 변경 아님 (추적 변수 표시만)
         }
         return truncate(line, 80);
     }
@@ -163,15 +163,27 @@ public final class Labels {
         return begin && end;
     }
 
+    /**
+     * 변수 이력 표시: 선언·파라미터 → "V1" (값 변경 아님), 실제 변경 → "V1 2/3" (변경만 센 순번/전체 변경 수)
+     */
+    public static String historyTag(AnalysisResult r, VariableChange c) {
+        VariableInfo v = r.variable(c.variableId);
+        if (!c.isChange()) {
+            return v.id;
+        }
+        List<VariableChange> changes = v.changeIds.stream().map(r::variableChange).filter(VariableChange::isChange).toList();
+        return v.id + " " + (changes.indexOf(c) + 1) + "/" + changes.size();
+    }
+
     /** 실제 상태 변화 횟수 (선언·파라미터 제외) */
     public static long changeCount(AnalysisResult r, VariableInfo v) {
         return v.changeIds.stream().map(r::variableChange).filter(VariableChange::isChange).count();
     }
 
-    /** 값 변경 1줄 — 코드 그대로 + 변수 이력 중 순번: total -= usePoint · V1 3/3 (1 = 선언/파라미터) */
+    /** 값 변경 1줄 — 코드 그대로 + 변경 순번: total -= usePoint · V1 2/2 (선언은 세지 않음) */
     public static String changeLine(AnalysisResult r, VariableChange c) {
         VariableInfo v = r.variable(c.variableId);
-        return truncate(codeValue(r, c.methodId, c.location, c.expression), 64) + " · " + v.id + " " + c.order + "/" + v.changeIds.size();
+        return codeValue(r, c.methodId, c.location, c.expression) + " · " + historyTag(r, c);
     }
 
     /** 메서드 선언부(Spring 어노테이션)에서 받은 요청 파라미터: REQ @PathVariable status, ... (없으면 null) */

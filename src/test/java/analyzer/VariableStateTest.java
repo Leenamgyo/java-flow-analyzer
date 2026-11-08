@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -76,21 +77,23 @@ class VariableStateTest {
         String mmd = new FlowchartGenerator().render(r, "TD");
         VariableInfo size = var(r, "variableState", "size");
         VariableChange clamp = history(r, size).get(1);
-        // 값 변경 노드: 조건 분기 안, 변수 이력 중 몇 번째인지 표시
-        assertTrue(mmd.contains("VAR_" + clamp.id + "[\"값 변경<br/>size = 100 · " + size.id + " 2/2\"]"), mmd);
+        // 값 변경 노드: 조건 분기 안, 변경만 센 순번
+        assertTrue(mmd.contains("VAR_" + clamp.id + "[\"값 변경<br/>size = 100 · " + size.id + " 1/1\"]"), mmd);
         // x = call(): 별도 노드 없이 호출 노드에 "→ x"
         VariableInfo label = var(r, "variableState", "label");
         VariableChange assign = history(r, label).get(1);
         String callId = assign.callSiteIds.get(0);
         assertEquals(callId, g.nodeOf(assign.id));
-        assertTrue(mmd.contains("[\"#35;3 String label = format(once) · " + label.id + " 2/2\"]"), mmd); // 내부 함수 = 코드 한 줄, 타입은 변수 선언에서
-        // 선언도 이력의 시작으로 그린다 (요청 값 파생은 코드 그대로, 요청 읽기는 request.이름)
-        assertTrue(mmd.contains("[\"값 변경<br/>int size = Integer.parseInt(request.size) · " + size.id + " 1/2\"]"), mmd);
+        // 타입 없는 대입 = 값 변경 (자바 코드 그대로 타입을 붙이지 않음)
+        assertTrue(mmd.contains("[\"#35;3 label = format(once) · " + label.id + " 1/1\"]"), mmd);
+        // 선언(타입 있는 초기화)은 값 변경 노드로 그리지 않는다
+        assertFalse(mmd.contains("값 변경<br/>int size"), mmd);
+        assertFalse(mmd.contains("값 변경<br/>long total = 0"), mmd);
         // 값이 바뀌는 변수가 VO 로 → ⟳
         assertTrue(mmd.contains("page = size  ⟳" + size.id), mmd);
 
         String tree = new CallTreeWriter(true).render(r);
-        assertTrue(tree.contains("≔ size = 100 · " + size.id + " 2/2  (" + clamp.id + ")"), tree);
+        assertTrue(tree.contains("≔ size = 100 · " + size.id + " 1/1  (" + clamp.id + ")"), tree);
         String mapping = new MappingReportWriter().render(r);
         assertTrue(mapping.contains("## 변수 상태 변화"));
         assertTrue(mapping.contains("| " + clamp.id + " | 대입 = | `size = 100` | literal:100 | `size > 100` |"), mapping);
@@ -110,7 +113,7 @@ class VariableStateTest {
                 assertTrue(g.has(c.id), c.id + " " + c.expression);
             }
         }
-        assertTrue(mmd.contains("count = count + noticeBiz.list(#quot;a#quot;).size() · " + count.id + " 2/3"), mmd);
+        assertTrue(mmd.contains("count = count + noticeBiz.list(#quot;a#quot;).size() · " + count.id + " 1/2"), mmd);
         // 일반 흐름도도 동일
         new FlowchartGenerator().render(r, "TD");
     }
@@ -121,7 +124,7 @@ class VariableStateTest {
         PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());
         String mmd = new FlowchartGenerator(pm).render(r, "TD"); // 기존: "변수 변경 노드 누락"
         VariableInfo retry = var(r, "stateInTry", "retry");
-        assertTrue(mmd.contains("retry++ · " + retry.id + " 2/2"), mmd);
+        assertTrue(mmd.contains("retry++ · " + retry.id + " 1/1"), mmd);
         new FlowchartGenerator().render(r, "TD");
     }
 
@@ -146,7 +149,7 @@ class VariableStateTest {
         assertEquals(1, clamp.changes.size());
         // switch 의 각 case 에서 orders = service 호출 → 호출 노드에 "→ orders"
         String mmd = new FlowchartGenerator(pm).render(list, "TD");
-        assertTrue(mmd.contains("List#lt;Map#lt;String,Object#gt;#gt; orders = orderService.findOrders(cond, page, size) · V"), mmd);
+        assertTrue(mmd.contains("\"#35;13 orders = orderService.findOrders(cond, page, size) · V"), mmd); // 대입이라 타입 없음
         // 레이어: Service 는 Service·Biz 레이어 안, Service·DAO 호출 없는 보조 메서드는 세부 생략
         assertTrue(mmd.contains("subgraph sg_LAYER_SERVICE[\"Service · Biz 레이어\"]"), mmd);
         assertTrue(mmd.contains("subgraph sg_LAYER_ACTION[\"Action 레이어\"]"), mmd);

@@ -638,7 +638,7 @@ public final class FlowchartGenerator {
         // 선언(1/n)도 이력의 시작이므로 그린다 — 요청 읽기 노드·호출 노드에 이미 표시된 것은 제외
         List<VariableChange> changes = new ArrayList<>(r.variableChanges.stream()
                 .filter(c -> c.methodId.equals(m.id) && java.util.Objects.equals(c.controlBlockId, container))
-                .filter(c -> c.isChange() || "INIT".equals(c.op) && c.valueExpression != null && !initShownAsRead(c))
+                .filter(VariableChange::isChange) // 선언(타입 있는 초기화)은 값 변경이 아니다
                 .filter(c -> assignedBy.values().stream().noneMatch(l -> l.contains(c)))
                 .filter(c -> !supCalls.contains(c.id)).toList());
         for (Object o : elems) {
@@ -986,18 +986,13 @@ public final class FlowchartGenerator {
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
         StringBuilder code = new StringBuilder("#" + s.order + " ");
         if (var != null) {
-            String type = s.resultType;
-            if (type == null) { // x = call() — 값이 바뀌는 변수면 그 선언 타입
-                VariableInfo v = r.variableNamed(s.callerMethodId, var);
-                type = v == null ? null : v.type;
-            }
-            code.append(type == null ? "" : type + " ").append(var).append(" = ");
+            // 타입은 선언(T x = call())일 때만 — 타입 없는 x = call() 은 자바 코드 그대로 값 변경
+            code.append(s.resultType == null ? "" : s.resultType + " ").append(var).append(" = ");
         }
         code.append(s.expression);
-        for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) { // 값이 바뀌는 변수면 이력 순번
+        for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) { // 추적 변수: 선언이면 V1, 변경이면 V1 k/n
             VariableInfo v = r.variable(c.variableId);
-            code.append(v.name.equals(var) ? "" : " → " + v.name).append(" · ").append(v.id).append(' ')
-                    .append(c.order).append('/').append(v.changeIds.size());
+            code.append(v.name.equals(var) ? "" : " → " + v.name).append(" · ").append(Labels.historyTag(r, c));
         }
         lines.add(code.toString());
         if (var != null && fetch(s)) {

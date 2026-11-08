@@ -151,7 +151,7 @@ if (couponCode != null                       for (OrderItemVO item
 
 | 어디에 | 표현 |
 |---|---|
-| `flowchart.mmd` | 선언부터 마지막 변경까지 이력을 흐름 위에 그대로 따라감: 바뀌는 위치(조건 분기 안)에 `값 변경` 노드 `total -= usePoint · V1 3/3` — `3/3` 은 변수 이력 중 몇 번째인지(1 = 선언). 식 안 호출 뒤에 놓임(평가 순서). 값이 호출 결과 그대로면(`long total = calculateTotal(items)`, `orders = service.find…()`) 별도 노드 없이 호출 노드에 `→ total · V1 1/3`, 요청 읽기면 요청 파라미터 줄에 `· V1 1/2` |
+| `flowchart.mmd` | 값 변경 = 자바에서 타입 없이 다시 대입하는 줄(`total -= usePoint`, `size = 100`, `retry++`). 바뀌는 위치(조건 분기 안)에 `값 변경` 노드 `total -= usePoint · V1 2/2` — 변경만 센 순번/전체 변경 수, 식 안 호출 뒤에 놓임. 선언(`long total = calculateTotal(items)`)은 값 변경이 아니라 원래 코드 줄에 `· V1` 표시만. 호출 결과를 그대로 대입하면(`orders = service.find…()`) 호출 노드에 `· V2 2/3`. 타입은 선언 줄에만 |
 | VO 값 설정 노드 | 넣는 값이 바뀌는 변수면 `order.totalAmount = total  ⟳V1` — 실행 경로에 따라 값이 다를 수 있다는 표시 |
 | `call-tree.txt` | `≔ total -= usePoint … (VC3)` 줄 |
 | `mapping.md` | 변수별 전체 이력 표: 선언 → 변경 …, 출처·조건·위치, 그 변수를 쓰는 바인딩 |

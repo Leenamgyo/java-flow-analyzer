@@ -110,7 +110,7 @@ class PhaseTest {
         // 레이어: Service 구현은 Service·Biz 레이어, calculateTotal(Service·DAO 호출 없음)은 호출 노드만
         CallSiteInfo calc = (CallSiteInfo) step(pm, "calculateTotal(items)").element;
         assertFalse(g.has("sg_" + calc.targetMethodId));
-        assertTrue(mmd.contains(calc.id + "[\"#35;21 long total = calculateTotal(items) · V1 1/3\"]"), mmd); // 내부 함수 = 코드 한 줄
+        assertTrue(mmd.contains(calc.id + "[\"#35;21 long total = calculateTotal(items) · V1\"]"), mmd); // 내부 함수 = 코드 한 줄, 선언은 V1 만
         assertTrue(mmd.contains("subgraph sg_LAYER_DAO") || !mmd.contains("«DAO»"));
         assertTrue(mmd.indexOf("subgraph sg_LAYER_SERVICE") < mmd.indexOf("subgraph sg_M27["), mmd); // registerOrder 구현
         assertTrue(mmd.contains("요청 파라미터 (19)<br/>mode<br/>orderNo<br/>agreeTerms<br/>channel<br/>"), mmd);
@@ -156,8 +156,8 @@ class PhaseTest {
         // 생성자 바인딩(호출 없음)도 위치 순으로 포함, 바인딩 메서드 내부 바인딩은 호출 위치에
         assertTrue(mmd.contains("[\"VO 값 설정 · NotifyCommand<br/>memberId = member.getMemberId()<br/>phone = request.smsPhone\"]"), mmd);
         // 변수 이력: 선언(호출 결과) → 쿠폰 차감 → 포인트 차감
-        assertTrue(mmd.contains("#35;21 long total = calculateTotal(items) · V1 1/3"), mmd);
-        assertTrue(mmd.contains("[\"값 변경<br/>total -= usePoint · V1 3/3\"]"), mmd);
+        assertTrue(mmd.contains("#35;21 long total = calculateTotal(items) · V1\""), mmd);   // 선언: 값 변경 아님
+        assertTrue(mmd.contains("[\"값 변경<br/>total -= usePoint · V1 2/2\"]"), mmd);     // 변경만 센 순번
         assertTrue(mmd.startsWith(MermaidGraph.INIT + "\nflowchart TD\n"));
     }
 
