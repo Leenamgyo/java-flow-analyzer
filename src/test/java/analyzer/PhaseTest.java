@@ -143,10 +143,10 @@ class PhaseTest {
                 + "#35;3 String orderNo = request.orderNo<br/>#35;4 boolean agree = request.agreeTerms ?: false\"]"), mmd);
         assertFalse(mmd.contains(reads.get(1).id + "["));
         // 연속된 setter → VO 값 설정 노드 1개 (필드 ← 출처), setter 자체는 노드가 아님
-        // VO 값 설정: 변수명 없이 "타입 프로퍼티 = 값" (클래스는 노드 제목)
-        assertTrue(mmd.contains("[\"VO 값 설정 · OrderVO<br/>#35;6 String memberId = member.getMemberId()<br/>#35;7 String orderType = mode<br/>"
-                + "#35;9 String channel = request.channel<br/>#35;12 String memo = StringUtil.trimToEmpty(request.memo)\"]"), mmd);
-        assertTrue(mmd.contains("#35;27 long totalAmount = total  ⟳V1"), mmd); // 값이 바뀌는 변수 (필드 타입 long)
+        // VO 값 설정: 변수명·타입 없이 "프로퍼티 = 값" (클래스는 노드 제목)
+        assertTrue(mmd.contains("[\"VO 값 설정 · OrderVO<br/>#35;6 memberId = member.getMemberId()<br/>#35;7 orderType = mode<br/>"
+                + "#35;9 channel = request.channel<br/>#35;12 memo = StringUtil.trimToEmpty(request.memo)\"]"), mmd);
+        assertTrue(mmd.contains("#35;27 totalAmount = total  ⟳V1"), mmd); // 값이 바뀌는 변수
         // 조건식: && / || 는 줄 맨 앞, for-each 는 ':' 앞뒤 두 줄, 꼬리표(depth-limit 등) 없음
         assertTrue(mmd.contains("{\"if (couponCode != null<br/>&& !couponCode.isEmpty())\"}"), mmd);
         assertTrue(mmd.contains("{\"for (OrderItemVO item<br/>: items)\"}"), mmd);
@@ -154,7 +154,7 @@ class PhaseTest {
         assertTrue(mmd.contains("#35;45 (boolean) request.sendSms ?: false"), mmd);
         r.bindings.stream().filter(b -> b.callSiteId != null).forEach(b -> assertFalse(g.has(b.callSiteId)));
         // 생성자 바인딩(호출 없음)도 위치 순으로 포함, 바인딩 메서드 내부 바인딩은 호출 위치에
-        assertTrue(mmd.contains("[\"VO 값 설정 · NotifyCommand<br/>String memberId = member.getMemberId()<br/>String phone = request.smsPhone\"]"), mmd);
+        assertTrue(mmd.contains("[\"VO 값 설정 · NotifyCommand<br/>memberId = member.getMemberId()<br/>phone = request.smsPhone\"]"), mmd);
         // 변수 이력: 선언(호출 결과) → 쿠폰 차감 → 포인트 차감
         assertTrue(mmd.contains("#35;21 long total = calculateTotal(items) · V1 1/3"), mmd);
         assertTrue(mmd.contains("[\"값 변경<br/>total -= usePoint · V1 3/3\"]"), mmd);

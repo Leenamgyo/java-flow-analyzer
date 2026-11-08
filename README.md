@@ -125,9 +125,9 @@ output:
 
 ```
 요청 파라미터                                VO 값 설정 · OrderVO
-#2 String mode = request.mode ?: "NEW"       #6 String memberId = member.getMemberId()
-#3 String orderNo = request.orderNo          #7 String orderType = mode
-#4 boolean agree = request.agreeTerms ?: false   #27 long totalAmount = total  ⟳V1
+#2 String mode = request.mode ?: "NEW"       #6 memberId = member.getMemberId()
+#3 String orderNo = request.orderNo          #7 orderType = mode
+#4 boolean agree = request.agreeTerms ?: false   #27 totalAmount = total  ⟳V1
 
 #1 MemberVO member = checkLogin(request)     #21 long total = calculateTotal(items) · V1 1/3
 
@@ -136,7 +136,7 @@ if (couponCode != null                       for (OrderItemVO item
 ```
 
 - 모든 줄은 `타입 대상 = 값` 코드 한 줄 (타입 = 받는 변수의 선언 타입 / VO 필드 타입 / 요청 규칙의 type). 역할·접근제어자·Depth·depth-limit 같은 꼬리표는 쓰지 않고 색으로만 구분.
-- VO 값 설정은 변수명 없이 프로퍼티만 (클래스는 노드 제목). 한 노드에 객체가 둘 이상이면 `· 클래스` 줄로 구분.
+- VO 값 설정은 변수명·타입 없이 `프로퍼티 = 값` (클래스는 노드 제목). 타입은 값을 받아 오는 줄(요청 파라미터·값 조회·호출 결과)에만. 한 노드에 객체가 둘 이상이면 `· 클래스` 줄로 구분.
 - 조건식은 최상위 `&&`/`||` 앞에서 줄바꿈(연산자가 줄 맨 앞), for-each 는 `:` 앞뒤 두 줄.
 - 한 줄이 `output.max-line-length`(기본 100자)를 넘으면 쉼표 뒤·`+`/`-` 앞·`).` 체인 앞(없으면 `(` 뒤)에서 끊고 이어지는 줄은 `> ` 로 시작. 문자열 리터럴 안은 끊지 않음. `0` 이면 끊지 않음.
 - 코드 줄 노드는 왼쪽 정렬.

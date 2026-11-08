@@ -98,8 +98,8 @@ public final class Labels {
     }
 
     /**
-     * 흐름도 VO 값 설정 1줄 — "타입 프로퍼티 = 값": #6 String memberId = member.getMemberId(),
-     * ["status"] = status (Map), String memo = StringUtil.trimToEmpty(request.memo).
+     * 흐름도 VO 값 설정 1줄 — "프로퍼티 = 값" (타입 없음): #6 memberId = member.getMemberId(),
+     * ["status"] = status (Map), memo = StringUtil.trimToEmpty(request.memo).
      * 값 식 안의 요청 읽기 호출은 request.이름 으로 줄이고, 값이 상태가 바뀌는 변수면 끝에 ⟳V1.
      * numbered: 같은 메서드의 호출 번호(#n)를 붙인다 (바인딩 메서드 안의 바인딩이면 false).
      */
@@ -115,7 +115,7 @@ public final class Labels {
             }
         }
         CallSiteInfo s = b.callSiteId == null || !numbered ? null : r.callSite(b.callSiteId);
-        return (s == null ? "" : "#" + s.order + " ") + (b.fieldType == null ? "" : b.fieldType + " ") + target + " = " + value;
+        return (s == null ? "" : "#" + s.order + " ") + target + " = " + value; // VO 값 설정은 타입 없이 (fieldType 은 YAML 에만)
     }
 
     /** 값 식 안의 요청 읽기 호출을 request.이름(?: 기본값) 으로 바꾼 코드 */
