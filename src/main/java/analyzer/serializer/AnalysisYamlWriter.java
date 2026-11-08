@@ -35,7 +35,15 @@ public final class AnalysisYamlWriter {
             .enable(YAMLGenerator.Feature.MINIMIZE_QUOTES)
             .enable(YAMLGenerator.Feature.ALWAYS_QUOTE_NUMBERS_AS_STRINGS)
             .enable(YAMLGenerator.Feature.INDENT_ARRAYS_WITH_INDICATOR)
+            .loaderOptions(loaderOptions())
             .build());
+
+    /** 큰 프로젝트의 analysis.yaml(수 MB)을 다시 읽어 검증할 수 있게 SnakeYAML 기본 3MB 한도를 없앤다 */
+    private static org.yaml.snakeyaml.LoaderOptions loaderOptions() {
+        org.yaml.snakeyaml.LoaderOptions o = new org.yaml.snakeyaml.LoaderOptions();
+        o.setCodePointLimit(Integer.MAX_VALUE);
+        return o;
+    }
 
     /** 파일을 쓰고 스키마 검증. 실패하면 예외 */
     @SuppressWarnings("unchecked")

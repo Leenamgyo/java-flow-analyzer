@@ -161,6 +161,18 @@ class OutputConsistencyTest {
     }
 
     @Test
+    void largeAnalysisYamlCanBeWrittenAndValidated(@TempDir Path tmp) throws Exception {
+        // 큰 프로젝트: analysis.yaml 이 SnakeYAML 기본 한도(3,145,728 code points)를 넘어도 다시 읽어 검증
+        AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute");
+        for (int i = 0; i < 4000; i++) {
+            r.notes.add("padding " + i + " " + "x".repeat(1000));
+        }
+        Path yaml = tmp.resolve("analysis.yaml");
+        new AnalysisYamlWriter().write(r, yaml);
+        assertTrue(Files.size(yaml) > 3_145_728L, "size " + Files.size(yaml));
+    }
+
+    @Test
     void implementationLinkIsConsistentAcrossOutputs() {
         AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute", c -> {
             c.analysis.expandRoles = List.of("Service", "DAO");
