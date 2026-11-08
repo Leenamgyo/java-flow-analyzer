@@ -115,6 +115,8 @@ output:
 | `analysis.yaml` | 분석 결과 원본(Source of Truth). 나머지 파일은 모두 이 모델에서 생성 |
 | `call-tree.txt` | 진입 메서드부터의 호출 트리 (분기·예외·요청 파라미터·바인딩 요약 포함) |
 | `flowchart.mmd` | Mermaid 흐름도 (메서드별 subgraph). try 는 블록 1개로 묶고 예외는 블록에서 catch 노드로 한 번에(`try -.->|ValidationException| catch …`), finally 는 그 뒤 노드 1개. 레이아웃은 Mermaid 기본(dagre), 직각 간선을 원하면 `output.layout: elk`(뷰어가 ELK 를 지원해야 함). 세부(박스)는 Service 쪽으로 넘어가는 흐름만 그림(Action → Service → Service·Biz·DAO·Mapper). Action 의 내부 함수(`readItems`, `preparePayment`, `calculateTotal` …)와 `checkLogin` 같은 값 조회는 코드 한 줄(`#15 items = readItems(request)` / `VO 값 설정 · OrderItemVO`) — 안에서 읽는 요청 값·VO 매핑은 `mapping.md` 에 그대로. 연속된 요청 값 읽기 → `요청 파라미터` 노드, 연속된 setter·builder·생성자 → `VO 값 설정` 노드 (아래 예시) |
+| `flowchart/` | 큰 흐름도 나눠 보기: `00-overview.mmd`(메서드 박스 + 호출 관계) + 메서드마다 한 파일(`01-M1-Xxx.execute.mmd` …). 다른 메서드로 넘어가는 호출은 `▶ 대상 — 파일명` 노드로 끝남 (`output.split-flowchart`, 기본 켜짐) |
+| `flowchart.md` | 위 파일들을 합친 문서: 목차 + 전체 구조 + 메서드별 다이어그램(```` ```mermaid ```` 블록마다 따로 렌더링) |
 | `mapping.md` | 요청 파라미터 → 객체 필드 바인딩 명세, 필드 커버리지, **변수 상태 변화** 이력 |
 | `phase-flowchart.mmd` | **단계 보기** 흐름도: ① 바인딩(요약 1개) › ② 체크(조건 → 결과) › ③ 로직(상세) › ④ 후처리(요약) |
 | `phase-summary.md` | 단계별 요약: 실제 실행 순서, 요청 파라미터·객체, 체크 목록, 로직 호출 트리, 요소별 판정 근거 |

@@ -48,3 +48,5 @@ output:
   layout: dagre
   # 노드 한 줄 최대 길이 — 넘으면 쉼표·연산자·메서드 체인 앞에서 끊고 이어지는 줄은 "> " 로 시작 (0 = 끊지 않음)
   max-line-length: 100
+  # 큰 흐름도: flowchart/ 에 메서드별 파일 + 00-overview(호출 관계), flowchart.md 에 합본(목차 + 다이어그램들)
+  split-flowchart: true

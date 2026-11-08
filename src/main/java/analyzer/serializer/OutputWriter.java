@@ -40,6 +40,29 @@ public final class OutputWriter {
             Files.writeString(mmd, mermaid);
             written.add(mmd);
             mermaidStatus = MermaidCli.validate(mmd);
+            if (cfg.output.splitFlowchart) {
+                // 큰 흐름도: 메서드별 파일 + 전체 구조 + 합본 flowchart.md
+                FlowchartGenerator gen = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
+                        .maxLineLength(cfg.output.maxLineLength);
+                List<FlowchartGenerator.Part> parts = gen.renderSplit(r, cfg.output.direction, cfg.output.layout);
+                Path sub = dir.resolve("flowchart");
+                if (Files.isDirectory(sub)) { // 이전 실행의 분할 파일 정리 (.mmd 만)
+                    try (var old = Files.list(sub)) {
+                        for (Path f : old.filter(f -> f.toString().endsWith(".mmd")).toList()) {
+                            Files.delete(f);
+                        }
+                    }
+                }
+                Files.createDirectories(sub);
+                for (FlowchartGenerator.Part p : parts) {
+                    Files.writeString(sub.resolve(p.file()), p.mermaid());
+                }
+                written.add(sub);
+                var entry = r.method(r.entryMethodId);
+                Path md = dir.resolve("flowchart.md");
+                Files.writeString(md, FlowchartGenerator.combinedMarkdown(r.classOf(entry).name + "." + entry.name + "()", parts));
+                written.add(md);
+            }
         }
         if (cfg.phases.enabled) {
             analyzer.phase.PhaseModel pm = analyzer.phase.PhaseAnalyzer.analyze(r, cfg.phases);

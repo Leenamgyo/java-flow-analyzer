@@ -61,6 +61,7 @@ public final class FlowchartGenerator {
         CLASS_DEFS.put("req", "fill:#ccfbf1,stroke:#0f766e,stroke-width:2px");
         CLASS_DEFS.put("bind", "fill:#ecfeff,stroke:#0e7490");
         CLASS_DEFS.put("var", "fill:#fff7ed,stroke:#ea580c");
+        CLASS_DEFS.put("golink", "fill:#f8fafc,stroke:#64748b,stroke-dasharray:5 3");
         CLASS_DEFS.put("codeline", "fill:#eef2ff,stroke:#6366f1");
         CLASS_DEFS.put("fin", "fill:#f1f5f9,stroke:#475569,stroke-dasharray:3 3");
         PHASE_CLASS_DEFS.putAll(CLASS_DEFS);
@@ -292,6 +293,82 @@ public final class FlowchartGenerator {
     }
 
     private int maxLineLength = 100;
+
+    /** 분할 출력 1개: 파일명, 제목, Mermaid 본문 */
+    public record Part(String file, String title, String mermaid) {
+    }
+
+    /**
+     * 흐름도를 파일별로 나눈다: 00-overview(메서드 박스 + 호출 관계) + 그리는 메서드마다 1개.
+     * 다른 메서드로 넘어가는 호출은 "▶ M27 Class.method() — 파일명" 안내 노드로 끝난다. 모두 같은 모델·같은 ID.
+     */
+    public List<Part> renderSplit(AnalysisResult result, String direction, String layout) {
+        MermaidGraph full = build(result);
+        List<String> errors = new ArrayList<>(full.validate());
+        errors.addAll(checkMapping(result, full, supCalls, supBlocks, collapsed));
+        if (!errors.isEmpty()) {
+            throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
+        }
+        Map<String, String> classDefs = phases == null ? CLASS_DEFS : PHASE_CLASS_DEFS;
+        List<MethodInfo> drawn = r.methods().stream().filter(m -> drawnMethods.contains(m.id) && full.has("sg_" + m.id)).toList();
+        Map<String, String> fileOf = new LinkedHashMap<>();
+        int i = 1;
+        for (MethodInfo m : drawn) {
+            fileOf.put(m.id, String.format("%02d-%s-%s.%s.mmd", i++, m.id, r.classOf(m).name, m.name));
+        }
+        // 노드 → 소속 메서드 (호출 관계 집계용)
+        Map<String, String> owner = new HashMap<>();
+        for (MethodInfo m : drawn) {
+            full.idsUnder("sg_" + m.id).forEach(id -> owner.putIfAbsent(id, m.id));
+        }
+        List<Part> parts = new ArrayList<>();
+        // 00-overview
+        MermaidGraph ov = new MermaidGraph().maxLineLength(maxLineLength);
+        for (MethodInfo m : drawn) {
+            ov.node(ov.root(), m.id, List.of(m.id + " " + r.classOf(m).name + "." + m.name + "()",
+                    "«" + r.classOf(m).role.label() + "» · " + fileOf.get(m.id)), Shape.STADIUM,
+                    m.id.equals(r.entryMethodId) ? "entry" : "method");
+        }
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (var e : full.edges()) {
+            if (e.style() == EdgeStyle.CALL && owner.containsKey(e.from()) && fileOf.containsKey(e.to())) {
+                String from = owner.get(e.from());
+                if (!from.equals(e.to()) && seen.add(from + ">" + e.to())) {
+                    ov.edge(from, e.to(), e.label(), EdgeStyle.CALL);
+                }
+            }
+        }
+        parts.add(new Part("00-overview.mmd", "전체 구조 (메서드 호출 관계)", ov.render(direction, layout, classDefs)));
+        for (MethodInfo m : drawn) {
+            MermaidGraph one = full.extract("sg_" + m.id, to -> {
+                String target = owner.get(to);
+                String where = target == null ? "" : " — " + fileOf.get(target);
+                return List.of("▶ " + full.labelOf(to), (target == null ? to : target) + where);
+            });
+            parts.add(new Part(fileOf.get(m.id), m.id + " " + r.classOf(m).name + "." + m.name + "()",
+                    one.render(direction, layout, classDefs)));
+        }
+        return parts;
+    }
+
+    /** 분할 파일을 한 문서로: 목차 + 파트마다 ```mermaid 블록 */
+    public static String combinedMarkdown(String title, List<Part> parts) {
+        StringBuilder sb = new StringBuilder("# 흐름도: ").append(title).append("\n\n");
+        sb.append("> `flowchart/` 의 파일을 순서대로 합친 문서입니다. 다른 메서드로 넘어가는 호출은 ▶ 노드로 끝나고, 그 메서드는 아래 해당 절에 있습니다.\n\n");
+        for (Part p : parts) {
+            sb.append("- [").append(p.title()).append("](#").append(anchor(p.title())).append(")\n");
+        }
+        for (Part p : parts) {
+            sb.append("\n## ").append(p.title()).append("\n\n`flowchart/").append(p.file()).append("`\n\n```mermaid\n")
+                    .append(p.mermaid()).append("```\n");
+        }
+        return sb.toString();
+    }
+
+    /** GitHub 식 제목 앵커 (소문자, 공백 → -, 영숫자·한글·-·_ 외 제거) */
+    private static String anchor(String title) {
+        return title.toLowerCase().replace(' ', '-').replaceAll("[^\\p{L}\\p{N}_-]", "");
+    }
 
     /** 노드 한 줄 최대 길이 (설정 output.max-line-length, 0 = 끊지 않음) */
     public FlowchartGenerator maxLineLength(int n) {

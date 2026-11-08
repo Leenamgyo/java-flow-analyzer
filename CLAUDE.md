@@ -147,6 +147,7 @@ analyzer/
 - return/throw 는 메서드 박스 안 흐름 끝(실선, 분기 라벨 Yes/No), 처리되지 않은 throw 만 `-.->` `M*_uncaught`. (박스 밖 '이탈' 배치를 시도했으나 Mermaid 는 노드 좌표·박스 크기를 지정할 수 없어 dagre 는 끝으로 밀어내고 ELK 도 원하는 '오른쪽 배치'가 안 돼 되돌림.) 레이아웃 `output.layout` 기본 dagre, 옵션 elk(`MermaidGraph.init(layout)`).
 - 코드 줄(#n …)이 들어가는 노드(class `codeline`·req·bind·var·depth·external·unresolved·cycle·fin·exc·check·post)는 `themeCSS` 로 왼쪽 정렬, `wrappingWidth` 2400(자동 줄바꿈 거의 없음). class 이름에 Mermaid 예약어(`call`, `click`, `end` …) 금지 — `MermaidGraph.RESERVED_CLASS` 로 검증(`call` 을 썼다가 파서 오류 난 적 있음).
 - 긴 줄: `MermaidGraph.wrap(line, output.max-line-length=100)` — 강한 자리(쉼표 뒤·` + `/` - ` 앞·`).` 체인 앞) 우선, 없으면 `(` 뒤, 한도 안에 없으면 넘는 첫 자리, 문자열 리터럴 안 제외, 이어지는 줄 `> `. 렌더 단계에서만(모델·YAML 은 원문).
+- 분할 출력(`output.split-flowchart`, 기본 true): `FlowchartGenerator.renderSplit` — 전체 그래프를 한 번 만들어 검증한 뒤 `MermaidGraph.extract(sg_<M>)` 로 메서드별로 떼어 냄(안쪽 간선 유지, 바깥으로 나가는 간선은 `go_<대상>` ▶ 안내 노드 class golink, 들어오는 간선 제외). `00-overview.mmd` = 메서드 노드 + CALL 간선 집계. 합본 `flowchart.md` = 목차(GitHub 식 앵커) + 파트별 ```mermaid. 이전 실행의 `flowchart/*.mmd` 는 지우고 다시 씀. 전체 `flowchart.mmd` 도 그대로 출력.
 - 렌더링 첫 줄은 `MermaidGraph.INIT`(`%%{init: …}%%` 노드 padding·wrappingWidth) — 여러 줄 라벨이 잘리지 않게.
 - `-->` 정상 흐름, `==>` 본문을 전개한 호출(EXPANDED/SHARED/CYCLE → 메서드 시작 노드), `-.->` 처리되지 않은 throw(`M*_uncaught`).
 - 라벨 이스케이프는 `#` 먼저 → `#35;` `#quot;` `#lt;` `#gt;` `#124;`. 렌더 전 `MermaidGraph.validate()` + `FlowchartGenerator.checkMapping()` 실패 시 예외.

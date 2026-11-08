@@ -209,6 +209,65 @@ public final class MermaidGraph {
         }
     }
 
+    /** subgraph 안의 모든 ID (자신·중첩 subgraph·노드) */
+    public Set<String> idsUnder(String subgraphId) {
+        Set<String> out = new LinkedHashSet<>();
+        if (ids.get(subgraphId) instanceof Subgraph sg) {
+            collectIds(sg, out);
+        }
+        return out;
+    }
+
+    private static void collectIds(Subgraph sg, Set<String> out) {
+        out.add(sg.id);
+        for (Object o : sg.items) {
+            if (o instanceof Subgraph c) {
+                collectIds(c, out);
+            } else {
+                out.add(((Node) o).id());
+            }
+        }
+    }
+
+    /** 노드의 첫 줄(라벨) 또는 subgraph 라벨 */
+    public String labelOf(String id) {
+        Object o = ids.get(id);
+        if (o instanceof Node n) {
+            return n.lines().isEmpty() ? id : n.lines().get(0);
+        }
+        return o instanceof Subgraph s ? s.label : id;
+    }
+
+    /**
+     * subgraph 하나만 떼어 낸 그래프 (파일 분할용). 안쪽끼리의 간선은 그대로, 바깥으로 나가는 간선은
+     * 끝에 안내 노드(go_대상ID, 라벨 = stubLabel(대상ID))를 만들어 잇는다. 바깥에서 들어오는 간선은 뺀다.
+     */
+    public MermaidGraph extract(String subgraphId, java.util.function.Function<String, List<String>> stubLabel) {
+        MermaidGraph out = new MermaidGraph();
+        out.maxLineLength = this.maxLineLength;
+        Subgraph sg = (Subgraph) ids.get(subgraphId);
+        out.root.items.add(sg);
+        Set<String> inside = idsUnder(subgraphId);
+        for (String id : inside) {
+            out.ids.put(id, ids.get(id));
+        }
+        for (Edge e : edges) {
+            if (!inside.contains(e.from())) {
+                continue;
+            }
+            if (inside.contains(e.to())) {
+                out.edges.add(e);
+            } else {
+                String stub = "go_" + e.to();
+                if (!out.has(stub)) {
+                    out.node(out.root, stub, stubLabel.apply(e.to()), Shape.SUBROUTINE, "golink");
+                }
+                out.edges.add(new Edge(e.from(), stub, e.label(), e.style()));
+            }
+        }
+        return out;
+    }
+
     /** 노드 한 줄 최대 길이 (넘으면 끊고 다음 줄 앞에 "> "). 0 이하면 끊지 않음 */
     private int maxLineLength = 100;
 

@@ -199,6 +199,29 @@ class PhaseTest {
     }
 
     @Test
+    void flowchartSplitsPerMethodWithOverviewAndCombinedMarkdown() throws Exception {
+        AnalysisResult r = Main.analyze(example("OrderRegisterAction"));
+        List<FlowchartGenerator.Part> parts = new FlowchartGenerator().renderSplit(r, "TD", "dagre");
+        // 00-overview + 그리는 메서드마다 1개 (진입 + Service·Biz·DAO 세부)
+        assertEquals("00-overview.mmd", parts.get(0).file());
+        assertTrue(parts.get(1).file().startsWith("01-M1-OrderRegisterAction.execute"), parts.get(1).file());
+        MermaidGraph full = new FlowchartGenerator().build(r);
+        long methodBoxes = r.methods().stream().filter(m -> full.has("sg_" + m.id)).count();
+        assertEquals(methodBoxes + 1, parts.size());
+        // overview: 메서드 노드 + 호출 관계만
+        assertTrue(parts.get(0).mermaid().contains("M1 ==>"), parts.get(0).mermaid());
+        // 진입 파일: Service 로 넘어가는 호출은 ▶ 안내 노드에서 끝, 다른 메서드 상세는 없음
+        String entry = parts.get(1).mermaid();
+        String register = parts.stream().filter(p -> p.file().contains("OrderServiceImpl.registerOrder")).findFirst().orElseThrow().file();
+        assertTrue(entry.contains("▶ OrderServiceImpl.registerOrder(") && entry.contains(register), entry);
+        assertFalse(entry.contains("subgraph sg_M27"), entry);
+        // 합본: 목차 + 파트마다 mermaid 블록
+        String md = FlowchartGenerator.combinedMarkdown("OrderRegisterAction.execute()", parts);
+        assertEquals(parts.size(), md.split("```mermaid", -1).length - 1);
+        assertTrue(md.contains("- [M1 OrderRegisterAction.execute()](#m1-orderregisteractionexecute)"), md);
+    }
+
+    @Test
     void checkMethodWithRequestReadInConditionIsCheck() {
         AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute",
                 c -> c.analysis.expandRoles = List.of("Service", "Biz", "DAO"));
