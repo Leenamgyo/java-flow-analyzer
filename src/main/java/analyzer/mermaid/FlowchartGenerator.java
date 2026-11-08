@@ -9,6 +9,7 @@ import analyzer.model.BlockType;
 import analyzer.model.CallSiteInfo;
 import analyzer.model.ClassInfo;
 import analyzer.model.ClassRole;
+import analyzer.model.LogCalls;
 import analyzer.model.ControlBlock;
 import analyzer.model.Expansion;
 import analyzer.model.MethodInfo;
@@ -64,6 +65,8 @@ public final class FlowchartGenerator {
         CLASS_DEFS.put("golink", "fill:#f8fafc,stroke:#64748b,stroke-dasharray:5 3");
         CLASS_DEFS.put("codeline", "fill:#eef2ff,stroke:#6366f1");
         CLASS_DEFS.put("fin", "fill:#f1f5f9,stroke:#475569,stroke-dasharray:3 3");
+        CLASS_DEFS.put("state", "fill:#fff7ed,stroke:#ea580c");
+        CLASS_DEFS.put("log", "fill:#e2e8f0,stroke:#64748b,color:#334155,stroke-dasharray:2 2");
         PHASE_CLASS_DEFS.putAll(CLASS_DEFS);
         PHASE_CLASS_DEFS.put("check", "fill:#fefce8,stroke:#a16207");
         PHASE_CLASS_DEFS.put("post", "fill:#f5f3ff,stroke:#6d28d9");
@@ -256,9 +259,16 @@ public final class FlowchartGenerator {
                         .findFirst().ifPresent(s -> assignedBy.computeIfAbsent(s.id, k -> new ArrayList<>()).add(c));
             }
         }
-        collapsed = collapsedHelpers(r, logicRoles);
-        Set<String> skip = skippedMethods(r, supCalls, collapsed);
+        stateVersions.clear();
+        // 일반 흐름도는 보조 메서드도 접지 않는다 (빠진 코드 없음) — 접기는 단계 보기에서만
+        collapsed = phases == null ? Set.of() : collapsedHelpers(r, logicRoles);
+        rules = phases == null ? Rules.normal(r, excludes) : Rules.phase(supCalls, supBlocks, collapsed, excludes);
+        bindingFns = phases == null ? bindingFunctions(r) : Set.of();
+        Set<String> skip = skippedMethods(r, rules);
         skipSet = skip;
+        if (!excludes.isEmpty()) {
+            g.comment("flowchart-exclude (사용자 설정으로 뺀 호출·메서드): " + String.join(", ", excludes));
+        }
         drawnMethods.clear();
         r.methods().stream().filter(m -> m.analyzed && !skip.contains(m.id)).forEach(m -> drawnMethods.add(m.id));
         layers.clear();
@@ -297,7 +307,7 @@ public final class FlowchartGenerator {
     public String render(AnalysisResult result, String direction, String layout) {
         MermaidGraph graph = build(result);
         List<String> errors = new ArrayList<>(graph.validate());
-        errors.addAll(checkMapping(result, graph, supCalls, supBlocks, collapsed));
+        errors.addAll(check(result, graph, rules));
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
         }
@@ -305,6 +315,30 @@ public final class FlowchartGenerator {
     }
 
     private int maxLineLength = 100;
+    /** 사용자 설정 output.flowchart-exclude */
+    private List<String> excludes = List.of();
+    private Rules rules;
+    /** 바인딩 블록 안에 중첩해서 보이는 바인딩 함수 (일반 흐름도) */
+    private Set<String> bindingFns = Set.of();
+    /**
+     * 상태 변화 버전: 노드 → (대상 수신 객체 → 그 노드까지 흐름을 따라 바뀐 횟수). 간선을 따라 전해지고
+     * 갈래가 합쳐지는 곳은 큰 값. 그래서 if/else 의 서로 다른 갈래는 같은 버전을 가질 수 있다.
+     */
+    private final Map<String, Map<String, Integer>> stateVersions = new HashMap<>();
+
+    private Map<String, Integer> versionsOf(List<End> ends) {
+        Map<String, Integer> out = new HashMap<>();
+        for (End e : ends) {
+            stateVersions.getOrDefault(e.node(), Map.of()).forEach((k, v) -> out.merge(k, v, Math::max));
+        }
+        return out;
+    }
+
+    /** 흐름도에서 뺄 호출·메서드 패턴 (설정 output.flowchart-exclude, 사용자 관리) */
+    public FlowchartGenerator exclude(List<String> patterns) {
+        this.excludes = patterns == null ? List.of() : List.copyOf(patterns);
+        return this;
+    }
 
     /** 분할 출력 1개: 파일명, 제목, Mermaid 본문 */
     public record Part(String file, String title, String mermaid) {
@@ -317,7 +351,7 @@ public final class FlowchartGenerator {
     public List<Part> renderSplit(AnalysisResult result, String direction, String layout) {
         MermaidGraph full = build(result);
         List<String> errors = new ArrayList<>(full.validate());
-        errors.addAll(checkMapping(result, full, supCalls, supBlocks, collapsed));
+        errors.addAll(check(result, full, rules));
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
         }
@@ -388,62 +422,92 @@ public final class FlowchartGenerator {
         return this;
     }
 
-    /** YAML ID ↔ Mermaid 노드 매핑 검증 (흐름에서 뺀 바인딩 코드는 제외, else/case 는 간선으로 표현) */
-    public static List<String> checkMapping(AnalysisResult r, MermaidGraph graph) {
-        return checkMapping(r, graph, Set.of(), Set.of(), collapsedHelpers(r, DEFAULT_LOGIC_ROLES));
+    // ------------------------------------------------------------------ 그리기 규칙
+
+    /**
+     * 무엇을 그리는가. 일반 흐름도는 분석한 코드를 빠짐없이 그린다(catch/finally 본문 포함) — 빼는 것은 사용자 설정
+     * output.flowchart-exclude 뿐. 단계 보기는 요약 보기이므로 catch/finally 본문을 생략하고 요약 노드로 대체한다.
+     *
+     * @param seed 처음부터 상자를 그리지 않는 메서드 (일반: 바인딩 함수 + exclude, 단계 보기: 접힌 보조 메서드)
+     */
+    record Rules(Set<String> suppressedCalls, Set<String> suppressedBlocks, Set<String> seed, boolean omitHandlers,
+                 List<String> excludes) {
+
+        static Rules normal(AnalysisResult r, List<String> excludes) {
+            Set<String> seed = new java.util.HashSet<>(bindingFunctions(r));
+            r.methods().stream().filter(m -> m.analyzed && !m.id.equals(r.entryMethodId) && excludedMethod(r, excludes, m))
+                    .forEach(m -> seed.add(m.id));
+            return new Rules(Set.of(), Set.of(), seed, false, excludes);
+        }
+
+        static Rules phase(Set<String> suppressedCalls, Set<String> suppressedBlocks, Set<String> collapsed, List<String> excludes) {
+            return new Rules(suppressedCalls, suppressedBlocks, collapsed, true, excludes);
+        }
     }
 
-    /** suppressedCalls/Blocks: 단계 보기에서 요약 노드로 대체한 진입 메서드 요소 */
+    /** YAML ID ↔ Mermaid 노드 매핑 검증 — 일반 흐름도 (빠진 코드가 없어야 함) */
+    public static List<String> checkMapping(AnalysisResult r, MermaidGraph graph) {
+        return check(r, graph, Rules.normal(r, List.of()));
+    }
+
+    /** 단계 보기: suppressedCalls/Blocks = 요약 노드로 대체한 진입 메서드 요소 */
     public static List<String> checkMapping(AnalysisResult r, MermaidGraph graph, Set<String> suppressedCalls,
                                             Set<String> suppressedBlocks) {
         return checkMapping(r, graph, suppressedCalls, suppressedBlocks, collapsedHelpers(r, DEFAULT_LOGIC_ROLES));
     }
 
-    /** collapsed: 단계 보기에서 세부를 그리지 않는 보조 메서드 */
+    /** 단계 보기: collapsed = 세부를 그리지 않는 보조 메서드 */
     public static List<String> checkMapping(AnalysisResult r, MermaidGraph graph, Set<String> suppressedCalls,
                                             Set<String> suppressedBlocks, Set<String> collapsed) {
+        return check(r, graph, Rules.phase(suppressedCalls, suppressedBlocks, collapsed, List.of()));
+    }
+
+    private static List<String> check(AnalysisResult r, MermaidGraph graph, Rules rules) {
         List<String> e = new ArrayList<>();
-        Set<String> skip = skippedMethods(r, suppressedCalls, collapsed);
+        Set<String> skip = skippedMethods(r, rules);
         r.methods().stream().filter(m -> m.analyzed && !skip.contains(m.id)).forEach(m -> {
             if (!graph.has(m.id)) {
                 e.add("메서드 노드 누락: " + m.id);
             }
         });
-        r.callSites.stream().filter(s -> drawn(r, skip, suppressedCalls, s)).forEach(s -> {
+        r.callSites.stream().filter(s -> drawn(r, rules, skip, s)).forEach(s -> {
             if (!graph.has(s.id)) {
-                e.add("호출 노드 누락: " + s.id);
+                e.add("호출 노드 누락: " + s.id + " `" + s.expression + "`");
             }
         });
-        r.blocks.stream().filter(b -> !FlowView.hidden(r, b) && !skip.contains(b.methodId) && !inHandler(r, b.id)
-                        && !suppressedBlocks.contains(b.id)
+        r.blocks.stream().filter(b -> !FlowView.hidden(r, b) && !skip.contains(b.methodId)
+                        && !(rules.omitHandlers() && inHandler(r, b.id))
+                        && !rules.suppressedBlocks().contains(b.id)
                         && b.type != BlockType.ELSE && b.type != BlockType.CASE && b.type != BlockType.TRY)
                 .forEach(b -> {
                     if (!graph.has(b.id)) {
                         e.add("블록 노드 누락: " + b.id);
                     }
                 });
-        // 변수 값 변경: 그리는 메서드·블록 안이면 "값 변경" 노드 또는 호출 노드(→ x)에 매핑되어야 함
+        // 변수 값 변경: 그리는 메서드·블록 안이면 "상태 변화" 노드 또는 호출 노드(→ x)에 매핑되어야 함
         r.variableChanges.stream().filter(c -> c.isChange() && r.method(c.methodId).analyzed && !skip.contains(c.methodId)
-                        && (c.controlBlockId == null || !inHandler(r, c.controlBlockId) && !suppressedBlocks.contains(c.controlBlockId))
-                        && !suppressedCalls.contains(c.id))
+                        && (c.controlBlockId == null || !(rules.omitHandlers() && inHandler(r, c.controlBlockId))
+                        && !rules.suppressedBlocks().contains(c.controlBlockId))
+                        && !rules.suppressedCalls().contains(c.id))
                 .forEach(c -> {
                     if (!graph.has(c.id)) {
                         e.add("변수 변경 노드 누락: " + c.id + " `" + c.expression + "` (" + r.method(c.methodId).name + " · "
                                 + c.location.shortText() + ", block " + c.controlBlockId + ")");
                     }
                 });
+        // ==> 는 모델의 호출 대상과 일치해야 함 (상태 변화 블록처럼 여러 호출을 합친 노드는 그 중 하나)
         for (var ed : graph.edges()) {
             if (ed.style() == EdgeStyle.CALL) {
-                CallSiteInfo s = r.callSite(ed.from());
-                if (s == null || !(ed.to().equals(s.targetMethodId) || ed.to().equals(s.implementationMethodId))) {
+                boolean ok = graph.modelIdsOf(ed.from()).stream().map(id -> r.element(id).orElse(null))
+                        .filter(o -> o instanceof CallSiteInfo).map(o -> (CallSiteInfo) o)
+                        .anyMatch(s -> ed.to().equals(s.targetMethodId) || ed.to().equals(s.implementationMethodId));
+                if (!ok) {
                     e.add("모델에 없는 호출 엣지: " + ed.from() + " ==> " + ed.to());
                 }
             }
         }
         return e;
     }
-
-    // ------------------------------------------------------------------ try/catch 생략 규칙
 
     /** 블록이 catch/finally 본문 안(자기 자신 포함)인지 */
     public static boolean inHandler(AnalysisResult r, String blockId) {
@@ -457,10 +521,10 @@ public final class FlowchartGenerator {
         return false;
     }
 
-    /** 흐름도에 그리는 호출: 바인딩 코드가 아니고, catch/finally 안이 아니며, 그리는 메서드 안 */
     /**
-     * 인자 안의 호출(log.error("…" + util.x(req)) 의 util.x)은 흐름도에 그리지 않는다 — 사용자 요구.
-     * 단 세부 박스로 이어지는 호출(==> 필요)과 요청 읽기(바인딩)는 그린다.
+     * 인자 안의 호출(log.error("…" + util.x(req)) 의 util.x)은 따로 그리지 않는다 — 바깥 호출 노드의 코드에 보인다.
+     * 단 세부 박스로 이어지는 호출(==> 필요)과 요청 읽기(바인딩)는 그리고, 바깥 호출이 모델에 없으면(외부 라이브러리 제외,
+     * 생성자 인자 등) 그 코드가 사라지지 않도록 그린다.
      */
     static boolean argumentOnly(AnalysisResult r, Set<String> skip, CallSiteInfo s) {
         if (!s.inArgument) {
@@ -470,34 +534,44 @@ public final class FlowchartGenerator {
                 && r.method(s.expansionTargetId()).analyzed
                 && (s.expansion == Expansion.EXPANDED || s.expansion == Expansion.SHARED || s.expansion == Expansion.CYCLE);
         boolean read = !r.parametersAt(s.id).isEmpty();
-        return !detailed && !read;
+        if (detailed || read) {
+            return false;
+        }
+        return r.callSitesOf(s.callerMethodId).stream().anyMatch(o -> o != s && contains(o.location, s.location));
     }
 
-    private static boolean drawn(AnalysisResult r, Set<String> skip, Set<String> suppressed, CallSiteInfo s) {
-        return !FlowView.hidden(r, s) && !skip.contains(s.callerMethodId) && !suppressed.contains(s.id)
+    private static boolean drawn(AnalysisResult r, Rules rules, Set<String> skip, CallSiteInfo s) {
+        return !FlowView.hidden(r, s) && !skip.contains(s.callerMethodId) && !rules.suppressedCalls().contains(s.id)
                 && !argumentOnly(r, skip, s)
-                && (s.controlBlockId == null || !inHandler(r, s.controlBlockId));
+                && !(rules.omitHandlers() && s.controlBlockId != null && inHandler(r, s.controlBlockId))
+                && !excludedCall(r, rules.excludes(), s);
     }
 
-    /** 흐름도에 노드로 그리는 호출인지 (테스트·검증용) */
+    /** 일반 흐름도에 그리는 호출인지 (노드 또는 블록 줄) — 테스트·검증용 */
     public static boolean drawsCall(AnalysisResult r, CallSiteInfo s) {
-        return drawn(r, skippedMethods(r), Set.of(), s);
+        Rules rules = Rules.normal(r, List.of());
+        return drawn(r, rules, skippedMethods(r, rules), s);
     }
 
-    /** 그리지 않는 메서드: 바인딩 메서드 + catch/finally 안에서만 호출되는 메서드(전이적으로) */
+    /** 일반 흐름도에서 상자를 그리지 않는 메서드: 바인딩 함수(바인딩 블록 안에 중첩 표시) */
     public static Set<String> skippedMethods(AnalysisResult r) {
-        return skippedMethods(r, Set.of(), collapsedHelpers(r, DEFAULT_LOGIC_ROLES));
+        return skippedMethods(r, Rules.normal(r, List.of()));
     }
 
-    /** suppressed: 그리지 않는 진입 메서드 호출 (단계 보기의 요약 대상) */
+    /** 단계 보기: suppressed = 그리지 않는 진입 메서드 호출 (요약 대상) */
     public static Set<String> skippedMethods(AnalysisResult r, Set<String> suppressed) {
-        return skippedMethods(r, suppressed, Set.of());
+        return skippedMethods(r, Rules.phase(suppressed, Set.of(), Set.of(), List.of()));
     }
 
-    /** seed: 처음부터 그리지 않을 메서드 (단계 보기의 접힌 보조 메서드) — 그 안에서만 호출되는 메서드도 전이적으로 생략 */
+    /** 단계 보기: seed = 처음부터 그리지 않을 메서드 (접힌 보조 메서드) */
     public static Set<String> skippedMethods(AnalysisResult r, Set<String> suppressed, Set<String> seed) {
+        return skippedMethods(r, Rules.phase(suppressed, Set.of(), seed, List.of()));
+    }
+
+    /** seed + 그 안에서만(또는 그리지 않는 호출에서만) 호출되는 메서드 — 전이적으로 */
+    private static Set<String> skippedMethods(AnalysisResult r, Rules rules) {
         Set<String> skip = new java.util.HashSet<>(FlowView.bindingMethods(r));
-        skip.addAll(seed);
+        skip.addAll(rules.seed());
         boolean changed = true;
         while (changed) {
             changed = false;
@@ -507,13 +581,118 @@ public final class FlowchartGenerator {
                 }
                 List<CallSiteInfo> in = r.callSites.stream()
                         .filter(s -> s.targetMethodId != null && m.id.equals(s.expansionTargetId())).toList();
-                if (!in.isEmpty() && in.stream().noneMatch(s -> drawn(r, skip, suppressed, s))) {
+                if (!in.isEmpty() && in.stream().noneMatch(s -> drawn(r, rules, skip, s))) {
                     skip.add(m.id);
                     changed = true;
                 }
             }
         }
         return skip;
+    }
+
+    // ------------------------------------------------------------------ 바인딩 함수 · exclude
+
+    /**
+     * 바인딩 함수: 본문이 바인딩 코드·요청 읽기·다른 바인딩 함수 호출과 최상위 return 뿐인 source 메서드
+     * (VO 를 채워 반환하는 toSearchVO, createCommand, 그 안에서 값만 만드는 parseParameter 등).
+     * 상자를 따로 그리지 않고 호출한 쪽 바인딩 블록 안에 중첩해서 보인다 (본문 코드 전부 — 바인딩·return).
+     * <ol>
+     *   <li>순수 후보 P (최대 고정점): 블록은 최상위 return 뿐, 모든 호출이 바인딩 코드·요청 읽기·P 안의 메서드 호출</li>
+     *   <li>P 중 바인딩이 있거나, 바인딩 함수를 부르거나, 들어오는 호출이 전부 바인딩 값 안(할당 호출 자체 제외)·
+     *       다른 바인딩 함수 안인 것 (최소 고정점 — 값 함수 사슬 middle → inner, 재귀 selfRef 포함)</li>
+     * </ol>
+     */
+    public static Set<String> bindingFunctions(AnalysisResult r) {
+        Set<String> pure = new java.util.LinkedHashSet<>();
+        for (MethodInfo m : r.methods()) {
+            if (m.analyzed && m.origin == analyzer.model.Origin.SOURCE && !m.id.equals(r.entryMethodId)
+                    && r.blocksOf(m.id).stream().allMatch(b -> b.type == BlockType.RETURN && b.parentBlockId == null)) {
+                pure.add(m.id);
+            }
+        }
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (java.util.Iterator<String> it = pure.iterator(); it.hasNext(); ) {
+                String m = it.next();
+                if (!r.callSitesOf(m).stream().allMatch(c -> FlowView.hidden(r, c) || readCall(r, c) || fnCall(r, pure, c))) {
+                    it.remove();
+                    changed = true;
+                }
+            }
+        }
+        Set<String> fns = new java.util.LinkedHashSet<>(FlowView.bindingMethods(r));
+        changed = true;
+        while (changed) {
+            changed = false;
+            for (String m : pure) {
+                if (fns.contains(m)) {
+                    continue;
+                }
+                boolean binds = r.bindings.stream().anyMatch(b -> b.methodId.equals(m));
+                boolean nested = r.callSitesOf(m).stream().anyMatch(c -> fnCall(r, fns, c));
+                List<CallSiteInfo> in = r.callSites.stream()
+                        .filter(c -> c.targetMethodId != null && m.equals(c.expansionTargetId())).toList();
+                boolean valueFn = !in.isEmpty() && in.stream().allMatch(c -> fns.contains(c.callerMethodId)
+                        || r.bindings.stream().anyMatch(b -> b.methodId.equals(c.callerMethodId) && !c.id.equals(b.callSiteId)
+                        && contains(b.location, c.location)));
+                if (binds || nested || valueFn) {
+                    fns.add(m);
+                    changed = true;
+                }
+            }
+        }
+        return fns;
+    }
+
+    private static boolean fnCall(AnalysisResult r, Set<String> fns, CallSiteInfo c) {
+        return c.targetMethodId != null && fns.contains(c.expansionTargetId())
+                && (c.expansion == Expansion.EXPANDED || c.expansion == Expansion.SHARED || c.expansion == Expansion.CYCLE);
+    }
+
+    private static boolean readCall(AnalysisResult r, CallSiteInfo s) {
+        return !r.parametersAt(s.id).isEmpty() && s.expansion != Expansion.EXPANDED
+                && s.expansion != Expansion.SHARED && s.expansion != Expansion.CYCLE;
+    }
+
+    /** exclude 패턴(* 와일드카드)에 맞는 호출: 대상 "클래스.메서드"(단순명·FQN, 구현 후보 포함) 또는 원문 "수신객체.메서드" */
+    static boolean excludedCall(AnalysisResult r, List<String> patterns, CallSiteInfo s) {
+        if (patterns.isEmpty()) {
+            return false;
+        }
+        List<String> names = new ArrayList<>();
+        for (String t : new String[]{s.targetMethodId, s.implementationMethodId}) {
+            if (t != null) {
+                names.addAll(methodNames(r, r.method(t)));
+            }
+        }
+        names.add(s.scopeExpression == null ? s.methodName : s.scopeExpression + "." + s.methodName);
+        return matches(patterns, names);
+    }
+
+    static boolean excludedMethod(AnalysisResult r, List<String> patterns, MethodInfo m) {
+        return !patterns.isEmpty() && matches(patterns, methodNames(r, m));
+    }
+
+    private static List<String> methodNames(AnalysisResult r, MethodInfo m) {
+        var c = r.classOf(m);
+        List<String> out = new ArrayList<>(List.of(c.name + "." + m.name));
+        if (c.qualifiedName != null) {
+            out.add(c.qualifiedName + "." + m.name);
+        }
+        return out;
+    }
+
+    private static boolean matches(List<String> patterns, List<String> names) {
+        for (String p : patterns) {
+            java.util.regex.Pattern re = java.util.regex.Pattern.compile(
+                    java.util.Arrays.stream(p.trim().split("\\*", -1)).map(java.util.regex.Pattern::quote)
+                            .collect(java.util.stream.Collectors.joining(".*")));
+            if (names.stream().anyMatch(n -> re.matcher(n).matches())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 메서드 시작 노드에 붙는 예외 처리 요약: ⚠ catch SQLException → log · error response / finally */
@@ -633,14 +812,36 @@ public final class FlowchartGenerator {
 
     // ------------------------------------------------------------------ flow
 
-    /** 연속된 요약 대상 (한 번에 한 종류만 쌓인다): 요청 값 읽기 / 바인딩 코드 / 변수 값 변경 */
+    /** 블록 노드의 한 줄: textClass = 글자 색(req·fn, 없으면 기본), objectId = 바인딩 줄이면 그 객체 */
+    private record Line(String text, String textClass, String objectId, String bindingId) {
+        Line(String text, String textClass, String objectId) {
+            this(text, textClass, objectId, null);
+        }
+    }
+
+    /**
+     * 연속된 같은 종류의 요소를 블록 노드 1개로 합친다 (한 번에 한 종류만 쌓인다).
+     * <ul>
+     *   <li>bind — 바인딩: 요청 파라미터(글자색 req) · VO 값 설정 · 바인딩 함수(글자색 fn, 안쪽 바인딩 함수는 │ 로 중첩) ·
+     *       값 조회 · 로직 호출 없는 선언문</li>
+     *   <li>state — 상태 변화: 반환 타입이 void 인 호출(수신 객체 버전 v1, v2 …) + 변수 값 변경(V1 k/n)</li>
+     *   <li>log — 로그: 로깅 호출을 간략히 (배경색으로 구분)</li>
+     * </ul>
+     * 노드 ID = 첫 요소의 ID(호출 ID, 변수 변경이면 VAR_, 호출 없는 바인딩이면 SET_), 나머지 모델 ID 는 alias.
+     */
     private final class Pending {
         final Subgraph sg;
         final MethodInfo m;
         final String container;
-        final List<CallSiteInfo> reads = new ArrayList<>();
-        final List<Object> sets = new ArrayList<>();
-        final List<VariableChange> vars = new ArrayList<>();
+        String kind;
+        String nodeId;
+        final List<Line> lines = new ArrayList<>();
+        final List<String> members = new ArrayList<>();
+        /** 상태 변화 블록 안의 호출 (본문을 그리는 메서드면 블록 → 메서드 ==> 간선) */
+        final List<CallSiteInfo> calls = new ArrayList<>();
+        final Set<String> seenBindings = new java.util.HashSet<>();
+        /** 상태 변화 블록을 지난 뒤의 버전 (블록에 들어올 때의 버전에서 시작) */
+        Map<String, Integer> versions;
 
         Pending(Subgraph sg, MethodInfo m, String container) {
             this.sg = sg;
@@ -648,11 +849,319 @@ public final class FlowchartGenerator {
             this.container = container;
         }
 
-        List<End> flush(List<End> cur) {
-            cur = flushReads(sg, reads, cur);
-            cur = flushSets(sg, m, container, sets, cur);
-            return flushVars(sg, vars, cur);
+        /** kind 블록을 이어 쌓을 준비 — 다른 종류가 쌓여 있으면 먼저 내보낸다 */
+        List<End> start(String k, List<End> cur, String firstId) {
+            if (kind != null && !kind.equals(k)) {
+                cur = flush(cur);
+            }
+            kind = k;
+            if (nodeId == null) {
+                nodeId = firstId;
+            }
+            return cur;
         }
+
+        List<End> read(CallSiteInfo s, List<End> cur) {
+            cur = start("bind", cur, s.id);
+            for (var p : r.parametersAt(s.id)) {
+                Line l = new Line(Labels.requestLine(r, s, p), "req", null);
+                // 한 문장에 읽기가 여럿이면 문장 줄이 같다 — 한 번만
+                String code = l.text().replaceFirst("^#\\d+ ", "");
+                if (lines.stream().noneMatch(x -> "req".equals(x.textClass()) && x.text().replaceFirst("^#\\d+ ", "").equals(code))) {
+                    lines.add(l);
+                }
+            }
+            members.add(s.id);
+            return cur;
+        }
+
+        /** 바인딩 코드(setter/builder/put, 그 인자 속 호출) — 이 호출에 걸린 바인딩 줄 */
+        List<End> set(CallSiteInfo s, List<End> cur) {
+            cur = start("bind", cur, s.id);
+            boolean holder = !FlowView.hidden(r, s) && r.bindings.stream().noneMatch(b -> s.id.equals(b.callSiteId));
+            for (Binding b : r.bindings) {
+                if (b.methodId.equals(m.id) && java.util.Objects.equals(b.controlBlockId, container)
+                        && (s.id.equals(b.callSiteId) || contains(s.location, b.location)) && seenBindings.add(b.id)) {
+                    lines.add(new Line(Labels.bindingLine(r, b, true), null, b.objectId, b.id));
+                }
+            }
+            if (holder) {
+                // builder 끝 .build() 등: 문장 코드를 그 안의 바인딩 줄들 앞에 (안쪽 호출이 먼저 평가되어 줄이 먼저 쌓여 있다)
+                int at = lines.size();
+                String obj = null;
+                for (int i = 0; i < lines.size(); i++) {
+                    Line l = lines.get(i);
+                    if (l.bindingId() != null && contains(s.location, r.binding(l.bindingId()).location)) {
+                        at = i;
+                        obj = l.objectId();
+                        break;
+                    }
+                }
+                lines.add(at, new Line(callCode(s), null, obj));
+            }
+            members.add(s.id);
+            return cur;
+        }
+
+        /** 호출 없이 일어나는 바인딩 (생성자 인자가 리터럴뿐 등) */
+        List<End> orphan(Binding b, List<End> cur) {
+            cur = start("bind", cur, "SET_" + b.id);
+            if (seenBindings.add(b.id)) {
+                lines.add(new Line(Labels.bindingLine(r, b, true), null, b.objectId));
+            }
+            return cur;
+        }
+
+        List<End> function(CallSiteInfo s, List<End> cur) {
+            cur = start("bind", cur, s.id);
+            functionLines(s, "", true, new java.util.HashSet<>(), lines);
+            members.add(s.id);
+            return cur;
+        }
+
+        /** 값 조회: user = getLoginUser(request) — 본문을 분석하지 않은 source 메서드 결과를 변수에 받음 */
+        List<End> fetch(CallSiteInfo s, List<End> cur) {
+            cur = start("bind", cur, s.id);
+            lines.add(new Line(callCode(s), null, null));
+            members.add(s.id);
+            assignedBy.getOrDefault(s.id, List.of()).forEach(c -> members.add(c.id));
+            return cur;
+        }
+
+        /** 로직 호출 없는 변수 선언/대입 문장 한 줄 (이 문장의 변수 변경은 이력 표시로 흡수) */
+        List<End> statement(List<CallSiteInfo> group, List<VariableChange> changes, List<End> cur) {
+            CallSiteInfo first = group.get(0);
+            CallSiteInfo last = group.get(group.size() - 1);
+            cur = start("bind", cur, first.id);
+            StringBuilder line = new StringBuilder("#" + first.order + (group.size() > 1 ? "–" + last.order : "") + " ")
+                    .append(stripSemi(Labels.codeValue(r, first.callerMethodId, first.statementLocation, first.statement)));
+            for (VariableChange c : r.variableChanges) {
+                if (c.methodId.equals(first.callerMethodId) && contains(first.statementLocation, c.location)) {
+                    line.append(" · ").append(Labels.historyTag(r, c));
+                    changes.remove(c);
+                    members.add(c.id);
+                }
+            }
+            lines.add(new Line(line.toString(), null, null));
+            group.forEach(c -> members.add(c.id));
+            return cur;
+        }
+
+        List<End> log(CallSiteInfo s, List<End> cur) {
+            cur = start("log", cur, s.id);
+            lines.add(new Line(Labels.logLine(s), null, null));
+            members.add(s.id);
+            return cur;
+        }
+
+        /** void 호출 = 상태 변화. 같은 메서드에서 그 대상(수신 객체)이 바뀐 순번이 버전 */
+        List<End> stateCall(CallSiteInfo s, List<End> cur) {
+            cur = start("state", cur, s.id);
+            if (versions == null) {
+                versions = versionsOf(cur);
+            }
+            int v = versions.merge(Labels.stateTarget(r, s), 1, Integer::sum);
+            lines.add(new Line(Labels.stateLine(r, s, v), null, null));
+            String impl = Labels.implementationTarget(r, s);
+            if (impl != null) {
+                lines.add(new Line("  impl 후보: " + impl, null, null));
+            }
+            String req = Labels.requestTag(r, s);
+            if (req != null) {
+                lines.add(new Line("  " + req, "req", null));
+            }
+            members.add(s.id);
+            calls.add(s);
+            return cur;
+        }
+
+        List<End> change(VariableChange c, List<End> cur) {
+            cur = start("state", cur, "VAR_" + c.id);
+            lines.add(new Line(Labels.changeLine(r, c), null, null));
+            members.add(c.id);
+            return cur;
+        }
+
+        List<End> flush(List<End> cur) {
+            String k = kind;
+            String id = nodeId;
+            Map<String, Integer> after = versions;
+            kind = null;
+            nodeId = null;
+            versions = null;
+            if (k == null || lines.isEmpty()) {
+                lines.clear();
+                members.clear();
+                calls.clear();
+                return cur;
+            }
+            List<String> out = new ArrayList<>();
+            String css;
+            switch (k) {
+                case "bind" -> {
+                    List<String> objects = lines.stream().map(Line::objectId).filter(java.util.Objects::nonNull).distinct().toList();
+                    out.add("바인딩" + (objects.isEmpty() ? "" : " · " + String.join(", ",
+                            objects.stream().map(o -> r.object(o).className).distinct().toList())));
+                    String last = null;
+                    for (Line l : lines) {
+                        // 객체가 둘 이상이면 어느 객체의 줄인지 (객체가 바뀔 때마다)
+                        if (objects.size() > 1 && l.objectId() != null && !l.objectId().equals(last)) {
+                            var o = r.object(l.objectId());
+                            out.add("· " + o.className + (o.variable == null ? "" : " " + o.variable));
+                        }
+                        if (l.objectId() != null) {
+                            last = l.objectId();
+                        }
+                        out.add(l.textClass() == null ? l.text() : MermaidGraph.styled(l.textClass(), l.text()));
+                    }
+                    css = "bind";
+                }
+                case "state" -> {
+                    out.add("상태 변화");
+                    lines.forEach(l -> out.add(l.textClass() == null ? l.text() : MermaidGraph.styled(l.textClass(), l.text())));
+                    css = "state";
+                }
+                default -> {
+                    out.add("로그");
+                    lines.forEach(l -> out.add(l.text()));
+                    css = "log";
+                }
+            }
+            g.node(sg, id, out, Shape.RECT, css);
+            for (String x : members) {
+                if (!x.equals(id) && !g.has(x)) {
+                    g.alias(x, id);
+                }
+            }
+            for (CallSiteInfo s : calls) {
+                if (leadsToDetail(s)) {
+                    String label = switch (s.expansion) {
+                        case SHARED -> "shared";
+                        case CYCLE -> "cycle";
+                        default -> s.implementationMethodId != null ? "impl 후보" : null;
+                    };
+                    if (calls.size() > 1) {
+                        label = "#" + s.order + (label == null ? "" : " " + label);
+                    }
+                    g.edge(id, s.expansionTargetId(), label, EdgeStyle.CALL);
+                }
+            }
+            lines.clear();
+            members.clear();
+            calls.clear();
+            List<End> next = link(cur, id);
+            if (after != null) {
+                stateVersions.put(id, after);
+            }
+            return next;
+        }
+    }
+
+    /**
+     * 바인딩 함수 호출 → 바인딩 블록 안의 줄들 (글자색 fn). 함수 본문(바인딩·요청 읽기·안쪽 바인딩 함수·return)을
+     * 소스 순서대로 │ 들여쓰기로 중첩한다.
+     */
+    private void functionLines(CallSiteInfo s, String indent, boolean numbered, Set<String> visiting, List<Line> out) {
+        String code = numbered ? callCode(s) : callCode(s).replaceFirst("^#\\d+ ", "");
+        out.add(new Line(indent + "▸ " + code, "fn", null));
+        String fid = s.expansionTargetId();
+        String in = indent + "│ ";
+        if (!visiting.add(fid)) {
+            out.add(new Line(in + "↺ cycle", null, null));
+            return;
+        }
+        List<Object> items = new ArrayList<>();
+        r.bindings.stream().filter(b -> b.methodId.equals(fid)).forEach(items::add);
+        for (CallSiteInfo c : r.callSitesOf(fid)) {
+            if (fnCall(r, bindingFns, c) || readCall(r, c) && !FlowView.hidden(r, c)) {
+                items.add(c);
+            }
+        }
+        r.blocksOf(fid).stream().filter(b -> b.type == BlockType.RETURN).forEach(items::add);
+        items.sort((x, y) -> compareLoc(itemLocation(x), itemLocation(y)));
+        for (Object o : items) {
+            if (o instanceof Binding b) {
+                out.add(new Line(in + Labels.bindingLine(r, b, false), null, null));
+            } else if (o instanceof CallSiteInfo c && fnCall(r, bindingFns, c)) {
+                functionLines(c, in, false, visiting, out);
+            } else if (o instanceof CallSiteInfo c) {
+                r.parametersAt(c.id).forEach(p -> out.add(new Line(in + Labels.requestLine(r, c, p).replaceFirst("^#\\d+ ", ""), "req", null)));
+            } else if (o instanceof ControlBlock b) {
+                out.add(new Line(in + Labels.codeValue(r, b.methodId, b.location, Labels.blockHeader(b)), null, null));
+            }
+        }
+        visiting.remove(fid);
+    }
+
+    private static SourceLocation itemLocation(Object o) {
+        if (o instanceof Binding b) {
+            return b.location;
+        }
+        if (o instanceof CallSiteInfo c) {
+            return c.location;
+        }
+        return ((ControlBlock) o).location;
+    }
+
+    private static int compareLoc(SourceLocation a, SourceLocation b) {
+        if (a == null || b == null) {
+            return 0;
+        }
+        return a.beginLine() != b.beginLine() ? Integer.compare(a.beginLine(), b.beginLine())
+                : Integer.compare(a.beginColumn(), b.beginColumn());
+    }
+
+    /**
+     * 호출 코드 한 줄: #1 MemberVO member = checkLogin(request) · V1.
+     * 결과를 변수에 바로 받지 않는 선언/대입 문장 안의 호출(int v = c ? compute() : 0)은 문장 전체를 보인다 (코드가 빠지지 않게).
+     * 람다 본문 등 나중에 실행되는 호출은 ⟨deferred⟩.
+     */
+    private String callCode(CallSiteInfo s) {
+        String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
+        StringBuilder code = new StringBuilder("#" + s.order + " ");
+        if (var == null && s.statement != null && s.statementLocation != null) {
+            code.append(stripSemi(Labels.codeValue(r, s.callerMethodId, s.statementLocation, s.statement).trim()));
+        } else {
+            if (var != null) {
+                code.append(s.resultType == null ? "" : s.resultType + " ").append(var).append(" = ");
+            }
+            code.append(Labels.codeValue(r, s.callerMethodId, s.location, s.expression));
+        }
+        if (s.deferred) {
+            code.append("  ⟨deferred⟩");
+        }
+        for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) {
+            VariableInfo v = r.variable(c.variableId);
+            code.append(v.name.equals(var) ? "" : " → " + v.name).append(" · ").append(Labels.historyTag(r, c));
+        }
+        return code.toString();
+    }
+
+    /**
+     * 바인딩을 품은 호출 — builder 체인 끝 .build() 처럼 호출 위치 안에 같은 메서드·블록의 바인딩이 있는 호출
+     * (본문을 그리는 메서드로 가는 호출·로직 역할 호출은 제외).
+     */
+    private boolean holdsBinding(MethodInfo m, String container, CallSiteInfo s) {
+        if (leadsToDetail(s) || s.targetMethodId != null && logicRoles.contains(r.classOf(r.method(s.targetMethodId)).role)) {
+            return false;
+        }
+        return r.bindings.stream().anyMatch(b -> b.methodId.equals(m.id) && java.util.Objects.equals(b.controlBlockId, container)
+                && contains(s.location, b.location));
+    }
+
+    /** 바인딩의 할당 호출 그 자체 (setter·builder 메서드·put) */
+    private boolean bindingCall(CallSiteInfo s) {
+        return r.bindings.stream().anyMatch(b -> s.id.equals(b.callSiteId));
+    }
+
+    /** 바인딩 블록 안에 중첩해서 보일 바인딩 함수 호출 */
+    private boolean bindingFnCall(CallSiteInfo s) {
+        return fnCall(r, bindingFns, s);
+    }
+
+    /** 상태 변화: 반환 타입이 void 인 호출 (인자 안 호출은 제외 — void 는 값이 될 수 없다) */
+    private boolean stateChange(CallSiteInfo s) {
+        return s.targetMethodId != null && !s.inArgument && "void".equals(r.method(s.targetMethodId).returnType);
     }
 
     private List<End> emit(Subgraph sg, MethodInfo m, ControlBlock parent, List<End> in) {
@@ -661,71 +1170,75 @@ public final class FlowchartGenerator {
         List<End> cur = in;
         Pending p = new Pending(sg, m, container);
         List<Object> elems = Labels.elements(r, m.id, container, false);
-        // 호출 없이 일어나는 바인딩(생성자 인자가 리터럴뿐 등)은 위치 순으로 VO 값 설정에 끼운다
+        // 호출 없이 일어나는 바인딩(생성자 인자가 리터럴뿐 등)은 위치 순으로 바인딩 블록에 끼운다
         List<Binding> orphans = new ArrayList<>(r.bindings.stream().filter(b -> b.methodId.equals(m.id)
                 && java.util.Objects.equals(b.controlBlockId, container) && b.callSiteId == null
                 && elems.stream().noneMatch(o -> o instanceof CallSiteInfo s && FlowView.hidden(r, s)
                 && contains(s.location, b.location))).toList());
         // 변수 값 변경: 식 안의 호출이 끝난 뒤(평가 순서). x = call() 은 호출 노드에 "→ x" 로 표시하므로 제외
-        // 선언(1/n)도 이력의 시작이므로 그린다 — 요청 읽기 노드·호출 노드에 이미 표시된 것은 제외
         List<VariableChange> changes = new ArrayList<>(r.variableChanges.stream()
                 .filter(c -> c.methodId.equals(m.id) && java.util.Objects.equals(c.controlBlockId, container))
                 .filter(VariableChange::isChange) // 선언(타입 있는 초기화)은 값 변경이 아니다
                 .filter(c -> assignedBy.values().stream().noneMatch(l -> l.contains(c)))
                 .filter(c -> !supCalls.contains(c.id)).toList());
-        java.util.Set<String> done = new java.util.HashSet<>(); // 문장 노드로 이미 그린 호출
+        java.util.Set<String> done = new java.util.HashSet<>(); // 문장 줄로 이미 그린 호출
         for (Object o : elems) {
             if (o instanceof CallSiteInfo cs && (done.contains(cs.id) || inLeaf.contains(cs.id))) {
                 continue;
             }
             SourceLocation at = o instanceof CallSiteInfo s ? s.location : ((ControlBlock) o).location;
             while (!orphans.isEmpty() && before(orphans.get(0).location, at)) {
-                cur = flushExcept(p, "set", cur);
-                p.sets.add(orphans.remove(0));
+                cur = p.orphan(orphans.remove(0), cur);
             }
             while (!changes.isEmpty() && endsBefore(changes.get(0).location, at)) {
-                cur = flushExcept(p, "var", cur);
-                p.vars.add(changes.remove(0));
+                cur = p.change(changes.remove(0), cur);
             }
             if (o instanceof CallSiteInfo s) {
-                if (header.contains(s.position)) {
+                if (header.contains(s.position) || excludedCall(r, rules.excludes(), s)) {
+                    continue;
+                }
+                if (bindingCall(s)) { // 바인딩 호출 자체(setter 등, 본문을 분석했어도) = 바인딩 줄
+                    cur = p.set(s, cur);
+                    continue;
+                }
+                if (bindingFnCall(s)) { // 바인딩 함수 = 바인딩 블록 안에 중첩
+                    cur = p.function(s, cur);
                     continue;
                 }
                 List<CallSiteInfo> stmt = statementGroup(s, elems);
                 if (stmt != null) { // 로직 호출 없는 변수 선언/대입 = 문장 통째로 바인딩 한 줄
-                    cur = p.flush(cur);
-                    cur = statementNode(sg, stmt, changes, cur);
+                    cur = p.statement(stmt, changes, cur);
                     stmt.forEach(x -> done.add(x.id));
                     continue;
                 }
                 if (argumentOnly(r, skipSet, s)) { // 인자 안의 호출은 그리지 않음 (바깥 호출·문장이 대표)
                     continue;
                 }
-                if (FlowView.hidden(r, s)) { // 바인딩 코드(setter/builder/put, 그 인자 속 호출, 바인딩 메서드 호출)
-                    cur = flushExcept(p, "set", cur);
-                    p.sets.add(s);
-                    continue;
+                if (FlowView.hidden(r, s) || holdsBinding(m, container, s)) { // 바인딩 코드(setter/builder/put·build(), 그 인자 속 호출)
+                    cur = p.set(s, cur);
+                } else if (requestRead(s)) {
+                    cur = p.read(s, cur);
+                } else if (LogCalls.isLog(s) && !leadsToDetail(s)) {
+                    cur = p.log(s, cur);
+                } else if (fetch(s) && s.resultUsage != null && s.resultUsage.startsWith("assigned:")) {
+                    cur = p.fetch(s, cur);
+                } else if (stateChange(s) && !(s.targetMethodId != null && collapsed.contains(s.expansionTargetId()))) {
+                    cur = p.stateCall(s, cur);
+                } else {
+                    cur = p.flush(cur);
+                    callNode(sg, s);
+                    cur = link(cur, s.id);
                 }
-                if (requestRead(s)) {
-                    cur = flushExcept(p, "read", cur);
-                    p.reads.add(s);
-                    continue;
-                }
-                cur = p.flush(cur);
-                callNode(sg, s);
-                cur = link(cur, s.id);
             } else {
                 cur = p.flush(cur);
                 cur = block(sg, m, (ControlBlock) o, cur);
             }
         }
-        if (!orphans.isEmpty()) {
-            cur = flushExcept(p, "set", cur);
-            p.sets.addAll(orphans);
+        for (Binding b : orphans) {
+            cur = p.orphan(b, cur);
         }
-        if (!changes.isEmpty()) {
-            cur = flushExcept(p, "var", cur);
-            p.vars.addAll(changes);
+        for (VariableChange c : changes) {
+            cur = p.change(c, cur);
         }
         return p.flush(cur);
     }
@@ -795,29 +1308,15 @@ public final class FlowchartGenerator {
         return link(cur, first.id);
     }
 
-    /** kind 가 아닌 쌓인 요약을 먼저 내보낸다 */
-    private List<End> flushExcept(Pending p, String kind, List<End> cur) {
-        if (!kind.equals("read")) {
-            cur = flushReads(p.sg, p.reads, cur);
-        }
-        if (!kind.equals("set")) {
-            cur = flushSets(p.sg, p.m, p.container, p.sets, cur);
-        }
-        if (!kind.equals("var")) {
-            cur = flushVars(p.sg, p.vars, cur);
-        }
-        return cur;
-    }
-
     /** 연속된 변수 값 변경 → "값 변경" 노드 1개 (ID = VAR_첫변경ID, 나머지 변경 ID 는 alias) */
     private List<End> flushVars(Subgraph sg, List<VariableChange> vars, List<End> cur) {
         if (vars.isEmpty()) {
             return cur;
         }
-        List<String> lines = new ArrayList<>(List.of("값 변경"));
+        List<String> lines = new ArrayList<>(List.of("상태 변화"));
         vars.forEach(c -> lines.add(Labels.changeLine(r, c)));
         String id = "VAR_" + vars.get(0).id;
-        g.node(sg, id, lines, Shape.RECT, "var");
+        g.node(sg, id, lines, Shape.RECT, "state");
         vars.forEach(c -> g.alias(c.id, id));
         vars.clear();
         return link(cur, id);
@@ -828,55 +1327,6 @@ public final class FlowchartGenerator {
         return a != null && b != null && (a.endLine() < b.beginLine()
                 || a.endLine() == b.beginLine() && a.endColumn() < b.beginColumn());
     }
-
-    /**
-     * 연속된 바인딩 코드 → "VO 값 설정" 노드 1개 (ID = SET_첫요소ID). 객체별로 "필드 ← 출처" 를 나열한다.
-     * 바인딩 메서드 호출(VO 를 채워 반환하는 메서드)은 그 메서드의 바인딩을 포함한다. 상세는 mapping.md.
-     */
-    private List<End> flushSets(Subgraph sg, MethodInfo m, String container, List<Object> sets, List<End> cur) {
-        if (sets.isEmpty()) {
-            return cur;
-        }
-        List<Binding> bs = new ArrayList<>();
-        for (Object o : sets) {
-            if (o instanceof Binding b) {
-                bs.add(b);
-                continue;
-            }
-            CallSiteInfo s = (CallSiteInfo) o;
-            for (Binding b : r.bindings) {
-                boolean here = b.methodId.equals(m.id) && java.util.Objects.equals(b.controlBlockId, container)
-                        && (s.id.equals(b.callSiteId) || contains(s.location, b.location));
-                boolean viaMethod = s.targetMethodId != null && FlowView.bindingMethods(r).contains(s.expansionTargetId())
-                        && b.methodId.equals(s.expansionTargetId());
-                if ((here || viaMethod) && !bs.contains(b)) {
-                    bs.add(b);
-                }
-            }
-        }
-        String first = sets.get(0) instanceof CallSiteInfo s ? s.id : ((Binding) sets.get(0)).id;
-        sets.clear();
-        if (bs.isEmpty()) {
-            return cur;
-        }
-        Map<String, List<Binding>> byObject = new LinkedHashMap<>();
-        bs.forEach(b -> byObject.computeIfAbsent(b.objectId, k -> new ArrayList<>()).add(b));
-        List<String> lines = new ArrayList<>(List.of("VO 값 설정 · " + String.join(", ", byObject.keySet().stream()
-                .map(k -> r.object(k).className).distinct().toList())));
-        for (var e : byObject.entrySet()) {
-            String via = e.getValue().stream().map(b -> b.methodId).filter(x -> !x.equals(m.id)).findFirst().orElse(null);
-            if (byObject.size() > 1 || via != null) { // 객체가 둘 이상이면 어느 객체 줄인지, 바인딩 메서드 안이면 그 메서드
-                lines.add("· " + r.object(e.getKey()).className + (via == null ? "" : " — " + r.method(via).name + "() 안"));
-            }
-            for (Binding b : e.getValue()) {
-                lines.add(Labels.bindingLine(r, b, b.methodId.equals(m.id)));
-            }
-        }
-        String id = "SET_" + first;
-        g.node(sg, id, lines, Shape.RECT, "bind");
-        return link(cur, id);
-    }
-
 
     private static boolean before(SourceLocation a, SourceLocation b) {
         return a != null && b != null && (a.beginLine() < b.beginLine()
@@ -952,14 +1402,30 @@ public final class FlowchartGenerator {
                 return out;
             }
             case FOR, FOREACH, WHILE, DO_WHILE -> {
-                decision(sg, b, in);
-                for (End e : emit(sg, m, b, List.of(new End(b.id, "loop", EdgeStyle.FLOW)))) {
-                    g.edge(e.node(), b.id, e.label() == null ? "next" : e.label(), e.style());
+                // 반복문 = Loop 영역(subgraph) 하나: 조건 노드 + 본문, 본문 끝에서 조건으로 되돌아간다
+                Subgraph ls = g.subgraph(sg, "sg_" + b.id, "Loop");
+                if (b.type == BlockType.DO_WHILE) {
+                    // do-while: 본문을 먼저 지나고 조건 → loop 이면 본문 첫 노드로, done 이면 밖으로
+                    Set<String> before = new java.util.LinkedHashSet<>(g.nodeIds());
+                    List<End> body = emit(ls, m, b, in);
+                    String first = g.nodeIds().stream().filter(id -> !before.contains(id)).findFirst().orElse(null);
+                    decision(ls, b, body);
+                    // 본문이 비어 있으면 조건(조건식 안 호출 노드가 있으면 그 첫 노드)부터 다시
+                    g.edge(b.id, first == null ? loopReentry(b) : first, "loop", EdgeStyle.FLOW);
+                    return List.of(new End(b.id, "done", EdgeStyle.FLOW));
                 }
+                decision(ls, b, in);
+                List<End> back = emit(ls, m, b, List.of(new End(b.id, "loop", EdgeStyle.FLOW)));
+                String reentry = loopReentry(b);
+                for (End e : back) {
+                    g.edge(e.node(), reentry, e.label() == null ? "next" : e.label(), e.style());
+                }
+                // 본문을 한 번 이상 돌았을 수 있으므로 done 으로 나가는 버전 = 진입 버전과 본문 끝 버전 중 큰 값
+                versionsOf(back).forEach((k, v) -> stateVersions.computeIfAbsent(b.id, x -> new HashMap<>()).merge(k, v, Math::max));
                 return List.of(new End(b.id, "done", EdgeStyle.FLOW));
             }
             case TRY -> {
-                return tryBlock(sg, m, b, in);
+                return phases == null ? tryFull(sg, m, b, in) : tryBlock(sg, m, b, in);
             }
             case CATCH, FINALLY -> {
                 return in;
@@ -1015,6 +1481,7 @@ public final class FlowchartGenerator {
         for (End e : from) {
             g.edge(e.node(), to, e.label(), e.style());
         }
+        versionsOf(from).forEach((k, v) -> stateVersions.computeIfAbsent(to, x -> new HashMap<>()).merge(k, v, Math::max));
         return List.of(new End(to));
     }
 
@@ -1086,6 +1553,54 @@ public final class FlowchartGenerator {
         return out;
     }
 
+    /**
+     * 반복할 때 다시 들어가는 노드: 조건식을 매번 평가하므로 조건식 안 호출이 노드로 그려졌으면(본문을 그리는 메서드) 그 첫 노드,
+     * 아니면 조건 노드. for 의 초기화식·for-each 의 대상 식은 한 번만 평가되므로 제외.
+     */
+    private String loopReentry(ControlBlock b) {
+        for (String cid : b.callIds) {
+            CallSiteInfo s = r.callSite(cid);
+            if ("CONDITION".equals(s.position) && g.nodeIds().contains(s.id)) {
+                return s.id;
+            }
+        }
+        return b.id;
+    }
+
+    /**
+     * 일반 흐름도의 try: 본문은 try 블록(subgraph) 안 정상 흐름, catch 마다 노드 + 그 본문 전부, finally 노드 + 본문.
+     * 블록 → catch 는 예외 간선(타입), 잡히는 throw → catch, 빠져나가는 return/throw → finally 도 점선으로 잇는다.
+     */
+    private List<End> tryFull(Subgraph sg, MethodInfo m, ControlBlock t, List<End> in) {
+        Subgraph ts = g.subgraph(sg, "sg_" + t.id, Labels.blockHeader(t));
+        int before = g.nodeIds().size();
+        List<End> body = emit(ts, m, t, in);
+        if (g.nodeIds().size() == before) {
+            String id = "BODY_" + t.id;
+            g.node(ts, id, List.of(t.bodyText == null || t.bodyText.isBlank() ? "(빈 try)" : t.bodyText), Shape.RECT, "codeline");
+            body = link(in, id);
+        }
+        List<End> out = new ArrayList<>(body);
+        for (String cid : t.catchBlockIds) {
+            ControlBlock c = r.block(cid);
+            g.node(sg, c.id, List.of(Labels.blockHeader(c)), Shape.SUBROUTINE, "exc");
+            g.edge(ts.id(), c.id, String.join(" | ", c.exceptionTypes), EdgeStyle.EXCEPTION);
+            stateVersions.put(c.id, versionsOf(in));
+            out.addAll(emit(sg, m, c, List.of(new End(c.id))));
+        }
+        if (t.finallyBlockId != null) {
+            ControlBlock f = r.block(t.finallyBlockId);
+            g.node(sg, f.id, List.of("finally"), Shape.RECT, "fin");
+            List<End> into = link(out, f.id);
+            // return/throw 로 빠져나가며 지나는 경로의 상태 버전도 합친다 (그 경로는 점선 finally 간선)
+            r.blocks.stream().filter(b -> b.executesFinally.contains(f.id))
+                    .forEach(b -> stateVersions.getOrDefault(b.id, Map.of()).forEach((k, v) ->
+                            stateVersions.computeIfAbsent(f.id, x -> new HashMap<>()).merge(k, v, Math::max)));
+            return emit(sg, m, f, into);
+        }
+        return out;
+    }
+
     private final Map<String, Subgraph> methodParents = new HashMap<>();
 
     private void leaf(Subgraph sg, MethodInfo m, ControlBlock b) {
@@ -1095,6 +1610,13 @@ public final class FlowchartGenerator {
         }
         g.node(sg, b.id, lines, b.type == BlockType.RETURN ? Shape.STADIUM : Shape.ASYM,
                 b.type == BlockType.RETURN ? "ret" : "throw");
+        if (phases == null) {
+            // 일반 흐름도: 잡히는 throw → 그 catch, 빠져나가며 지나는 finally 를 점선으로 (catch/finally 를 모두 그리므로)
+            if (b.type == BlockType.THROW && b.caughtBy != null) {
+                g.edge(b.id, b.caughtBy, "catch", EdgeStyle.EXCEPTION);
+            }
+            b.executesFinally.forEach(f -> g.edge(b.id, f, "finally", EdgeStyle.EXCEPTION));
+        }
         if (b.type == BlockType.THROW && b.caughtBy == null) {
             if (Boolean.TRUE.equals(b.propagatesToCaller)) {
                 String exit = m.id + "_uncaught";
@@ -1114,17 +1636,8 @@ public final class FlowchartGenerator {
         List<String> lines = new ArrayList<>();
         boolean folded = s.targetMethodId != null && collapsed.contains(s.expansionTargetId());
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
-        StringBuilder code = new StringBuilder("#" + s.order + " ");
-        if (var != null) {
-            // 타입은 선언(T x = call())일 때만 — 타입 없는 x = call() 은 자바 코드 그대로 값 변경
-            code.append(s.resultType == null ? "" : s.resultType + " ").append(var).append(" = ");
-        }
-        code.append(s.expression);
-        for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) { // 추적 변수: 선언이면 V1, 변경이면 V1 k/n
-            VariableInfo v = r.variable(c.variableId);
-            code.append(v.name.equals(var) ? "" : " → " + v.name).append(" · ").append(Labels.historyTag(r, c));
-        }
-        lines.add(code.toString());
+        String code = callCode(s);
+        lines.add(code);
         if (var != null && fetch(s)) {
             // 값 조회는 바인딩으로 끝: 내부로 들어가지 않고 코드 한 줄
             g.node(sg, s.id, lines, Shape.RECT, "bind");

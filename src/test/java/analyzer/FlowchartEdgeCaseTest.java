@@ -1,0 +1,139 @@
+package analyzer;
+
+import analyzer.mermaid.FlowchartGenerator;
+import analyzer.mermaid.MermaidGraph;
+import analyzer.model.AnalysisResult;
+import analyzer.model.BlockType;
+import analyzer.model.CallSiteInfo;
+import analyzer.model.ControlBlock;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/** 흐름도 규칙 경계 사례 회귀 테스트 — fixture EdgeAction (FlowchartSweepTest 에서 발견한 문제들) */
+class FlowchartEdgeCaseTest {
+
+    static CallSiteInfo call(AnalysisResult r, String expression) {
+        return r.callSites.stream().filter(c -> c.expression.equals(expression)).findFirst()
+                .orElseThrow(() -> new AssertionError("call not found: " + expression));
+    }
+
+    static ControlBlock block(AnalysisResult r, BlockType t) {
+        return r.blocks.stream().filter(b -> b.type == t).findFirst().orElseThrow();
+    }
+
+    @Test
+    void stateBlockMixingVariableChangeAndCallValidates() {
+        // n = n - 1; touch(); — 변수 변경 + ==> 호출이 한 블록 (기존: checkMapping 에서 ClassCastException)
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "nestedLoops");
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("상태 변화<br/>n = n - 1 · V1 1/1<br/>#35;4 touch() · this v3"), mmd);
+    }
+
+    @Test
+    void versionAfterLoopCountsTheLoopBody() {
+        // 반복문 뒤 touch() 는 본문(최대 v3)을 지난 뒤이므로 v4 (기존: 진입 버전만 보고 v1)
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "nestedLoops");
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("#35;1 touch() · this v1"), mmd); // 첫 반복 기준
+        assertTrue(mmd.contains("#35;5 touch() · this v4"), mmd);
+    }
+
+    @Test
+    void analyzedSettersStayBindingLines() {
+        // max-depth 가 깊어 setter 본문까지 분석해도 setter 는 바인딩 줄 (기존: ▸ vo.setKeyword(…) 바인딩 함수로 오인, 값 줄 누락)
+        AnalysisResult r = Fixtures.analyze("CaseAction", "voBinding", c -> c.analysis.maxDepth = 4);
+        CallSiteInfo setter = call(r, "vo.setKeyword(request.getParameter(\"keyword\"))");
+        assertEquals(analyzer.model.Expansion.EXPANDED, setter.expansion);
+        assertFalse(FlowchartGenerator.bindingFunctions(r).contains(setter.targetMethodId));
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("#35;2 keyword = request.keyword"), mmd);
+        assertFalse(mmd.contains("▸ #35;2 vo.setKeyword"), mmd);
+    }
+
+    @Test
+    void builderStatementIsShownWithItsBindings() {
+        // SearchVO built = SearchVO.builder()…build() — 바인딩 줄만 남고 문장이 사라지던 문제
+        AnalysisResult r = Fixtures.analyze("CaseAction", "bindingKinds");
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("· SearchVO built<br/>#35;10 SearchVO built = SearchVO.builder().keyword(shopId).page(1).build()<br/>"
+                + "#35;8 keyword = shopId<br/>#35;9 page = 1"), mmd);
+    }
+
+    @Test
+    void bindingFunctionChainsAndRecursionNest() {
+        // outer → middle → inner (값 함수 사슬), 같은 함수 두 번, 재귀 selfRef — 모두 바인딩 블록 안 중첩 (기존: 각각 상자)
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "bindingChain");
+        var fns = FlowchartGenerator.bindingFunctions(r);
+        for (String name : List.of("outer", "middle", "inner", "selfRef")) {
+            assertTrue(r.methods().stream().anyMatch(m -> m.name.equals(name) && fns.contains(m.id)), name);
+        }
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        String flat = FlowchartSweepTest.normalize(new FlowchartGenerator().render(r, "TD"));
+        assertTrue(flat.contains(FlowchartSweepTest.strip("▸ #2 SearchVO a = outer(request) │ keyword = middle(request.q) "
+                + "│ ▸ middle(request.q) │ │ return inner(v) │ │ ▸ inner(v) │ │ │ return v == null ? \"\" : v.trim() "
+                + "│ sort = request.sort │ return vo ▸ #3 SearchVO b = outer(request)")), flat);
+        assertTrue(flat.contains(FlowchartSweepTest.strip("│ ▸ selfRef(request, depth - 1) │ │ ↺ cycle")), flat);
+        r.methods().stream().filter(m -> fns.contains(m.id)).forEach(m -> assertFalse(g.has("sg_" + m.id), m.name));
+    }
+
+    @Test
+    void loopsReenterThroughConditionCalls() {
+        // while (check()) { touch(); } — 반복할 때 check() 를 다시 부른다 (기존: 조건 노드로 바로 돌아가 check() 를 건너뜀)
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "whileWithCall");
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        ControlBlock w = block(r, BlockType.WHILE);
+        CallSiteInfo check = call(r, "check()");
+        CallSiteInfo touch = call(r, "touch()");
+        assertTrue(mmd.contains(check.id + " --> " + w.id), mmd);
+        assertTrue(mmd.contains(w.id + " -->|\"loop\"| " + touch.id), mmd);
+        assertTrue(mmd.contains(touch.id + " -->|\"next\"| " + check.id), mmd);
+        // do {} while (check()) — 빈 본문: loop 는 check() 로, check() 를 건너뛰는 간선 없음
+        AnalysisResult e = Fixtures.analyze("EdgeAction", "emptyLoops");
+        String m2 = new FlowchartGenerator().render(e, "TD");
+        ControlBlock d = block(e, BlockType.DO_WHILE);
+        CallSiteInfo cond = e.callSites.stream().filter(c -> d.id.equals(c.controlBlockId)).findFirst().orElseThrow();
+        assertTrue(m2.contains(d.id + " -->|\"loop\"| " + cond.id), m2);
+        ControlBlock wh = block(e, BlockType.WHILE);
+        assertFalse(m2.contains(wh.id + " -->|\"done\"| " + d.id), m2);
+    }
+
+    @Test
+    void stateTargetsAreVersionedIndependently() {
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "stateTargets");
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        for (String s : List.of("touch() · this v1", "cache.clear() · cache v1", "Registry.register(key) · Registry v1",
+                "cache.clear() · cache v2", "this.touch() · this v2", "getCache().put(key, key) · getCache() v1")) {
+            assertTrue(mmd.contains(s), s + "\n" + mmd);
+        }
+    }
+
+    @Test
+    void logVariantsMergeAndCatchLogsAreDrawn() {
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "logVariants");
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        CallSiteInfo info = call(r, "LOG.info(\"id=\" + request.getParameter(\"id\"))");
+        for (String e : List.of("LOG.error(\"fail\", new RuntimeException())", "System.err.println(\"err\")")) {
+            assertEquals(info.id, g.nodeOf(call(r, e).id), e);
+        }
+        // catch 안: printStackTrace + LOG.warn 한 블록
+        assertEquals(g.nodeOf(call(r, "e.printStackTrace()").id), g.nodeOf(call(r, "LOG.warn(\"caught\", e)").id));
+        // 조건식의 isDebugEnabled 는 로그 호출이 아니다 (라이브러리 호출이라 모델 밖) — 조건 노드 텍스트로만 보인다
+        assertTrue(r.callSites.stream().noneMatch(c -> c.methodName.equals("isDebugEnabled")));
+        assertTrue(new FlowchartGenerator().render(r, "TD").contains("{\"if (LOG.isDebugEnabled())\"}"));
+    }
+
+    @Test
+    void knownLimitContinueAndBreakAreNotModeled() {
+        // 모델에 continue/break 가 없어 흐름도는 다음 문장으로 잇는다 — 고치면 이 테스트를 바꿀 것 (현재 한계를 고정)
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "loopExits");
+        assertTrue(r.blocks.stream().noneMatch(b -> b.type.name().equals("CONTINUE") || b.type.name().equals("BREAK")));
+    }
+}

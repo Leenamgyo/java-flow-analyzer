@@ -200,8 +200,11 @@ public final class FlowAnalyzer {
                     paramsByCall.put(call, read);
                     readsRequest = !read.isEmpty();
                 }
-                // Request 를 읽는 호출(getParameter 등)은 요청 스펙의 근거이므로 외부 라이브러리 제외 대상이어도 남긴다
-                if (!cfg.analysis.includeExternalLibraryCalls && t.origin() == Origin.LIBRARY && !readsRequest) {
+                // Request 를 읽는 호출(getParameter 등)은 요청 스펙의 근거, 로깅 호출은 흐름도 로그 블록의 근거이므로
+                // 외부 라이브러리 제외 대상이어도 남긴다
+                boolean logging = analyzer.model.LogCalls.isLog(call.getNameAsString(),
+                        call.getScope().map(Object::toString).orElse(null));
+                if (!cfg.analysis.includeExternalLibraryCalls && t.origin() == Origin.LIBRARY && !readsRequest && !logging) {
                     result.excludedExternalCalls++;
                     return null;
                 }

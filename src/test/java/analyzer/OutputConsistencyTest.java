@@ -68,9 +68,10 @@ class OutputConsistencyTest {
                 continue;
             }
             assertTrue(tree.contains("(" + id + ")"), "tree " + id);
-            // catch/finally 안 호출은 흐름도에서 생략 (메서드 시작 노드의 ⚠ 요약으로 대체)
-            // 연속된 요청 값 읽기는 첫 호출 ID 의 getParam 요약 노드 1개로 합쳐진다 (nodeOf)
-            assertEquals(FlowchartGenerator.drawsCall(r, r.callSite(id)), mmd.contains("    " + graph.nodeOf(id) + "[\""), "Mermaid node " + id);
+            // catch/finally 안 호출도 그린다 (빠진 코드 없음). 블록(바인딩·상태 변화·로그)에 합쳐진 호출은 그 블록 노드,
+            // 조건식 안 호출은 조건 노드(◇)에 (nodeOf)
+            assertEquals(FlowchartGenerator.drawsCall(r, r.callSite(id)),
+                    java.util.regex.Pattern.compile("\n\\s+" + graph.nodeOf(id) + "[\\[{(>]").matcher(mmd).find(), "Mermaid node " + id);
         }
         for (MethodInfo m : r.methods()) {
             if (m.analyzed && !FlowchartGenerator.skippedMethods(r).contains(m.id)) {
@@ -90,9 +91,16 @@ class OutputConsistencyTest {
         assertEquals(r.callSites.stream().filter(s -> FlowchartGenerator.drawsCall(r, s) && (s.expansion == Expansion.EXPANDED
                 || s.expansion == Expansion.SHARED || s.expansion == Expansion.CYCLE)
                 && !skipped.contains(s.expansionTargetId())).count(), callEdges);
-        // 서브그래프는 메서드당 1개 — 안에 중첩되는 건 try 블록뿐
+        // 서브그래프는 메서드당 1개 — 안에 중첩되는 건 try 블록과 Loop 영역뿐
         assertEquals(0, mmd.lines().filter(l -> l.trim().startsWith("subgraph") && l.startsWith("        ")
-                && !l.trim().startsWith("subgraph sg_T")).count());
+                && !l.trim().matches("subgraph sg_(T|FOR|FOREACH|WHILE|DO)\\d+\\[.*")).count());
+        // catch/finally 본문과 그 안에서만 호출되는 메서드도 그린다
+        r.blocks.stream().filter(b -> b.type == analyzer.model.BlockType.CATCH || b.type == analyzer.model.BlockType.FINALLY)
+                .forEach(b -> assertTrue(g.has(b.id), b.id));
+        assertTrue(g.has(Fixtures.method(r, "ScpAppListAction", "handleError(Exception)").id));
+        assertTrue(g.has(Fixtures.method(r, "ScpAppListAction", "cleanup()").id));
+        // 반복문은 Loop 영역
+        assertTrue(mmd.contains("subgraph sg_WHILE1[\"Loop\"]"), mmd);
     }
 
     @ParameterizedTest
@@ -183,10 +191,13 @@ class OutputConsistencyTest {
         // 빈 try 상자 대신 본문 코드 노드, 흐름이 그 노드를 지난다
         assertTrue(mmd.contains("BODY_" + t.id + "[\"Long.parseLong(versionCode);\"]"), mmd);
         assertTrue(g.edges().stream().anyMatch(e -> e.to().equals("BODY_" + t.id)), mmd);
-        // return errorView("1002") — 호출 노드 없이 return 노드 하나
+        // return errorView("1002") — errorView() 본문을 그리므로 호출 노드 ==> 메서드, 그 뒤 return 노드
         CallSiteInfo ev = r.callSites.stream().filter(c -> c.expression.equals("errorView(\"1002\")")).findFirst().orElseThrow();
-        assertFalse(mmd.contains(ev.id + "[\""), mmd);
-        assertTrue(g.nodeOf(ev.id).startsWith("RET"), g.nodeOf(ev.id));
+        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(ev.id) && e.style() == MermaidGraph.EdgeStyle.CALL), mmd);
+        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(ev.id) && e.to().startsWith("RET")), mmd);
+        // catch 본문(return errorView("1001"))도 그린다
+        ControlBlock c = r.blocks.stream().filter(b -> b.type == analyzer.model.BlockType.CATCH).findFirst().orElseThrow();
+        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(c.id)), mmd);
     }
 
     @Test
@@ -262,7 +273,8 @@ class OutputConsistencyTest {
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         for (var b : r.bindings) {
             if (b.callSiteId != null) {
-                assertFalse(g.has(b.callSiteId), "setter 는 개별 노드가 아님: " + b.callSiteId);
+                // setter 는 개별 노드가 아니라 바인딩 블록 안의 줄
+                assertTrue(!g.has(b.callSiteId) || mmdLabel(g, b.callSiteId).startsWith("바인딩"), "setter: " + b.callSiteId);
                 assertFalse(tree.contains("(" + b.callSiteId + ")"));
             }
         }
@@ -294,6 +306,10 @@ class OutputConsistencyTest {
         assertTrue(mapping.contains("그 외 → request.shopId"), mapping);
         assertTrue(mapping.contains("는 이후 무조건 할당"), mapping); // 생성자 할당은 setter 로 덮어써짐
         assertEquals(List.of(), AnalysisSchema.validate(yamlRoundTrip(r)));
+    }
+
+    private static String mmdLabel(MermaidGraph g, String id) {
+        return g.labelOf(g.nodeOf(id));
     }
 
     @SuppressWarnings("unchecked")

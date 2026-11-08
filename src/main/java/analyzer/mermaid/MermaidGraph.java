@@ -16,7 +16,7 @@ public final class MermaidGraph {
      * 렌더링 설정 줄. layout "dagre" = Mermaid 기본, "elk" = 직각 간선 레이아웃(뷰어가 ELK 를 지원해야 함).
      */
     /** 코드 줄(#n …)이 들어가는 노드 클래스 — 글자를 가운데가 아니라 왼쪽에 맞춘다 */
-    public static final List<String> LEFT_ALIGNED = List.of("codeline", "req", "bind", "var", "depth", "external", "unresolved", "cycle", "fin", "exc", "check", "post");
+    public static final List<String> LEFT_ALIGNED = List.of("codeline", "req", "bind", "var", "state", "log", "depth", "external", "unresolved", "cycle", "fin", "exc", "check", "post");
 
     private static final String LEFT_ALIGN_CSS = String.join(", ", LEFT_ALIGNED.stream()
             .map(c -> "." + c + " .nodeLabel, ." + c + " .nodeLabel p").toList()) + " { text-align: left !important; }";
@@ -45,6 +45,40 @@ public final class MermaidGraph {
     public record Node(String id, List<String> lines, Shape shape, String cssClass) {
     }
 
+    /**
+     * 글자 색으로 구분하는 줄 (한 노드 안에서 종류 구분): "req" = 요청 파라미터, "fn" = 바인딩 함수.
+     * 색은 rgb() 로 쓴다 — "#rrggbb;" 는 Mermaid 엔티티(#…;)로 해석된다.
+     */
+    public static final Map<String, String> TEXT_COLORS = Map.of(
+            "req", "rgb(15,118,110)",
+            "fn", "rgb(124,58,237)");
+
+    private static final char STYLE_START = '\u0001';
+    private static final char STYLE_END = '\u0002';
+
+    /** 글자 색을 입힌 라벨 줄 (TEXT_COLORS 의 키) */
+    public static String styled(String textClass, String text) {
+        if (!TEXT_COLORS.containsKey(textClass)) {
+            throw new IllegalArgumentException("알 수 없는 글자 색: " + textClass);
+        }
+        return STYLE_START + textClass + STYLE_END + text;
+    }
+
+    /** 색 표시를 뗀 줄 */
+    public static String plain(String line) {
+        if (line != null && !line.isEmpty() && line.charAt(0) == STYLE_START) {
+            return line.substring(line.indexOf(STYLE_END) + 1);
+        }
+        return line;
+    }
+
+    private static String textClass(String line) {
+        if (line != null && !line.isEmpty() && line.charAt(0) == STYLE_START) {
+            return line.substring(1, line.indexOf(STYLE_END));
+        }
+        return null;
+    }
+
     public record Edge(String from, String to, String label, EdgeStyle style) {
     }
 
@@ -69,6 +103,24 @@ public final class MermaidGraph {
     private final Map<String, String> aliases = new LinkedHashMap<>();
     private final List<Edge> edges = new ArrayList<>();
     private final List<String> errors = new ArrayList<>();
+    /** 렌더링 시 flowchart 줄 바로 뒤에 넣는 %% 주석 */
+    private final List<String> comments = new ArrayList<>();
+
+    public MermaidGraph comment(String text) {
+        comments.add(text.replace('\n', ' '));
+        return this;
+    }
+
+    /** 노드에 합쳐진 모델 ID 들 (노드 ID 자신 포함) */
+    public List<String> modelIdsOf(String nodeId) {
+        List<String> out = new ArrayList<>(List.of(nodeId));
+        aliases.forEach((k, v) -> {
+            if (v.equals(nodeId)) {
+                out.add(k);
+            }
+        });
+        return out;
+    }
 
     public Subgraph root() {
         return root;
@@ -167,6 +219,7 @@ public final class MermaidGraph {
     public String render(String direction, String layout, Map<String, String> classDefs) {
         // 여러 줄 라벨(요청 파라미터·VO 값 설정)이 잘리지 않도록 노드 여백·줄바꿈 폭을 넉넉히
         StringBuilder sb = new StringBuilder(init(layout)).append('\n').append("flowchart ").append(direction).append('\n');
+        comments.forEach(c -> sb.append("    %% ").append(c).append('\n'));
         for (Object o : root.items) {
             renderItem(sb, o, "    ");
         }
@@ -197,8 +250,15 @@ public final class MermaidGraph {
             sb.append(indent).append("end\n");
         } else {
             Node n = (Node) o;
-            String label = String.join("<br/>", n.lines().stream()
-                    .flatMap(l -> wrap(l, maxLineLength).stream()).map(MermaidGraph::esc).toList());
+            List<String> parts = new ArrayList<>();
+            for (String l : n.lines()) {
+                String tc = textClass(l);
+                for (String piece : wrap(plain(l), maxLineLength)) {
+                    parts.add(tc == null ? esc(piece)
+                            : "<span style='color:" + TEXT_COLORS.get(tc) + "'>" + esc(piece) + "</span>");
+                }
+            }
+            String label = String.join("<br/>", parts);
             String[] br = switch (n.shape()) {
                 case RECT -> new String[]{"[\"", "\"]"};
                 case ROUND -> new String[]{"(\"", "\")"};
@@ -236,7 +296,7 @@ public final class MermaidGraph {
     public String labelOf(String id) {
         Object o = ids.get(id);
         if (o instanceof Node n) {
-            return n.lines().isEmpty() ? id : n.lines().get(0);
+            return n.lines().isEmpty() ? id : plain(n.lines().get(0));
         }
         return o instanceof Subgraph s ? s.label : id;
     }
@@ -248,6 +308,7 @@ public final class MermaidGraph {
     public MermaidGraph extract(String subgraphId, java.util.function.Function<String, List<String>> stubLabel) {
         MermaidGraph out = new MermaidGraph();
         out.maxLineLength = this.maxLineLength;
+        out.comments.addAll(comments);
         Subgraph sg = (Subgraph) ids.get(subgraphId);
         out.root.items.add(sg);
         Set<String> inside = idsUnder(subgraphId);

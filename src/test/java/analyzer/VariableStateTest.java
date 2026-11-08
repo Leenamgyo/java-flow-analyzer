@@ -77,8 +77,8 @@ class VariableStateTest {
         String mmd = new FlowchartGenerator().render(r, "TD");
         VariableInfo size = var(r, "variableState", "size");
         VariableChange clamp = history(r, size).get(1);
-        // 값 변경 노드: 조건 분기 안, 변경만 센 순번
-        assertTrue(mmd.contains("VAR_" + clamp.id + "[\"값 변경<br/>size = 100 · " + size.id + " 1/1\"]"), mmd);
+        // 상태 변화 노드: 조건 분기 안, 변경만 센 순번
+        assertTrue(mmd.contains("VAR_" + clamp.id + "[\"상태 변화<br/>size = 100 · " + size.id + " 1/1\"]"), mmd);
         // x = call(): 별도 노드 없이 호출 노드에 "→ x"
         VariableInfo label = var(r, "variableState", "label");
         VariableChange assign = history(r, label).get(1);

@@ -13,6 +13,8 @@ import java.util.Map;
 import org.springframework.beans.BeanUtils;
 import com.example.exception.BizException;
 import com.example.vendor.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** 테스트 케이스별 진입 메서드 모음 */
 public class CaseAction {
@@ -299,5 +301,40 @@ public class CaseAction {
 
     private Object errorView(String code) {
         return code;
+    }
+
+    // ---- 흐름도 규칙: 로그 통합 / 요청 파라미터 + 바인딩 함수(중첩) / 연속 상태 변화(버전) / Loop 영역
+    private static final Logger LOG = LoggerFactory.getLogger(CaseAction.class);
+
+    public void flowRules(HttpServletRequest request, List<String> items) {
+        LOG.info("start " + request.getRequestURI());
+        LOG.debug("items={}", items.size());
+        String id = request.getParameter("id");
+        SearchVO vo = toSearch(request);
+        release();
+        publish(vo);
+        release();
+        while (!items.isEmpty()) {
+            items.remove(0);
+            release();
+        }
+        do {
+            release();
+        } while (items.size() > 10);
+        LOG.warn("done " + id);
+    }
+
+    private SearchVO toSearch(HttpServletRequest request) {
+        SearchVO vo = new SearchVO();
+        vo.setKeyword(trimmed(request.getParameter("q")));
+        vo.setSort(request.getParameter("sort"));
+        return vo;
+    }
+
+    private String trimmed(String v) {
+        return v == null ? "" : v.trim();
+    }
+
+    private void publish(SearchVO vo) {
     }
 }

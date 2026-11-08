@@ -54,11 +54,13 @@ class RequestRuleTest {
         RequestParameterInfo sys = r.parameters.get(1);
         assertEquals("CONFIG", sys.nameResolution);
         assertEquals("getSystemId", sys.extraction);
-        // 흐름도: 한 덩어리 요청 파라미터 노드 (호출 노드가 아님)
+        // 흐름도: 요청 파라미터는 바인딩 블록 안 (글자색으로 구분), 호출 노드가 아님
         String mmd = new FlowchartGenerator().render(r, "TD");
-        assertTrue(mmd.contains("요청 파라미터<br/>#35;1 String deviceId = request.deviceId<br/>#35;2 String systemId = request.systemId<br/>"
-                + "#35;3 String abi = request.abiType<br/>#35;4 String query = request.query<br/>"
-                + "#35;6 String isAutoUpdate = request.isAutoUpdate ?: #quot;0#quot;"), mmd); // 안쪽 getParam(#5)은 따로 없음
+        String req = "<span style='color:" + analyzer.mermaid.MermaidGraph.TEXT_COLORS.get("req") + "'>";
+        assertTrue(mmd.contains("바인딩<br/>" + req + "#35;1 String deviceId = request.deviceId</span><br/>"
+                + req + "#35;2 String systemId = request.systemId</span><br/>"
+                + req + "#35;3 String abi = request.abiType</span><br/>" + req + "#35;4 String query = request.query</span><br/>"
+                + req + "#35;6 String isAutoUpdate = request.isAutoUpdate ?: #quot;0#quot;</span>"), mmd); // 안쪽 getParam(#5)은 따로 없음
     }
 
     @Test

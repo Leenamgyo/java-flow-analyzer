@@ -36,14 +36,14 @@ public final class OutputWriter {
         if (cfg.output.mermaid) {
             Path mmd = dir.resolve("flowchart.mmd");
             mermaid = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
-                    .maxLineLength(cfg.output.maxLineLength).render(r, cfg.output.direction, cfg.output.layout);
+                    .maxLineLength(cfg.output.maxLineLength).exclude(cfg.output.flowchartExclude).render(r, cfg.output.direction, cfg.output.layout);
             Files.writeString(mmd, mermaid);
             written.add(mmd);
             mermaidStatus = MermaidCli.validate(mmd);
             if (cfg.output.splitFlowchart) {
                 // 큰 흐름도: 메서드별 파일 + 전체 구조 + 합본 flowchart.md
                 FlowchartGenerator gen = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
-                        .maxLineLength(cfg.output.maxLineLength);
+                        .maxLineLength(cfg.output.maxLineLength).exclude(cfg.output.flowchartExclude);
                 List<FlowchartGenerator.Part> parts = gen.renderSplit(r, cfg.output.direction, cfg.output.layout);
                 Path sub = dir.resolve("flowchart");
                 if (Files.isDirectory(sub)) { // 이전 실행의 분할 파일 정리 (.mmd 만)
@@ -69,7 +69,7 @@ public final class OutputWriter {
             if (cfg.output.mermaid) {
                 Path pmmd = dir.resolve("phase-flowchart.mmd");
                 try {
-                    Files.writeString(pmmd, new FlowchartGenerator(pm).maxLineLength(cfg.output.maxLineLength)
+                    Files.writeString(pmmd, new FlowchartGenerator(pm).maxLineLength(cfg.output.maxLineLength).exclude(cfg.output.flowchartExclude)
                             .render(r, cfg.output.direction, cfg.output.layout));
                     written.add(pmmd);
                     MermaidCli.validate(pmmd);

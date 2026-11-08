@@ -104,7 +104,7 @@ analyzer/
 **흐름 보기 (`FlowView`, 트리·Mermaid 공용)**
 - 흐름 중심은 호출·분기·예외. 바인딩 코드(setter/builder/put 호출과 그 인자 안의 전개되지 않은 호출)는 흐름에서 빼고, **(객체, 메서드)당 요약 1개**(`BIND_<O>_<M>`: `N fields assigned · N conditional · N type conversion`)를 둔다(call-tree). flowchart 는 이 요약 대신 흐름 위치마다 `VO 값 설정` 노드(아래 Mermaid 참고).
 - 요약 위치 = 그 메서드에서 해당 객체 바인딩을 모두 감싸는 가장 가까운 공통 컨테이너(then/else 에 흩어지면 그 if 앞).
-- 바인딩 메서드(본문이 바인딩 + 최상위 return 뿐, 예 `toSearchVO`)는 그리지 않고 호출 위치에 요약(`BIND_<O>_<CALL>`).
+- 바인딩 메서드(본문이 바인딩 + 최상위 return 뿐, 예 `toSearchVO`)는 그리지 않고 호출 위치에 요약(`BIND_<O>_<CALL>`). 흐름도는 이를 넓힌 `FlowchartGenerator.bindingFunctions` 를 바인딩 블록 안에 중첩.
 
 **단계 보기 (`phase/`, 설정 `phases`)**
 - 사용자 앱 공통 구조 = 바인딩(getParameter·Util·VO 채우기·값 조회) › 체크 › 로직(Service·DAO…) 실행. 문장 단위 흐름도에서 요청 읽기 노드가 로직을 묻는 문제를 해결하려고 만든 **파생 보기**(모델에서만 계산, analysis.yaml 에는 넣지 않음).
@@ -135,25 +135,32 @@ analyzer/
 - `comparison.md`(SPEC-v2 §7)는 신규 프로젝트 데이터가 없으면 만들지 않는다(미구현).
 
 **Mermaid (SPEC-v2 §5)**
-- 기본 `TD`(위→아래). subgraph 는 분석한 메서드당 1개(중첩 없음). 본문 미분석 메서드는 노드를 만들지 않고 호출 노드 라벨로만 표시.
+- 기본 `TD`(위→아래). subgraph 는 분석한 메서드당 1개 + 그 안의 try 블록(`sg_T*`)·Loop 영역(`sg_FOR*`/`sg_FOREACH*`/`sg_WHILE*`/`sg_DO*`). 본문 미분석 메서드는 노드를 만들지 않고 호출 노드 라벨로만 표시.
+- **빠진 코드 없음 (일반 흐름도)**: 분석한 메서드·호출·블록은 모두 노드 또는 블록 줄로 그린다(catch/finally 본문, 그 안에서만 호출되는 메서드, Service 로 안 가는 보조 메서드 포함 — 일반 흐름도에서는 `collapsedHelpers` 로 접지 않는다). 빼는 것은 사용자 설정 `output.flowchart-exclude`(* 패턴: 대상 `클래스.메서드` 단순명·FQN, 원문 `수신객체.메서드`)뿐 — 맞는 호출은 노드 없음, 맞는 메서드는 상자 없음, 흐름도 머리에 `%% flowchart-exclude …` 주석. 모델 밖 코드(`include-external-library-calls: false` 로 빠진 JDK 호출, 호출 없는 문장, `continue`/`break`)는 흐름도도 모른다. 규칙 객체 `FlowchartGenerator.Rules`(normal / phase — 단계 보기는 catch/finally 본문 생략 유지).
+- **흐름도 블록 4종** (연속된 같은 종류는 노드 1개로 합침, 노드 ID = 첫 요소 ID, 나머지 모델 ID 는 alias):
+  ① **바인딩** `바인딩 · 클래스들` — 요청 파라미터(글자색 `req`)·VO 값 설정·값 조회·로직 없는 선언문·바인딩 함수(글자색 `fn`, `▸ 호출` 아래 `│` 로 본문 바인딩·요청 읽기·안쪽 바인딩 함수·return 중첩). 바인딩 함수 = `bindingFunctions` 2단계 고정점: ⓐ 순수 후보(최상위 return 뿐, 호출은 바인딩 코드·요청 읽기·후보 호출 — 최대 고정점) ⓑ 그중 바인딩이 있거나·바인딩 함수를 부르거나·들어오는 호출이 전부 바인딩 값 안(할당 호출 자체 제외 — 깊게 분석한 setter 는 바인딩 줄)이나 다른 바인딩 함수 안(최소 고정점: 값 함수 사슬 middle→inner, 재귀는 `↺ cycle`) — 상자를 그리지 않는다. builder 끝 `.build()` 처럼 바인딩을 품은 호출도 바인딩, 그 문장 줄은 안의 바인딩 줄 앞.
+  ② **상태 변화** `상태 변화` — 반환 타입 `void` 호출(`#n call · 대상 vN`, 대상 = 수신 객체/`this`/static 클래스; 버전은 간선을 따라 전해지고 갈래가 합쳐지면 max — `stateVersions`, 그래서 if/else 갈래는 같은 버전) + 변수 값 변경(`V1 k/n`). 합친 블록에서도 호출마다 `==>`(여럿이면 `#n` 라벨, `checkMapping` 은 `modelIdsOf` 로 확인).
+  ③ **로그** `로그`(class `log`, 배경색) — `model.LogCalls`(레벨 메서드 + 수신 객체 이름에 log, System.out/err.print*, printStackTrace), `#n 레벨 인자` 로 간략히. 로깅 호출은 `include-external-library-calls: false` 여도 모델에 남긴다(요청 읽기와 같은 예외).
+  ④ **Loop** — for/foreach/while/do-while 은 `Loop` subgraph(조건 노드 + 본문, 흐름은 그대로). do-while 은 본문 → 조건 → `loop` 로 본문 첫 노드. 되돌아가는 곳(`loopReentry`)은 조건식 안 호출이 노드로 그려졌으면 그 첫 노드(매번 평가), for 초기화식·for-each 대상은 제외. 반복문 `done` 의 상태 버전 = 진입과 본문 끝 중 큰 값. `continue`/`break` 는 모델에 없어 다음 문장으로 이어진다(알려진 한계, `FlowchartEdgeCaseTest` 에 고정).
+- 검증: `FlowchartSweepTest` — 모든 fixture 진입 메서드 × 설정 4종(default/external/deep/flat) + exclude 로 일반·분할·단계 보기를 그리고, 렌더링 텍스트를 되돌려 호출·블록·바인딩·변수 변경 코드가 보이는지 독립 확인(텍스트 오라클). `FLOW_DUMP=<dir>` 이면 .mmd 를 떨궈 Mermaid 파서로 따로 검사. 경계 사례 fixture `EdgeAction`.
+- 글자색 줄: `MermaidGraph.styled(cls, text)` → `<span style='color:rgb(…)'>` (`TEXT_COLORS`; `#rrggbb;` 는 Mermaid 엔티티로 해석되므로 rgb()).
 - if/else-if/switch/반복문 = 조건 노드(◇) + 분기 간선(`Yes`/`No`, case 라벨, `loop`/`next`/`done`). else/case 는 노드 없이 간선으로.
-- try = **블록(subgraph `sg_T*`) 1개** — 본문은 그 안에 정상 흐름, 예외는 블록 단위로 `sg_T1 -.->|예외 타입| CATCH*`(catch 노드 = 처리 방식 요약: 로그·오류 응답·다시 던짐·새 예외·catch 본문 최상위 return). 다시/새로 던지면 catch → `M*_uncaught`, return 이면 끝, 그 밖이면 try 뒤로 합류. finally 는 try·catch 뒤 노드 1개(`FINALLY*`, 바깥 호출식 최대 3개). 개별 throw 에 `→ catch` 표시 없음, 메서드 시작 노드 `⚠ catch` 요약은 단계 보기 진입 메서드(try 를 단계별로 펼침)에만. catch/finally 본문 노드와 그 안에서만 호출되는 메서드는 여전히 생략(`skippedMethods`). 메서드 subgraph 안에 중첩되는 subgraph 는 try 블록뿐.
+- try = 블록(subgraph `sg_T*`) — 본문은 그 안에 정상 흐름, `sg_T1 -.->|예외 타입| CATCH*`. 일반 흐름도(`tryFull`): catch 노드(헤더) → catch 본문 전부, `FINALLY*` 노드 → finally 본문, 잡히는 throw `-.->|catch|` 그 catch, 빠져나가는 return/throw `-.->|finally|` (`executesFinally`). 단계 보기(`tryBlock`): 예전처럼 catch = 처리 방식 요약 노드, catch/finally 본문 생략, 진입 메서드 `⚠ catch` 요약.
 - 흐름 연결은 "열린 끝" 목록으로 계산(분기 끝들이 다음 요소로 합류). return/throw 뒤는 끊김.
 - 모든 노드 줄은 **`타입 대상 = 값` 코드 한 줄, 줄임 없음** — 호출 노드 `#n T x = expr`(T = `CallSiteInfo.resultType` 선언 타입, 대입이면 추적 변수 타입), 요청 `#n T x = request.name ?: d`(T = `RequestParameterInfo.variableType`/규칙 type, 변수 없으면 `(T) request.name`), VO `#n 프로퍼티 = 값`(타입·변수명 없음 — 사용자 요구, `Binding.fieldType` 은 YAML 에만; 클래스는 노드 제목, 객체 둘 이상이면 `· 클래스` 줄). 역할·접근제어자·Depth·depth-limit 꼬리표 없음(css 색으로만). 조건 노드는 `Labels.blockHeaderLines`: 최상위 `&&`/`||` 앞 줄바꿈(연산자 맨 앞), for-each 는 `:` 앞뒤 두 줄. 단계 보기 체크 노드도 `conditionLines`.
 - 바인딩·요청 읽기·값 변경은 **코드 형식 `대상 = 값`** (`Labels.requestLine` / `bindingLine` / `changeLine`, 값 식 안 요청 읽기 호출은 `Labels.codeValue` 로 `request.이름 ?: 기본값`).
-- 연속된 요청 값 읽기 호출(본문 미전개, 조건식 밖)은 `요청 파라미터` + 한 줄에 하나 `#n 변수 = request.이름 ?: 기본값` 요약 노드 1개(노드 ID = 첫 호출 ID, 나머지는 `MermaidGraph.alias` → `has()`/`nodeOf()`).
-- 연속된 바인딩 코드(setter·builder·put·생성자·바인딩 메서드 호출)는 `VO 값 설정 · 클래스들` 노드 1개(`SET_<첫 요소 ID>`, `#n obj.field = 값`, Map 은 `m["key"] = 값`, 바뀌는 변수면 `⟳V*`, 바인딩 메서드 안 바인딩은 번호 없이 `메서드() 안:` 아래, 최대 10줄). 바인딩 호출 자체는 노드/alias 가 아니다. 단계 보기의 바인딩·후처리 노드는 `요청 파라미터` / `VO:` / `조회:` 형식.
-- **세부(subgraph)는 Service 쪽으로 넘어가는 흐름만** (사용자 원칙: Action → Service, Service → 다른 Service·Biz·DAO·Mapper). 내부 함수 = 로직 역할이 아니고 전이적으로 로직 역할 호출에 닿지 않는 메서드(`collapsedHelpers`; readItems·readDelivery·preparePayment·calculateTotal 등)는 **일반 흐름도·단계 보기 모두** subgraph 없이 코드 한 줄 `#15 items = readItems(request)` + `VO 값 설정 · 클래스`(안에서 채우는 VO) + 값이 바뀌는 변수면 `· V1 1/3`. 본문 분석(요청 파라미터·바인딩·체크·mapping.md)은 그대로 한다. Service 클래스 안의 private 메서드(nextOrderNo)는 Service 세부의 일부로 그린다. 값 조회 — 결과를 변수에 받는데 본문을 전개하지 않은 source 메서드(로직 역할·VO·Util 제외, 예 상위 클래스 `checkLogin`) — 는 바인딩 한 줄 `#1 member = checkLogin(request)` (`FlowchartGenerator.fetch`, css bind). 상위 클래스 메서드를 일부러 전개하지 않는다(과거에 시도했다가 checkLogin 내부 if 가 로직처럼 보여 되돌림). 단계 보기의 접힌 보조 메서드는 `collapsedHelpers`.
+- 요청 값 읽기·바인딩 코드는 위 ① 바인딩 블록으로 (단계 보기만 예전 `요청 파라미터` 노드 `flushReads`·`VO:` 형식). 변수에 바로 받지 않는 읽기는 문장 그대로(`#n int size = Integer.parseInt(request.size)`), 결과를 바로 받지 않는 호출 노드도 문장 전체(`#5 int v = c ? compute() : 0`), 람다 안 호출은 `⟨deferred⟩`.
+- 내부 함수 접기(`collapsedHelpers`: 로직 역할이 아니고 전이적으로 로직 역할 호출에 닿지 않는 메서드 → 코드 한 줄 + `VO 값 설정`)는 **단계 보기에서만**. 일반 흐름도는 그 메서드들도 상자로 그린다(빠진 코드 없음). 값 조회 — 결과를 변수에 받는데 본문을 전개하지 않은 source 메서드(로직 역할·VO·Util 제외, 예 상위 클래스 `checkLogin`) — 는 바인딩 블록의 한 줄(`FlowchartGenerator.fetch`). 상위 클래스 메서드를 일부러 전개하지 않는다(과거에 시도했다가 checkLogin 내부 if 가 로직처럼 보여 되돌림).
 - return/throw 는 메서드 박스 안 흐름 끝(실선, 분기 라벨 Yes/No), 처리되지 않은 throw 만 `-.->` `M*_uncaught`. (박스 밖 '이탈' 배치를 시도했으나 Mermaid 는 노드 좌표·박스 크기를 지정할 수 없어 dagre 는 끝으로 밀어내고 ELK 도 원하는 '오른쪽 배치'가 안 돼 되돌림.) 레이아웃 `output.layout` 기본 dagre, 옵션 elk(`MermaidGraph.init(layout)`).
-- 코드 줄(#n …)이 들어가는 노드(class `codeline`·req·bind·var·depth·external·unresolved·cycle·fin·exc·check·post)는 `themeCSS` 로 왼쪽 정렬, `wrappingWidth` 2400(자동 줄바꿈 거의 없음). class 이름에 Mermaid 예약어(`call`, `click`, `end` …) 금지 — `MermaidGraph.RESERVED_CLASS` 로 검증(`call` 을 썼다가 파서 오류 난 적 있음).
+- 코드 줄(#n …)이 들어가는 노드(class `codeline`·req·bind·var·state·log·depth·external·unresolved·cycle·fin·exc·check·post)는 `themeCSS` 로 왼쪽 정렬, `wrappingWidth` 2400(자동 줄바꿈 거의 없음). class 이름에 Mermaid 예약어(`call`, `click`, `end` …) 금지 — `MermaidGraph.RESERVED_CLASS` 로 검증(`call` 을 썼다가 파서 오류 난 적 있음).
 - 문장 단위 바인딩: `CallSiteInfo.statement/statementKind/statementLocation`(감싸는 변수 선언·대입 ExpressionStmt, 주석 제외 `parser.Code.text`). 흐름도 `statementGroup`: 같은 문장의 호출에 로직 역할·세부 메서드·바인딩 코드가 없고 요청 읽기뿐이 아니며 단순 `x = call()` 이 아니면 문장 노드 1개(`#a–b 문장`, class bind, 나머지 호출·그 문장의 변수 변경은 alias). 단계 보기도 문장 단위 step, 판정 3c: 유틸·조회만 쓰는 선언 = 바인딩(3a 요청 컨텍스트 조회·3b 계산 메서드 다음). 줄 나누기는 `&&`/`||` 앞도 강한 자리.
 - return/throw 식 안의 호출은 리프 노드에만(별도 호출 노드 없음, `inLeaf` + alias) — 세부 박스로 가는 호출만 예외. try 본문에 그릴 노드가 없으면(외부 호출뿐) `ControlBlock.bodyText`(try 본문 원문)를 `BODY_T*` 노드 하나로 그려 흐름이 try 를 지나가게.
-- 인자 안의 호출(`CallSiteInfo.inArgument`, 깊이 무관 — `log.error("…" + util.x(req))` 의 util.x, `svc.f(vo.getX())` 의 getX)은 흐름도에 그리지 않음(`argumentOnly`, 사용자 요구). 예외: 세부 박스로 이어지는 호출(==>), 요청 읽기. 모델·트리·YAML(`inArgument`)에는 그대로.
+- 인자 안의 호출(`CallSiteInfo.inArgument`, 깊이 무관 — `log.error("…" + util.x(req))` 의 util.x, `svc.f(vo.getX())` 의 getX)은 바깥 호출 노드의 코드에 보이므로 따로 그리지 않음(`argumentOnly`). 예외: 세부 박스로 이어지는 호출(==>), 요청 읽기, **바깥 호출이 모델에 없을 때**(라이브러리 제외·생성자 인자 — 그리지 않으면 코드가 사라짐). 모델·트리·YAML(`inArgument`)에는 그대로.
 - 조건 노드(`decision`): 조건식·반복 헤더·switch selector 안의 호출은 조건 텍스트에 이미 보이므로 노드로 그리지 않고 조건 노드에 alias(중복 방지, 사용자 지적). 세부 박스로 가는 호출만 ==> 를 위해 노드로 남김. 조건식 안 요청 읽기는 `Labels.blockHeaderLines(r, b)` 가 `request.이름` 으로.
 - 긴 줄: `MermaidGraph.wrap(line, output.max-line-length=100)` — 강한 자리(쉼표 뒤·` + `/` - ` 앞·`).` 체인 앞) 우선, 없으면 `(` 뒤, 한도 안에 없으면 넘는 첫 자리, 문자열 리터럴 안 제외, 이어지는 줄 `> `. 렌더 단계에서만(모델·YAML 은 원문).
 - 분할 출력(`output.split-flowchart`, 기본 true): `FlowchartGenerator.renderSplit` — 전체 그래프를 한 번 만들어 검증한 뒤 `MermaidGraph.extract(sg_<M>)` 로 메서드별로 떼어 냄(안쪽 간선 유지, 바깥으로 나가는 간선은 `go_<대상>` ▶ 안내 노드 class golink, 들어오는 간선 제외). `00-overview.mmd` = 메서드 노드 + CALL 간선 집계. 합본 `flowchart.md` = 목차(GitHub 식 앵커) + 파트별 ```mermaid. 이전 실행의 `flowchart/*.mmd` 는 지우고 다시 씀. 전체 `flowchart.mmd` 도 그대로 출력.
 - 렌더링 첫 줄은 `MermaidGraph.INIT`(`%%{init: …}%%` 노드 padding·wrappingWidth) — 여러 줄 라벨이 잘리지 않게.
-- `-->` 정상 흐름, `==>` 본문을 전개한 호출(EXPANDED/SHARED/CYCLE → 메서드 시작 노드), `-.->` 처리되지 않은 throw(`M*_uncaught`).
+- `-->` 정상 흐름, `==>` 본문을 전개한 호출(EXPANDED/SHARED/CYCLE → 메서드 시작 노드), `-.->` 예외(try 블록 → catch, 잡히는 throw → catch, return/throw → finally, 처리되지 않은 throw → `M*_uncaught`).
 - 라벨 이스케이프는 `#` 먼저 → `#35;` `#quot;` `#lt;` `#gt;` `#124;`. 렌더 전 `MermaidGraph.validate()` + `FlowchartGenerator.checkMapping()` 실패 시 예외.
 
 ## 작업 규칙
