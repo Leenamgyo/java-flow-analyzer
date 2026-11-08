@@ -314,6 +314,22 @@ public final class Labels {
         return out;
     }
 
+    /** 조건식 안의 요청 읽기 호출을 request.이름 으로 바꾼 헤더 (흐름도 조건 노드) */
+    public static List<String> blockHeaderLines(AnalysisResult r, ControlBlock b) {
+        if (b.condition == null) {
+            return blockHeaderLines(b);
+        }
+        ControlBlock copy = new ControlBlock();
+        copy.type = b.type;
+        copy.condition = codeValue(r, b.methodId, b.location, b.condition);
+        copy.caseLabels.addAll(b.caseLabels);
+        copy.isDefault = b.isDefault;
+        copy.expression = b.expression;
+        copy.resources.addAll(b.resources);
+        copy.exceptionTypes.addAll(b.exceptionTypes);
+        return blockHeaderLines(copy);
+    }
+
     /** 흐름도 조건 노드용 블록 헤더 (여러 줄): if (a == null / || b == null) */
     public static List<String> blockHeaderLines(ControlBlock b) {
         if (b.type == BlockType.FOREACH && b.condition != null) {

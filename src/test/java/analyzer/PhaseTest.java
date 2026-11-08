@@ -151,7 +151,12 @@ class PhaseTest {
         assertTrue(mmd.contains("{\"if (couponCode != null<br/>&& !couponCode.isEmpty())\"}"), mmd);
         assertTrue(mmd.contains("{\"for (OrderItemVO item<br/>: items)\"}"), mmd);
         assertFalse(mmd.contains("depth-limit"), mmd);
-        assertTrue(mmd.contains("#35;45 (boolean) request.sendSms ?: false"), mmd);
+        // 조건식 안의 호출은 조건 노드에만 (중복 노드 없음), 요청 읽기는 request.이름
+        assertTrue(mmd.contains("{\"if (request.sendSms ?: false)\"}"), mmd);
+        assertFalse(mmd.contains("(boolean) request.sendSms"), mmd);
+        CallSiteInfo isEmpty = r.callSites.stream().filter(c -> c.expression.equals("StringUtil.isEmpty(orderNo)")).findFirst().orElseThrow();
+        assertFalse(mmd.contains(isEmpty.id + "[\""), mmd);
+        assertTrue(g.nodeOf(isEmpty.id).startsWith("IF"), g.nodeOf(isEmpty.id));
         r.bindings.stream().filter(b -> b.callSiteId != null).forEach(b -> assertFalse(g.has(b.callSiteId)));
         // 생성자 바인딩(호출 없음)도 위치 순으로 포함, 바인딩 메서드 내부 바인딩은 호출 위치에
         assertTrue(mmd.contains("[\"VO 값 설정 · NotifyCommand<br/>memberId = member.getMemberId()<br/>phone = request.smsPhone\"]"), mmd);

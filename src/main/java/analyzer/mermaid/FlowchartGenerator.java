@@ -944,20 +944,28 @@ public final class FlowchartGenerator {
     }
 
     /** 헤더 위치 호출(조건식 안 호출 등) → 조건 노드 */
+    /**
+     * 조건 노드(◇). 조건식 안의 호출은 조건 텍스트에 이미 보이므로 따로 그리지 않는다(중복 방지) — 단, 세부 박스로
+     * 이어지는 호출(Service·DAO 등 그리는 메서드)은 ==> 간선을 위해 노드로 남긴다. 조건식 안 요청 읽기는 request.이름 으로.
+     */
     private void decision(Subgraph sg, ControlBlock b, List<End> in) {
         List<End> cur = in;
+        List<String> inCondition = new ArrayList<>();
         for (String cid : b.callIds) {
             CallSiteInfo s = r.callSite(cid);
             if (headerPositions(b.type).contains(s.position) && !FlowView.hidden(r, s)) {
-                if (requestRead(s)) { // 조건식 안 요청 읽기도 코드 형식 요청 파라미터 노드
-                    cur = flushReads(sg, new ArrayList<>(List.of(s)), cur);
-                } else {
+                boolean detailed = s.targetMethodId != null && drawnMethods.contains(s.expansionTargetId())
+                        && (s.expansion == Expansion.EXPANDED || s.expansion == Expansion.SHARED || s.expansion == Expansion.CYCLE);
+                if (detailed) {
                     callNode(sg, s);
                     cur = link(cur, s.id);
+                } else {
+                    inCondition.add(s.id);
                 }
             }
         }
         g.node(sg, b.id, headerLines(b), Shape.DIAMOND, null);
+        inCondition.forEach(id -> g.alias(id, b.id)); // 조건 노드에 포함
         link(cur, b.id);
     }
 
@@ -1116,8 +1124,8 @@ public final class FlowchartGenerator {
         return b.childBlockIds.stream().map(r::block).filter(c -> "BRANCH".equals(c.relation)).toList();
     }
 
-    private static List<String> headerLines(ControlBlock b) {
-        List<String> l = new ArrayList<>(Labels.blockHeaderLines(b));
+    private List<String> headerLines(ControlBlock b) {
+        List<String> l = new ArrayList<>(Labels.blockHeaderLines(r, b));
         String notes = Labels.blockNotes(b).trim();
         if (!notes.isEmpty()) {
             l.add(notes.replace("⟨", "").replace("⟩", ""));
