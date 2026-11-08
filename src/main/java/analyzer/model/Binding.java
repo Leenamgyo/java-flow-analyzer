@@ -11,6 +11,8 @@ public final class Binding {
     public int order;
     /** 대상 필드. 복사(COPY)는 "*", 확인 불가면 "?(식)" */
     public String field;
+    /** 대상 필드의 선언 타입 (source VO 에서 확인한 경우, 아니면 null) */
+    public String fieldType;
     /** SETTER | BUILDER | CONSTRUCTOR | FIELD | MAP_PUT | COPY */
     public String assignment;
     /** setter/builder 메서드명, 생성자면 클래스명, Map 이면 put, 복사면 copyProperties */

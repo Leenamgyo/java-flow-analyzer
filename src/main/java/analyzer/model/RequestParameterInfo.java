@@ -12,6 +12,8 @@ public final class RequestParameterInfo {
     public String sourceMethodId;
     public String callSiteId;
     public String variable;
+    /** 받는 변수의 선언 타입 (T x = read() 일 때) */
+    public String variableType;
     public String type;
     public String defaultValue;
     public Boolean required;

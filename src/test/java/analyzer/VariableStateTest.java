@@ -83,11 +83,11 @@ class VariableStateTest {
         VariableChange assign = history(r, label).get(1);
         String callId = assign.callSiteIds.get(0);
         assertEquals(callId, g.nodeOf(assign.id));
-        assertTrue(mmd.contains("[\"#35;3 label = format(once) · " + label.id + " 2/2\"]"), mmd); // 내부 함수 = 코드 한 줄
+        assertTrue(mmd.contains("[\"#35;3 String label = format(once) · " + label.id + " 2/2\"]"), mmd); // 내부 함수 = 코드 한 줄, 타입은 변수 선언에서
         // 선언도 이력의 시작으로 그린다 (요청 값 파생은 코드 그대로, 요청 읽기는 request.이름)
         assertTrue(mmd.contains("[\"값 변경<br/>int size = Integer.parseInt(request.size) · " + size.id + " 1/2\"]"), mmd);
         // 값이 바뀌는 변수가 VO 로 → ⟳
-        assertTrue(mmd.contains("vo.page = size  ⟳" + size.id), mmd);
+        assertTrue(mmd.contains("page = size  ⟳" + size.id), mmd);
 
         String tree = new CallTreeWriter(true).render(r);
         assertTrue(tree.contains("≔ size = 100 · " + size.id + " 2/2  (" + clamp.id + ")"), tree);
@@ -146,7 +146,7 @@ class VariableStateTest {
         assertEquals(1, clamp.changes.size());
         // switch 의 각 case 에서 orders = service 호출 → 호출 노드에 "→ orders"
         String mmd = new FlowchartGenerator(pm).render(list, "TD");
-        assertTrue(mmd.contains("→ orders · V"), mmd);
+        assertTrue(mmd.contains("List#lt;Map#lt;String,Object#gt;#gt; orders = orderService.findOrders(cond, page, size) · V"), mmd);
         // 레이어: Service 는 Service·Biz 레이어 안, Service·DAO 호출 없는 보조 메서드는 세부 생략
         assertTrue(mmd.contains("subgraph sg_LAYER_SERVICE[\"Service · Biz 레이어\"]"), mmd);
         assertTrue(mmd.contains("subgraph sg_LAYER_ACTION[\"Action 레이어\"]"), mmd);

@@ -277,6 +277,7 @@ public final class RequestParameterExtractor {
         }
         if (parent instanceof VariableDeclarator v) {
             p.variable = v.getNameAsString();
+            p.variableType = v.getTypeAsString();
             if (p.type == null) {
                 p.type = v.getType().asString();
             }

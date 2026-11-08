@@ -98,15 +98,15 @@ public final class Labels {
     }
 
     /**
-     * 흐름도 VO 값 설정 1줄 — 코드 형식 "대상 = 값": #6 order.memberId = member.getMemberId(),
-     * cond["status"] = status, order.memo = StringUtil.trimToEmpty(request.memo).
+     * 흐름도 VO 값 설정 1줄 — "타입 프로퍼티 = 값": #6 String memberId = member.getMemberId(),
+     * ["status"] = status (Map), String memo = StringUtil.trimToEmpty(request.memo).
      * 값 식 안의 요청 읽기 호출은 request.이름 으로 줄이고, 값이 상태가 바뀌는 변수면 끝에 ⟳V1.
      * numbered: 같은 메서드의 호출 번호(#n)를 붙인다 (바인딩 메서드 안의 바인딩이면 false).
      */
     public static String bindingLine(AnalysisResult r, Binding b, boolean numbered) {
         ObjectInfo o = r.object(b.objectId);
-        String target = "MAP".equals(o.kind) ? o.variable + "[\"" + b.field + "\"]"
-                : o.variable + "." + b.field;
+        // 변수명 없이 프로퍼티만 (클래스는 노드 제목에): memberId = … / Map 은 ["status"] = …
+        String target = "MAP".equals(o.kind) ? "[\"" + b.field + "\"]" : b.field;
         String value = codeValue(r, b.methodId, b.location, b.valueExpression);
         if (b.valueExpression != null && b.valueExpression.matches("[A-Za-z_$][\\w$]*")) {
             VariableInfo v = r.variableNamed(b.methodId, b.valueExpression);
@@ -115,7 +115,7 @@ public final class Labels {
             }
         }
         CallSiteInfo s = b.callSiteId == null || !numbered ? null : r.callSite(b.callSiteId);
-        return truncate((s == null ? "" : "#" + s.order + " ") + target + " = " + value, 80);
+        return (s == null ? "" : "#" + s.order + " ") + (b.fieldType == null ? "" : b.fieldType + " ") + target + " = " + value;
     }
 
     /** 값 식 안의 요청 읽기 호출을 request.이름(?: 기본값) 으로 바꾼 코드 */
@@ -138,10 +138,13 @@ public final class Labels {
         return "request." + parameterName(p) + (p.defaultValue == null ? "" : " ?: " + p.defaultValue);
     }
 
-    /** 요청 파라미터 노드 1줄 — 코드 형식: #2 mode = request.mode ?: "NEW" (값이 바뀌는 변수면 · V1 1/2) */
+    /** 요청 파라미터 노드 1줄 — 코드 형식: #2 String mode = request.mode ?: "NEW" (값이 바뀌는 변수면 · V1 1/2) */
     public static String requestLine(AnalysisResult r, CallSiteInfo s, RequestParameterInfo p) {
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
-        String line = "#" + s.order + " " + (var == null ? "" : var + " = ") + requestValue(p);
+        String type = p.variableType != null ? p.variableType : p.type;
+        String line = "#" + s.order + " " + (var == null
+                ? (type == null ? "" : "(" + type + ") ") + requestValue(p)
+                : (type == null ? "" : type + " ") + var + " = " + requestValue(p));
         VariableInfo v = var == null ? null : r.variableNamed(s.callerMethodId, var);
         if (v != null) {
             line += " · " + v.id + " 1/" + v.changeIds.size();
@@ -258,6 +261,99 @@ public final class Labels {
             case RETURN -> b.expression == null ? "return" : "return " + truncate(b.expression, 70);
             case THROW -> "throw " + truncate(b.expression, 70);
         };
+    }
+
+    /**
+     * 조건식을 최상위 && / || 앞에서 줄바꿈 (연산자가 줄 맨 앞): ["codes == null", "|| qtys == null"].
+     * 괄호·문자열·문자 리터럴 안의 연산자는 나누지 않는다.
+     */
+    public static List<String> conditionLines(String cond) {
+        List<String> out = new ArrayList<>();
+        if (cond == null) {
+            return out;
+        }
+        int depth = 0;
+        int start = 0;
+        char quote = 0;
+        for (int i = 0; i < cond.length(); i++) {
+            char ch = cond.charAt(i);
+            if (quote != 0) {
+                if (ch == '\\') {
+                    i++;
+                } else if (ch == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                quote = ch;
+            } else if (ch == '(' || ch == '[' || ch == '{') {
+                depth++;
+            } else if (ch == ')' || ch == ']' || ch == '}') {
+                depth--;
+            } else if (depth == 0 && i + 1 < cond.length()
+                    && (ch == '&' && cond.charAt(i + 1) == '&' || ch == '|' && cond.charAt(i + 1) == '|')) {
+                out.add(cond.substring(start, i).trim());
+                start = i;
+                i++;
+            }
+        }
+        out.add(cond.substring(start).trim());
+        return out;
+    }
+
+    /** 흐름도 조건 노드용 블록 헤더 (여러 줄): if (a == null / || b == null) */
+    public static List<String> blockHeaderLines(ControlBlock b) {
+        if (b.type == BlockType.FOREACH && b.condition != null) {
+            // for (OrderItemVO item / : items) — ':' 앞뒤 두 줄
+            int at = topLevelColon(b.condition);
+            if (at > 0) {
+                return List.of("for (" + b.condition.substring(0, at).trim(), ": " + b.condition.substring(at + 1).trim() + ")");
+            }
+        }
+        String prefix = switch (b.type) {
+            case IF -> "if (";
+            case ELSE_IF -> "else if (";
+            case WHILE -> "while (";
+            case DO_WHILE -> "do-while (";
+            default -> null;
+        };
+        if (prefix == null) {
+            return List.of(blockHeader(b));
+        }
+        List<String> parts = conditionLines(b.condition);
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < parts.size(); i++) {
+            out.add((i == 0 ? prefix : "") + parts.get(i) + (i == parts.size() - 1 ? ")" : ""));
+        }
+        return out;
+    }
+
+    /** 괄호·문자열 밖의 첫 ':' 위치 (?: 의 ':' 는 제외), 없으면 -1 */
+    private static int topLevelColon(String s) {
+        int depth = 0;
+        char quote = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (quote != 0) {
+                if (ch == '\\') {
+                    i++;
+                } else if (ch == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                quote = ch;
+            } else if (ch == '(' || ch == '[' || ch == '{' || ch == '<') {
+                depth++;
+            } else if (ch == ')' || ch == ']' || ch == '}' || ch == '>') {
+                depth--;
+            } else if (ch == ':' && depth == 0 && (i == 0 || s.charAt(i - 1) != '?')) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** 블록에 붙는 부가 표시 */

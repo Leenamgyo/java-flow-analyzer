@@ -480,6 +480,7 @@ public final class MethodBodyWalker {
         site.location = SourceLocation.of(mc, file);
         mc.getArguments().forEach(a -> site.arguments.add(text(a)));
         site.resultUsage = resultUsage(mc);
+        site.resultType = declaredType(mc);
         result.callSites.add(site);
         result.index(site.id, site);
         if (ctx.block() != null) {
@@ -614,6 +615,17 @@ public final class MethodBodyWalker {
                 cb.errorResponseCalls.add(t);
             }
         }
+    }
+
+    /** T x = call() 이면 T (괄호·캐스트 건너뜀), 아니면 null */
+    private static String declaredType(MethodCallExpr mc) {
+        Node cur = mc;
+        Node p = cur.getParentNode().orElse(null);
+        while (p instanceof com.github.javaparser.ast.expr.EnclosedExpr || p instanceof com.github.javaparser.ast.expr.CastExpr) {
+            cur = p;
+            p = p.getParentNode().orElse(null);
+        }
+        return p instanceof VariableDeclarator v ? v.getTypeAsString() : null;
     }
 
     /** 호출 결과가 어떻게 쓰이는지 (괄호·캐스트는 건너뜀) */

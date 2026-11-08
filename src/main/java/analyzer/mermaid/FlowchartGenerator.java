@@ -674,8 +674,8 @@ public final class FlowchartGenerator {
                 .map(k -> r.object(k).className).distinct().toList())));
         for (var e : byObject.entrySet()) {
             String via = e.getValue().stream().map(b -> b.methodId).filter(x -> !x.equals(m.id)).findFirst().orElse(null);
-            if (via != null) { // 바인딩 메서드(VO 를 채워 반환) 안에서 채움
-                lines.add(r.method(via).name + "() 안:");
+            if (byObject.size() > 1 || via != null) { // 객체가 둘 이상이면 어느 객체 줄인지, 바인딩 메서드 안이면 그 메서드
+                lines.add("· " + r.object(e.getKey()).className + (via == null ? "" : " — " + r.method(via).name + "() 안"));
             }
             for (Binding b : e.getValue()) {
                 lines.add(Labels.bindingLine(r, b, b.methodId.equals(m.id)));
@@ -890,25 +890,38 @@ public final class FlowchartGenerator {
         }
     }
 
+    /**
+     * 호출 노드 = 코드 한 줄(줄이지 않음): #1 MemberVO member = checkLogin(request) · V1 1/3.
+     * 역할·접근제어자·Depth·depth-limit 같은 꼬리표는 쓰지 않는다 (색으로만 구분). 구현 후보는 따로 한 줄.
+     */
     private void callNode(Subgraph sg, CallSiteInfo s) {
         List<String> lines = new ArrayList<>();
         boolean folded = s.targetMethodId != null && collapsed.contains(s.expansionTargetId());
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
+        StringBuilder code = new StringBuilder("#" + s.order + " ");
+        if (var != null) {
+            String type = s.resultType;
+            if (type == null) { // x = call() — 값이 바뀌는 변수면 그 선언 타입
+                VariableInfo v = r.variableNamed(s.callerMethodId, var);
+                type = v == null ? null : v.type;
+            }
+            code.append(type == null ? "" : type + " ").append(var).append(" = ");
+        }
+        code.append(s.expression);
+        for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) { // 값이 바뀌는 변수면 이력 순번
+            VariableInfo v = r.variable(c.variableId);
+            code.append(v.name.equals(var) ? "" : " → " + v.name).append(" · ").append(v.id).append(' ')
+                    .append(c.order).append('/').append(v.changeIds.size());
+        }
+        lines.add(code.toString());
         if (var != null && fetch(s)) {
-            // 값 조회는 바인딩으로 끝: 내부로 들어가지 않고 코드 한 줄 (#1 user = getLoginUser(request))
-            g.node(sg, s.id, List.of("#" + s.order + " " + var + " = " + Labels.truncate(s.expression, 70)), Shape.RECT, "bind");
+            // 값 조회는 바인딩으로 끝: 내부로 들어가지 않고 코드 한 줄
+            g.node(sg, s.id, lines, Shape.RECT, "bind");
+            assignedBy.getOrDefault(s.id, List.of()).forEach(c -> g.alias(c.id, s.id));
             return;
         }
         if (folded) {
-            // 내부 함수(Service·DAO 로 가지 않는 보조 메서드)는 세부 없이 코드 한 줄 (#3 items = readItems(request))
-            StringBuilder code = new StringBuilder("#" + s.order + " " + (var == null ? "" : var + " = ")
-                    + Labels.truncate(s.expression, 70));
-            for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) { // 값이 바뀌는 변수면 이력 순번
-                VariableInfo v = r.variable(c.variableId);
-                code.append(v.name.equals(var) ? "" : " → " + v.name).append(" · ").append(v.id).append(' ')
-                        .append(c.order).append('/').append(v.changeIds.size());
-            }
-            lines.add(code.toString());
+            // 내부 함수(Service·DAO 로 가지 않는 보조 메서드)는 세부 없이 코드 한 줄 (+ 안에서 채우는 VO)
             List<String> vos = helperObjects(s.expansionTargetId());
             if (!vos.isEmpty()) {
                 lines.add("VO 값 설정 · " + String.join(", ", vos));
@@ -917,30 +930,13 @@ public final class FlowchartGenerator {
             assignedBy.getOrDefault(s.id, List.of()).forEach(c -> g.alias(c.id, s.id));
             return;
         }
-        lines.add("#" + s.order + " " + Labels.callTarget(r, s));
-        StringBuilder info = new StringBuilder(Labels.callTags(r, s));
-        switch (s.expansion) {
-            case DEPTH_LIMIT -> info.append(" depth-limit");
-            case NO_BODY -> info.append(" no body");
-            case CYCLE -> info.append(" cycle");
-            default -> {
-            }
-        }
-        if (s.deferred) {
-            info.append(" deferred");
-        }
-        lines.add(info.toString());
         String impl = Labels.implementationTarget(r, s);
         if (impl != null) {
-            lines.add("impl 후보: " + Labels.truncate(impl, 60));
+            lines.add("impl 후보: " + impl);
         }
         String req = Labels.requestTag(r, s);
         if (req != null) {
             lines.add(req);
-        }
-        for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) {
-            VariableInfo v = r.variable(c.variableId);
-            lines.add("→ " + v.name + " · " + v.id + " " + c.order + "/" + v.changeIds.size());
         }
         String css = switch (s.expansion) {
             case NOT_APPLICABLE -> "unresolved";
@@ -968,7 +964,7 @@ public final class FlowchartGenerator {
     }
 
     private static List<String> headerLines(ControlBlock b) {
-        List<String> l = new ArrayList<>(List.of(Labels.blockHeader(b)));
+        List<String> l = new ArrayList<>(Labels.blockHeaderLines(b));
         String notes = Labels.blockNotes(b).trim();
         if (!notes.isEmpty()) {
             l.add(notes.replace("⟨", "").replace("⟩", ""));

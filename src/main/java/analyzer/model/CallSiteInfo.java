@@ -54,6 +54,8 @@ public final class CallSiteInfo {
     public final List<String> arguments = new ArrayList<>();
     /** 반환값 사용: assigned:변수 | returned | argument | condition | discarded | expression */
     public String resultUsage;
+    /** T x = call() 의 선언 타입 T (선언이 아니면 null) */
+    public String resultType;
     public SourceLocation location;
 
     /** 전개 판정 대상: 구현 연결이 있으면 구현 메서드, 아니면 선언 대상 */

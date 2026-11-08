@@ -51,8 +51,8 @@ class RequestRuleTest {
         assertEquals("getSystemId", sys.extraction);
         // 흐름도: 한 덩어리 요청 파라미터 노드 (호출 노드가 아님)
         String mmd = new FlowchartGenerator().render(r, "TD");
-        assertTrue(mmd.contains("요청 파라미터<br/>#35;1 deviceId = request.deviceId<br/>#35;2 systemId = request.systemId<br/>"
-                + "#35;3 abi = request.abiType<br/>#35;4 query = request.query"), mmd);
+        assertTrue(mmd.contains("요청 파라미터<br/>#35;1 String deviceId = request.deviceId<br/>#35;2 String systemId = request.systemId<br/>"
+                + "#35;3 String abi = request.abiType<br/>#35;4 String query = request.query"), mmd);
     }
 
     @Test

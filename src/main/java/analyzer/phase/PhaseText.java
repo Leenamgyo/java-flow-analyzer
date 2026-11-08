@@ -121,7 +121,7 @@ public final class PhaseText {
     /** ② 체크 노드 1개 */
     public static List<String> checkLines(CheckItem c) {
         List<String> l = new ArrayList<>();
-        l.add(Labels.truncate(c.condition(), 90));
+        l.addAll(Labels.conditionLines(c.condition()));
         l.add("→ " + Labels.truncate(c.outcome(), 90));
         l.add(c.context() + (c.location() == null ? "" : " · L" + c.location().beginLine()));
         return l;

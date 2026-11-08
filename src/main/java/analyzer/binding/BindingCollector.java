@@ -100,6 +100,7 @@ public final class BindingCollector {
             md.getBody().get().walk(Node.TreeTraversal.PREORDER, n -> visit(n, m, md));
         }
         objects.values().forEach(this::coverage);
+        objects.values().forEach(this::fieldTypes);
     }
 
     private void visit(Node n, MethodInfo m, MethodDeclaration md) {
@@ -480,6 +481,33 @@ public final class BindingCollector {
                 o.initialOnlyFields.add(e.getKey());
             } else {
                 o.unassignedFields.add(e.getKey());
+            }
+        }
+    }
+
+    /** 바인딩 대상 필드의 선언 타입 (source VO 와 상위 클래스의 인스턴스 필드) */
+    private void fieldTypes(ObjectInfo o) {
+        TypeDeclaration<?> td = objectTypes.get(o.id);
+        if (td == null) {
+            return;
+        }
+        Map<String, String> types = new LinkedHashMap<>();
+        fieldTypes(td, types, new java.util.HashSet<>());
+        for (Binding b : r.bindingsOf(o)) {
+            b.fieldType = types.get(b.field);
+        }
+    }
+
+    private void fieldTypes(TypeDeclaration<?> td, Map<String, String> out, Set<String> visited) {
+        if (!visited.add(td.getFullyQualifiedName().orElse(td.getNameAsString()))) {
+            return;
+        }
+        for (TypeDeclaration<?> sup : lookup.sourceSupertypes(td)) {
+            fieldTypes(sup, out, visited);
+        }
+        for (FieldDeclaration f : td.getFields()) {
+            if (!f.isStatic()) {
+                f.getVariables().forEach(v -> out.putIfAbsent(v.getNameAsString(), v.getTypeAsString()));
             }
         }
     }
