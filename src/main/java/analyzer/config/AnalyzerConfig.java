@@ -103,6 +103,8 @@ public class AnalyzerConfig {
         public Integer nameArgIndex;
         /** 이름 인자가 없는 메서드(getSystemId(request))의 고정 파라미터명. name-arg-index·parameter 둘 다 없으면 메서드명에서 (getSystemId → systemId) */
         public String parameter;
+        /** 기본값 래퍼: 이 위치의 인자가 요청 읽기면 그 값을 감싸 기본값을 붙이는 메서드 (defVal(getParam(req,"x"), "0") → wraps: 0) */
+        public Integer wraps;
         public Integer defaultArgIndex;
         public String type;
     }

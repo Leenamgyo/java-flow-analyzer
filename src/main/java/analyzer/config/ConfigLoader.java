@@ -137,6 +137,9 @@ public final class ConfigLoader {
                 if (m.name == null || m.name.isBlank()) {
                     throw new IllegalArgumentException("request-parameter-rules.methods 항목에는 name 이 필요합니다.");
                 }
+                if (m.wraps != null && (m.nameArgIndex != null || m.parameter != null)) {
+                    throw new IllegalArgumentException("request-parameter-rules." + m.name + ": wraps 는 name-arg-index·parameter 와 함께 쓸 수 없습니다.");
+                }
                 if (m.nameArgIndex != null && m.parameter != null) {
                     throw new IllegalArgumentException("request-parameter-rules." + m.name + ": name-arg-index 와 parameter 는 함께 쓸 수 없습니다.");
                 }

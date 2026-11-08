@@ -67,6 +67,10 @@ output:
          - { name: getVasDeviceIdParameter, name-arg-index: 1 }   # getVasDeviceIdParameter(request, "deviceId")
          - { name: getSystemId }                                  # 이름 인자 없음 → 메서드명에서: systemId
          - { name: getDeviceAbiType, parameter: abiType }         # 이름 인자 없음 → 이름 고정
+     - class: StringUtil
+       methods:
+         - { name: getParam, name-arg-index: 1 }
+         - { name: defVal, wraps: 0, default-arg-index: 1 }       # 기본값 래퍼: defVal(getParam(req, "x"), "0")
    ```
 
    | 키 | 의미 |
@@ -76,6 +80,7 @@ output:
    | `parameter` | 이름 인자가 없는 메서드의 고정 이름. `name-arg-index` 와 함께 쓸 수 없음 |
    | (둘 다 없음) | 메서드명에서 이름: `getSystemId` → `systemId` |
    | `default-arg-index` | 기본값 인자 위치 (선택) |
+   | `wraps` | 기본값 래퍼: 이 위치의 인자가 요청 읽기면 그 값에 기본값을 붙임 → `String x = request.x ?: "0"` 한 줄 (`name-arg-index`·`parameter` 와 함께 쓸 수 없음). commons-lang `StringUtils.defaultIfEmpty/defaultIfBlank/defaultString` 은 기본 내장 |
 
 2. 분석할 Action 만 CLI 로 골라 실행합니다.
 

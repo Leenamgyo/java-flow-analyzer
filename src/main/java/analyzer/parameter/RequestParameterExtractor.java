@@ -53,6 +53,11 @@ public final class RequestParameterExtractor {
     }
 
     private static final int FIXED = -2;
+    /** 기본값 래퍼 규칙: nameArgIndex 자리에 WRAP_BASE - (감싸는 인자 위치) */
+    private static final int WRAP_BASE = -100;
+
+    /** 호출식 → 그 호출이 만든 요청 파라미터 (래퍼가 안쪽 읽기를 찾을 때) */
+    private final java.util.Map<MethodCallExpr, List<RequestParameterInfo>> produced = new java.util.IdentityHashMap<>();
 
     private static final Set<String> SPRING = Set.of("RequestParam", "PathVariable", "RequestHeader", "RequestBody",
             "ModelAttribute");
@@ -70,9 +75,15 @@ public final class RequestParameterExtractor {
             rules.add(new Rule(req, "getParameterValues", 0, null, "String[]"));
             rules.add(new Rule(req, "getParameterMap", -1, null, "Map<String, String[]>"));
         }
+        // 흔한 기본값 래퍼 (commons-lang): StringUtils.defaultIfEmpty(x, d) 등
+        for (String w : List.of("defaultIfEmpty", "defaultIfBlank", "defaultString")) {
+            rules.add(new Rule("StringUtils", w, WRAP_BASE, 1, null));
+        }
         for (var r : custom) {
             for (var m : r.methods) {
-                if (m.nameArgIndex != null) {
+                if (m.wraps != null) {
+                    rules.add(new Rule(r.className, m.name, WRAP_BASE - m.wraps, m.defaultArgIndex, m.type));
+                } else if (m.nameArgIndex != null) {
                     rules.add(new Rule(r.className, m.name, m.nameArgIndex, m.defaultArgIndex, m.type));
                 } else {
                     String fixed = m.parameter != null ? m.parameter : nameFromMethod(m.name);
@@ -87,6 +98,9 @@ public final class RequestParameterExtractor {
         Rule rule = match(call, target);
         if (rule == null) {
             return List.of();
+        }
+        if (rule.nameArgIndex() <= WRAP_BASE) {
+            return wrap(call, rule);
         }
         RequestParameterInfo p = new RequestParameterInfo();
         p.extraction = rule.className() == null ? rule.method() : TypeNames.simple(rule.className()) + "." + rule.method();
@@ -109,7 +123,42 @@ public final class RequestParameterExtractor {
             p.defaultValue = call.getArgument(rule.defaultArgIndex()).toString();
         }
         assignedVariable(call, p);
-        return List.of(register(p));
+        List<RequestParameterInfo> out = List.of(register(p));
+        produced.put(call, out);
+        return out;
+    }
+
+    /**
+     * 기본값 래퍼: 감싸는 인자가 요청 읽기 호출이면 그 요청 파라미터를 래퍼 호출로 옮기고 기본값·받는 변수를 붙인다.
+     * (안쪽 읽기는 인자 안 호출이 되어 흐름도에 따로 그려지지 않는다.) 감싸는 인자가 요청 읽기가 아니면 아무것도 하지 않는다.
+     */
+    private List<RequestParameterInfo> wrap(MethodCallExpr call, Rule rule) {
+        int idx = WRAP_BASE - rule.nameArgIndex();
+        if (call.getArguments().size() <= idx) {
+            return List.of();
+        }
+        Expression arg = call.getArgument(idx);
+        while (arg instanceof EnclosedExpr e) {
+            arg = e.getInner();
+        }
+        while (arg instanceof CastExpr c) {
+            arg = c.getExpression();
+        }
+        List<RequestParameterInfo> inner = arg instanceof MethodCallExpr mc ? produced.get(mc) : null;
+        if (inner == null || inner.size() != 1) {
+            return List.of();
+        }
+        RequestParameterInfo p = inner.get(0);
+        if (p.defaultValue == null && rule.defaultArgIndex() != null && call.getArguments().size() > rule.defaultArgIndex()) {
+            p.defaultValue = call.getArgument(rule.defaultArgIndex()).toString();
+        }
+        p.extraction = p.extraction + " → " + (rule.className() == null ? "" : TypeNames.simple(rule.className()) + ".") + rule.method();
+        assignedVariable(call, p);
+        if (rule.type() != null) {
+            p.type = rule.type();
+        }
+        produced.put(call, inner);
+        return inner;
     }
 
     public List<RequestParameterInfo> fromAnnotations(MethodDeclaration md, MethodInfo m, String file) {
@@ -181,7 +230,7 @@ public final class RequestParameterExtractor {
             if (!r.method().equals(call.getNameAsString())) {
                 continue;
             }
-            if (r.nameArgIndex() >= 0 && call.getArguments().size() <= r.nameArgIndex()) {
+            if (r.nameArgIndex() > WRAP_BASE && r.nameArgIndex() >= 0 && call.getArguments().size() <= r.nameArgIndex()) {
                 continue;
             }
             if (r.className() == null) {

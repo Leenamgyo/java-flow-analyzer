@@ -35,6 +35,7 @@ class RequestRuleTest {
                   - class: StringUtil
                     methods:
                       - { name: getParam, name-arg-index: 1, type: String }
+                      - { name: defVal, wraps: 0, default-arg-index: 1 }              # defVal(<요청 읽기>, 기본값)
                 """.formatted(Path.of(Fixtures.SOURCE_ROOT).toAbsolutePath()));
         return ConfigLoader.load(f);
     }
@@ -45,14 +46,32 @@ class RequestRuleTest {
         ConfigLoader.validate(cfg);
         AnalysisResult r = Main.analyze(cfg);
         List<String> names = r.parameters.stream().map(p -> p.name).toList();
-        assertEquals(List.of("deviceId", "systemId", "abiType", "query"), names);
+        assertEquals(List.of("deviceId", "systemId", "abiType", "query", "isAutoUpdate"), names);
+        RequestParameterInfo auto = r.parameters.get(4);
+        assertEquals("\"0\"", auto.defaultValue);                       // 래퍼의 기본값
+        assertEquals("isAutoUpdate", auto.variable);                    // 래퍼 결과를 받는 변수
+        assertEquals("StringUtil.getParam → StringUtil.defVal", auto.extraction);
         RequestParameterInfo sys = r.parameters.get(1);
         assertEquals("CONFIG", sys.nameResolution);
         assertEquals("getSystemId", sys.extraction);
         // 흐름도: 한 덩어리 요청 파라미터 노드 (호출 노드가 아님)
         String mmd = new FlowchartGenerator().render(r, "TD");
         assertTrue(mmd.contains("요청 파라미터<br/>#35;1 String deviceId = request.deviceId<br/>#35;2 String systemId = request.systemId<br/>"
-                + "#35;3 String abi = request.abiType<br/>#35;4 String query = request.query"), mmd);
+                + "#35;3 String abi = request.abiType<br/>#35;4 String query = request.query<br/>"
+                + "#35;6 String isAutoUpdate = request.isAutoUpdate ?: #quot;0#quot;"), mmd); // 안쪽 getParam(#5)은 따로 없음
+    }
+
+    @Test
+    void wrapsWithNameArgIndexIsAnError(@TempDir Path tmp) throws Exception {
+        Path f = tmp.resolve("bad2.yml");
+        Files.writeString(f, """
+                target: { source-root: x, class: A }
+                request-parameter-rules:
+                  - methods:
+                      - { name: defVal, wraps: 0, name-arg-index: 1 }
+                """);
+        AnalyzerConfig cfg = ConfigLoader.load(f);
+        assertThrows(IllegalArgumentException.class, () -> ConfigLoader.validate(cfg));
     }
 
     @Test

@@ -28,6 +28,7 @@ analysis:
 #       - { name: getString, name-arg-index: 1, default-arg-index: 2, type: String }
 #       - { name: getSystemId }                # 이름 인자 없음 → 메서드명에서 systemId
 #       - { name: getAbi, parameter: abiType } # 이름 고정
+#       - { name: defVal, wraps: 0, default-arg-index: 1 }  # 기본값 래퍼: defVal(getParam(req,"x"), "0")
 request-parameter-rules: []
 
 # 단계 보기 (phase-flowchart.mmd · phase-summary.md): 바인딩 › 체크 › 로직 › 후처리

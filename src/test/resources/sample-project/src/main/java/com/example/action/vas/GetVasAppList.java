@@ -11,6 +11,7 @@ public class GetVasAppList extends VasBaseAction {
         String systemId = getSystemId(request);
         String abi = getDeviceAbiType(request);
         String query = StringUtil.getParam(request, "query");
-        return deviceId + systemId + abi + query;
+        String isAutoUpdate = StringUtil.defVal(StringUtil.getParam(request, "isAutoUpdate"), "0"); // 기본값 래퍼
+        return deviceId + systemId + abi + query + isAutoUpdate;
     }
 }

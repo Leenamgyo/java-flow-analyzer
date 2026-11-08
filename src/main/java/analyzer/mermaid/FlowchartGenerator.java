@@ -756,11 +756,13 @@ public final class FlowchartGenerator {
                 return null;
             }
         }
-        if (group.stream().allMatch(this::requestRead)) {
+        // 인자 안 호출(따로 그리지 않음)은 빼고 판단 — defVal(getParam(req, "x"), "0") 은 요청 읽기 하나
+        List<CallSiteInfo> visible = group.stream().filter(c -> !argumentOnly(r, skipSet, c)).toList();
+        if (visible.isEmpty() || visible.stream().allMatch(this::requestRead)) {
             return null;
         }
-        if (group.size() == 1) {
-            CallSiteInfo c = group.get(0);
+        if (visible.size() == 1) {
+            CallSiteInfo c = visible.get(0);
             String var = c.resultUsage != null && c.resultUsage.startsWith("assigned:") ? c.resultUsage.substring(9) : null;
             String plain = (c.resultType == null ? "" : c.resultType + " ") + var + " = " + c.expression;
             if (var != null && stripSemi(c.statement).equals(plain)) {

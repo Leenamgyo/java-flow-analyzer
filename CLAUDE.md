@@ -76,7 +76,7 @@ analyzer/
 - `include-external-library-calls: false` 면 origin=LIBRARY 호출은 모델에 넣지 않고 개수만 센다. 단 Request Parameter 추출은 필터 이전에 수행.
 
 **요청 읽기 규칙 (`request-parameter-rules`, `RequestParameterExtractor`)**
-- 바인딩으로 볼 프로젝트 고유 메서드는 YAML 로 관리. `class` 생략 = 메서드명만으로 매칭(상속 메서드 등). `name-arg-index` = 이름 인자 위치, `parameter` = 고정 이름, 둘 다 없으면 메서드명에서(`getSystemId` → `systemId`, nameResolution `CONFIG`). 둘 다 쓰면 설정 오류. fixture `com.example.action.vas.GetVasAppList`, `RequestRuleTest`.
+- 바인딩으로 볼 프로젝트 고유 메서드는 YAML 로 관리. `class` 생략 = 메서드명만으로 매칭(상속 메서드 등). `name-arg-index` = 이름 인자 위치, `parameter` = 고정 이름, 둘 다 없으면 메서드명에서(`getSystemId` → `systemId`, nameResolution `CONFIG`). 둘 다 쓰면 설정 오류. `wraps: n` = 기본값 래퍼(인자 n 이 요청 읽기면 그 P* 를 래퍼 호출로 옮기고 default·받는 변수·extraction `A → B` 갱신, 안쪽 읽기는 인자 안 호출이 되어 흐름도에서 빠짐; commons StringUtils.defaultIfEmpty/Blank/defaultString 내장). fixture `com.example.action.vas.GetVasAppList`, `RequestRuleTest`.
 - 표시 문자열은 줄이지 않는다(`Labels.truncate`·`ConditionText.text` 는 원문 그대로, 목록 상한 없음) — 사용자 요구.
 
 **Request 스펙**
