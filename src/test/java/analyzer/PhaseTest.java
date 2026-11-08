@@ -243,6 +243,16 @@ class PhaseTest {
     }
 
     @Test
+    void bindingNodeIsNeverEmpty() {
+        // var client = SdkClient.getInstance(); 처럼 값 준비만 있는 ① 바인딩도 내용이 있어야 (기존: PH_BIND[""] 파싱 오류)
+        AnalysisResult r = Fixtures.analyze("CaseAction", "unresolvedCalls");
+        PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());
+        String mmd = new FlowchartGenerator(pm).render(r, "TD");
+        assertFalse(mmd.contains("[\"\"]"), mmd);
+        assertTrue(mmd.contains("값 준비 (1)<br/>var client = SdkClient.getInstance()"), mmd);
+    }
+
+    @Test
     void checkMethodWithRequestReadInConditionIsCheck() {
         AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute",
                 c -> c.analysis.expandRoles = List.of("Service", "Biz", "DAO"));

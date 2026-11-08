@@ -27,7 +27,7 @@ public final class PhaseText {
     /** 요소 표시: 호출식 / 블록 헤더 / 생성자·필드 바인딩 */
     public static String stepLabel(Step st) {
         if (st.element instanceof CallSiteInfo s) {
-            if (s.statement != null && st.group.size() > 1) { // 한 문장으로 묶인 요소는 문장 전체
+            if (s.statement != null) { // 변수 선언·대입 문장이면 문장 전체 (코드 그대로)
                 String t = s.statement;
                 return t.endsWith(";") ? t.substring(0, t.length() - 1) : t;
             }
@@ -87,6 +87,16 @@ public final class PhaseText {
         List<String> l = new ArrayList<>(compact(r, pre));
         for (Step st : pre) {
             l.addAll(fetchLines(st));
+        }
+        // 유틸·조회만 쓰는 변수 선언 (값 준비) — 코드 그대로
+        List<String> prepared = pre.stream().filter(st -> st.phase == Phase.BINDING && st.reason.startsWith("값 준비"))
+                .map(PhaseText::stepLabel).toList();
+        if (!prepared.isEmpty()) {
+            l.add("값 준비 (" + prepared.size() + ")");
+            l.addAll(prepared);
+        }
+        if (l.isEmpty()) { // 다른 바인딩 요소뿐이면 요소 코드라도
+            pre.stream().filter(st -> st.phase == Phase.BINDING).map(PhaseText::stepLabel).forEach(l::add);
         }
         return l;
     }

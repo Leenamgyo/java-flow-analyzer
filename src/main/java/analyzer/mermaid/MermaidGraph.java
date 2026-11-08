@@ -89,6 +89,9 @@ public final class MermaidGraph {
         if (css != null && RESERVED_CLASS.contains(css)) {
             errors.add("Mermaid 예약어 class: " + css);
         }
+        if (lines.isEmpty() || lines.stream().allMatch(l -> l == null || l.isBlank())) {
+            errors.add("빈 라벨 노드: " + id); // Mermaid 는 [""] 를 파싱하지 못한다
+        }
         Node n = new Node(id, lines, shape, css);
         claim(id, n);
         parent.items.add(n);
