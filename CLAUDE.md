@@ -73,7 +73,7 @@ analyzer/
 - source-root 밖 타입(예: `HttpServletRequest`)은 시그니처를 모르므로 `PARTIALLY_RESOLVED` + `signature-resolved: false`, 시그니처는 `getParameter(?)`. 파라미터 타입을 지어내지 않는다.
 - `var`, 체인 호출 결과, 선언 없는 이름 → `UNRESOLVED`.
 - 솔버가 반환한 AST 는 다른 파서 인스턴스 소유이므로 `ProjectSources.mapToOwnAst` 로 같은 위치의 자체 AST 로 매핑해서 쓴다.
-- `include-external-library-calls: false` 면 origin=LIBRARY 호출은 모델에 넣지 않고 개수만 센다. 단 Request Parameter 추출은 필터 이전에 수행.
+- `include-external-library-calls: false` 면 origin=LIBRARY 호출은 모델에 넣지 않고 개수만 센다. 단 Request Parameter 추출은 필터 이전에 수행. 예외: **문장의 가장 바깥 호출**(`extraInfo.add(X)`, `int n = Integer.parseInt(…)`, 삼항 `a.isEmpty() ? … : a.get(0)` — 다른 호출의 인자·수신 객체가 아니고 조건식·return·for 헤더·식 람다 본문 밖, `FlowAnalyzer.outermostInStatement`)은 빼면 그 문장이 흐름도에서 사라지므로 남긴다(사용자 요구: 하나도 빼먹지 말 것, `if` 본문이 JDK 호출뿐이라 비었던 문제).
 
 **요청 읽기 규칙 (`request-parameter-rules`, `RequestParameterExtractor`)**
 - 바인딩으로 볼 프로젝트 고유 메서드는 YAML 로 관리. `class` 생략 = 메서드명만으로 매칭(상속 메서드 등). `name-arg-index` = 이름 인자 위치, `parameter` = 고정 이름, 둘 다 없으면 메서드명에서(`getSystemId` → `systemId`, nameResolution `CONFIG`). 둘 다 쓰면 설정 오류. `wraps: n` = 기본값 래퍼(인자 n 이 요청 읽기면 그 P* 를 래퍼 호출로 옮기고 default·받는 변수·extraction `A → B` 갱신, 안쪽 읽기는 인자 안 호출이 되어 흐름도에서 빠짐; commons StringUtils.defaultIfEmpty/Blank/defaultString 내장). fixture `com.example.action.vas.GetVasAppList`, `RequestRuleTest`.
@@ -136,7 +136,7 @@ analyzer/
 
 **Mermaid (SPEC-v2 §5)**
 - 기본 `TD`(위→아래). subgraph 는 분석한 메서드당 1개 + 그 안의 try 블록(`sg_T*`)·Loop 영역(`sg_FOR*`/`sg_FOREACH*`/`sg_WHILE*`/`sg_DO*`). 본문 미분석 메서드는 노드를 만들지 않고 호출 노드 라벨로만 표시.
-- **빠진 코드 없음 (일반 흐름도)**: 분석한 메서드·호출·블록은 모두 노드 또는 블록 줄로 그린다(catch/finally 본문, 그 안에서만 호출되는 메서드, Service 로 안 가는 보조 메서드 포함 — 일반 흐름도에서는 `collapsedHelpers` 로 접지 않는다). 빼는 것은 사용자 설정 `output.flowchart-exclude`(* 패턴: 대상 `클래스.메서드` 단순명·FQN, 원문 `수신객체.메서드`)뿐 — 맞는 호출은 노드 없음, 맞는 메서드는 상자 없음, 흐름도 머리에 `%% flowchart-exclude …` 주석. 모델 밖 코드(`include-external-library-calls: false` 로 빠진 JDK 호출, 호출 없는 문장, `continue`/`break`)는 흐름도도 모른다. 규칙 객체 `FlowchartGenerator.Rules`(normal / phase — 단계 보기는 catch/finally 본문 생략 유지).
+- **빠진 코드 없음 (일반 흐름도)**: 분석한 메서드·호출·블록은 모두 노드 또는 블록 줄로 그린다(catch/finally 본문, 그 안에서만 호출되는 메서드, Service 로 안 가는 보조 메서드 포함 — 일반 흐름도에서는 `collapsedHelpers` 로 접지 않는다). 빼는 것은 사용자 설정 `output.flowchart-exclude`(* 패턴: 대상 `클래스.메서드` 단순명·FQN, 원문 `수신객체.메서드`)뿐 — 맞는 호출은 노드 없음, 맞는 메서드는 상자 없음, 흐름도 머리에 `%% flowchart-exclude …` 주석. 모델 밖 코드(`include-external-library-calls: false` 로 빠진 JDK 호출 — 바깥 호출·조건식·return 코드에 보이는 것뿐, 호출 없는 문장, `continue`/`break`)는 흐름도도 모른다. 규칙 객체 `FlowchartGenerator.Rules`(normal / phase — 단계 보기는 catch/finally 본문 생략 유지).
 - **흐름도 블록 4종** (연속된 같은 종류는 노드 1개로 합침, 노드 ID = 첫 요소 ID, 나머지 모델 ID 는 alias):
   ① **바인딩** `바인딩 · 클래스들` — 요청 파라미터(글자색 `req`)·VO 값 설정·값 조회·로직 없는 선언문·바인딩 함수(글자색 `fn`, `▸ 호출` 아래 `│` 로 본문 바인딩·요청 읽기·안쪽 바인딩 함수·return 중첩). 바인딩 함수 = `bindingFunctions` 2단계 고정점: ⓐ 순수 후보(최상위 return 뿐, 호출은 바인딩 코드·요청 읽기·후보 호출 — 최대 고정점) ⓑ 그중 바인딩이 있거나·바인딩 함수를 부르거나·들어오는 호출이 전부 바인딩 값 안(할당 호출 자체 제외 — 깊게 분석한 setter 는 바인딩 줄)이나 다른 바인딩 함수 안(최소 고정점: 값 함수 사슬 middle→inner, 재귀는 `↺ cycle`) — 상자를 그리지 않는다. builder 끝 `.build()` 처럼 바인딩을 품은 호출도 바인딩, 그 문장 줄은 안의 바인딩 줄 앞.
   ② **상태 변화** `상태 변화` — 반환 타입 `void` 호출(`#n call · 대상 vN`, 대상 = 수신 객체/`this`/static 클래스; 버전은 간선을 따라 전해지고 갈래가 합쳐지면 max — `stateVersions`, 그래서 if/else 갈래는 같은 버전) + 변수 값 변경(`V1 k/n`). 합친 블록에서도 호출마다 `==>`(여럿이면 `#n` 라벨, `checkMapping` 은 `modelIdsOf` 로 확인).

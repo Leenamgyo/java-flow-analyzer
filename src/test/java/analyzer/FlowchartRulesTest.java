@@ -118,7 +118,8 @@ class FlowchartRulesTest {
         assertTrue(g.idsUnder("sg_" + w.id).contains(inWhile));
         // while: 조건 → loop → 본문 → next → 조건, 조건 → done
         assertTrue(mmd.contains(w.id + " -->|\"loop\"| " + inWhile), mmd);
-        assertTrue(mmd.contains(inWhile + " -->|\"next\"| " + w.id), mmd);
+        String whileLast = g.nodeOf(r.callSites.stream().filter(c -> w.id.equals(c.controlBlockId)).reduce((a, b) -> b).orElseThrow().id);
+        assertTrue(mmd.contains(whileLast + " -->|\"next\"| " + w.id), mmd);
         assertTrue(mmd.contains(w.id + " -->|\"done\"| "), mmd);
         // do-while: 본문이 먼저 → 조건 → loop 이면 본문으로
         assertTrue(mmd.contains(w.id + " -->|\"done\"| " + inDo), mmd);

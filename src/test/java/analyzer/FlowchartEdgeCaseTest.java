@@ -136,4 +136,16 @@ class FlowchartEdgeCaseTest {
         AnalysisResult r = Fixtures.analyze("EdgeAction", "loopExits");
         assertTrue(r.blocks.stream().noneMatch(b -> b.type.name().equals("CONTINUE") || b.type.name().equals("BREAK")));
     }
+
+    @Test
+    void statementLevelLibraryCallsAreKept() {
+        // if 본문의 extraInfo.add(...) 처럼 문장 전체가 JDK 호출이면 모델·흐름도에 남는다 (기존: 제외되어 if 본문이 비었음)
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "libraryOnlyStatements");
+        CallSiteInfo add = call(r, "extraInfo.add(\"DELTA\")");
+        assertTrue(add.conditional);
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("extraInfo.add(#quot;DELTA#quot;)"), mmd);
+        // JDK 호출뿐인 삼항 문장도 사라지지 않는다
+        assertTrue(mmd.contains("extraInfo.isEmpty() ? null : extraInfo.get(0)"), mmd);
+    }
 }

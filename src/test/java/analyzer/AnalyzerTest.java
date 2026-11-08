@@ -268,7 +268,8 @@ class AnalyzerTest {
         void conditionalVsUnconditionalAndDeferred() {
             AnalysisResult r = analyze("CaseAction", "switchAndLoop");
             List<CallSiteInfo> calls = r.callSitesOf(r.entryMethodId);
-            assertTrue(calls.stream().allMatch(s -> s.conditional || s.deferred));
+            // items.forEach(…) 는 문장 자체가 JDK 호출이라 모델에 남는 무조건 호출, 그 밖은 조건부/지연
+            assertTrue(calls.stream().filter(s -> !s.methodName.equals("forEach")).allMatch(s -> s.conditional || s.deferred));
             CallSiteInfo ternary = calls.stream().filter(s -> s.methodName.equals("compute") && s.controlBlockId == null)
                     .findFirst().orElseThrow();
             assertTrue(ternary.conditions.get(0).contains("? true"));

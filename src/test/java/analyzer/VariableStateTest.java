@@ -85,7 +85,7 @@ class VariableStateTest {
         String callId = assign.callSiteIds.get(0);
         assertEquals(callId, g.nodeOf(assign.id));
         // 타입 없는 대입 = 값 변경 (자바 코드 그대로 타입을 붙이지 않음)
-        assertTrue(mmd.contains("[\"#35;3 label = format(once) · " + label.id + " 1/1\"]"), mmd);
+        assertTrue(mmd.contains("[\"#35;4 label = format(once) · " + label.id + " 1/1\"]"), mmd);
         // 선언(타입 있는 초기화)은 값 변경 노드로 그리지 않는다
         assertFalse(mmd.contains("값 변경<br/>int size"), mmd);
         assertFalse(mmd.contains("값 변경<br/>long total = 0"), mmd);

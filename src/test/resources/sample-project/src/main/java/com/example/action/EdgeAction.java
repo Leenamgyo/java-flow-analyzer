@@ -8,6 +8,8 @@ import com.example.model.SearchVO;
 import com.example.support.Cache;
 import com.example.support.LogService;
 import com.example.support.Registry;
+import com.example.util.StringUtil;
+import java.util.ArrayList;
 
 /** 흐름도 규칙의 경계 사례 */
 public class EdgeAction {
@@ -168,5 +170,16 @@ public class EdgeAction {
     }
 
     void touch() {
+    }
+
+    // ---- 문장 전체가 JDK 호출뿐인 if 본문 (include-external-library-calls: false 에서도 흐름도에 남아야)
+    public List<String> libraryOnlyStatements(String callerId, String versionCode) {
+        List<String> extraInfo = new ArrayList<>();
+        if (StringUtil.isNotEmpty(callerId) && StringUtil.isNotEmpty(versionCode)) { // 주석
+            extraInfo.add("DELTA");
+        }
+        String first = extraInfo.isEmpty() ? null : extraInfo.get(0);
+        touch();
+        return extraInfo;
     }
 }

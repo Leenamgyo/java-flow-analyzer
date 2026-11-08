@@ -188,9 +188,10 @@ class OutputConsistencyTest {
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         String mmd = new FlowchartGenerator().render(r, "TD");
         ControlBlock t = r.blocks.stream().filter(b -> b.type == analyzer.model.BlockType.TRY).findFirst().orElseThrow();
-        // 빈 try 상자 대신 본문 코드 노드, 흐름이 그 노드를 지난다
-        assertTrue(mmd.contains("BODY_" + t.id + "[\"Long.parseLong(versionCode);\"]"), mmd);
-        assertTrue(g.edges().stream().anyMatch(e -> e.to().equals("BODY_" + t.id)), mmd);
+        // 문장 자체인 JDK 호출 Long.parseLong 은 모델에 남아 try 상자 안 호출 노드로, 흐름이 그 노드를 지난다
+        CallSiteInfo parse = r.callSites.stream().filter(c -> c.expression.equals("Long.parseLong(versionCode)")).findFirst().orElseThrow();
+        assertTrue(g.idsUnder("sg_" + t.id).contains(g.nodeOf(parse.id)), mmd);
+        assertTrue(g.edges().stream().anyMatch(e -> e.to().equals(g.nodeOf(parse.id))), mmd);
         // return errorView("1002") — errorView() 본문을 그리므로 호출 노드 ==> 메서드, 그 뒤 return 노드
         CallSiteInfo ev = r.callSites.stream().filter(c -> c.expression.equals("errorView(\"1002\")")).findFirst().orElseThrow();
         assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(ev.id) && e.style() == MermaidGraph.EdgeStyle.CALL), mmd);

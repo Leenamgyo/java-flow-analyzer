@@ -32,7 +32,12 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.RecordDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
+import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.stmt.ExpressionStmt;
+import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.resolution.declarations.ResolvedMethodDeclaration;
 import com.github.javaparser.resolution.declarations.ResolvedReferenceTypeDeclaration;
 
@@ -204,7 +209,10 @@ public final class FlowAnalyzer {
                 // 외부 라이브러리 제외 대상이어도 남긴다
                 boolean logging = analyzer.model.LogCalls.isLog(call.getNameAsString(),
                         call.getScope().map(Object::toString).orElse(null));
-                if (!cfg.analysis.includeExternalLibraryCalls && t.origin() == Origin.LIBRARY && !readsRequest && !logging) {
+                // 문장의 가장 바깥 호출(extraInfo.add(x) 처럼 문장이 곧 JDK 호출)은 빼면 그 코드가 흐름도에서 사라지므로 남긴다.
+                // 다른 호출의 인자·수신 객체 안 호출은 바깥 호출 코드에 보이므로 제외 대상
+                if (!cfg.analysis.includeExternalLibraryCalls && t.origin() == Origin.LIBRARY && !readsRequest && !logging
+                        && !outermostInStatement(call)) {
                     result.excludedExternalCalls++;
                     return null;
                 }
@@ -551,6 +559,22 @@ public final class FlowAnalyzer {
                 return true;
             }
             cur = expansionParent.get(cur);
+        }
+        return false;
+    }
+
+    /** 감싸는 ExpressionStmt(선언·대입 포함) 안에서 다른 호출·생성자 인자/수신 객체가 아닌 가장 바깥 호출인지 */
+    static boolean outermostInStatement(MethodCallExpr call) {
+        Node p = call.getParentNode().orElse(null);
+        while (p != null) {
+            if (p instanceof MethodCallExpr || p instanceof ObjectCreationExpr) {
+                return false;
+            }
+            if (p instanceof Statement st) {
+                // 식 람다 본문(x -> list.add(x))은 바깥 호출 코드에 보인다
+                return st instanceof ExpressionStmt && !(st.getParentNode().orElse(null) instanceof LambdaExpr);
+            }
+            p = p.getParentNode().orElse(null);
         }
         return false;
     }
