@@ -82,8 +82,23 @@ public final class FlowchartGenerator {
     private final Set<String> supCalls;
     private final Set<String> supBlocks;
 
+    /** 세부(subgraph)로 그리는 로직 역할 — 설정 phases.logic-roles */
+    private final Set<ClassRole> logicRoles;
+
     public FlowchartGenerator() {
-        this(null);
+        this(null, DEFAULT_LOGIC_ROLES);
+    }
+
+    /** 일반 흐름도: 세부로 그릴 로직 역할 지정 (설정 phases.logic-roles) */
+    public FlowchartGenerator(Set<ClassRole> logicRoles) {
+        this(null, logicRoles);
+    }
+
+    /** 설정 문자열(Service, Biz …) → 역할 */
+    public static Set<ClassRole> roles(java.util.Collection<String> labels) {
+        Set<ClassRole> out = java.util.EnumSet.noneOf(ClassRole.class);
+        labels.forEach(l -> out.add(ClassRole.fromLabel(l).orElseThrow(() -> new IllegalArgumentException("알 수 없는 역할: " + l))));
+        return out;
     }
 
     /**
@@ -91,6 +106,11 @@ public final class FlowchartGenerator {
      * 요약 노드로 대체한 요소에서만 호출되는 메서드는 그리지 않는다.
      */
     public FlowchartGenerator(PhaseModel phases) {
+        this(phases, phases == null ? DEFAULT_LOGIC_ROLES : phases.logicRoles);
+    }
+
+    private FlowchartGenerator(PhaseModel phases, Set<ClassRole> logicRoles) {
+        this.logicRoles = logicRoles;
         this.phases = phases;
         this.supCalls = phases == null ? Set.of() : phases.suppressedCalls;
         this.supBlocks = phases == null ? Set.of() : phases.suppressedBlocks;
@@ -99,7 +119,8 @@ public final class FlowchartGenerator {
     /** x = call() 형태의 변수 변경: 호출 ID → 변경 (호출 노드에 "→ x" 로 표시) */
     private final Map<String, List<VariableChange>> assignedBy = new HashMap<>();
 
-    private static final Set<ClassRole> LOGIC_ROLES = java.util.EnumSet.of(ClassRole.SERVICE, ClassRole.BIZ, ClassRole.DAO,
+    /** 설정이 없을 때의 로직 역할 (설정 phases.logic-roles 기본값과 같음) */
+    public static final Set<ClassRole> DEFAULT_LOGIC_ROLES = java.util.EnumSet.of(ClassRole.SERVICE, ClassRole.BIZ, ClassRole.DAO,
             ClassRole.REPOSITORY, ClassRole.MAPPER);
 
     /** 접은 내부 함수(와 그 안에서 전개된 접힌 함수)가 값을 채우는 VO 클래스 */
@@ -124,14 +145,14 @@ public final class FlowchartGenerator {
 
     /**
      * 값 조회: 결과를 변수에 받는 호출인데 본문을 전개하지 않은 source 메서드(Service·DAO 등 로직 역할 제외).
-     * 예: member = checkLogin(request) — 내부로 들어가지 않고 바인딩 한 줄로 끝낸다.
+     * 예: user = getLoginUser(request) — 내부로 들어가지 않고 바인딩 한 줄로 끝낸다.
      */
     private boolean fetch(CallSiteInfo s) {
         if (s.targetMethodId == null || s.expansion != Expansion.DEPTH_LIMIT) {
             return false;
         }
         MethodInfo t = r.method(s.targetMethodId);
-        return t.origin == analyzer.model.Origin.SOURCE && !LOGIC_ROLES.contains(r.classOf(t).role)
+        return t.origin == analyzer.model.Origin.SOURCE && !logicRoles.contains(r.classOf(t).role)
                 && r.classOf(t).role != ClassRole.VO && r.classOf(t).role != ClassRole.UTIL;
     }
 
@@ -164,7 +185,7 @@ public final class FlowchartGenerator {
 
     /**
      * 로직 역할(Service·Biz·DAO·Mapper …)이 아닌 source 메서드 중 본문에서(전이적으로) 로직 역할 호출에 닿지 않는 것.
-     * 단계 보기에서는 세부(subgraph)를 그리지 않고 호출 노드만 둔다 (예: calculateTotal, normalizePhone).
+     * 단계 보기에서는 세부(subgraph)를 그리지 않고 호출 노드만 둔다 (예: 합계 계산·문자열 정리 같은 보조 메서드).
      */
     public static Set<String> collapsedHelpers(AnalysisResult r, Set<ClassRole> logicRoles) {
         Map<String, Boolean> memo = new HashMap<>();
@@ -222,7 +243,7 @@ public final class FlowchartGenerator {
                         .findFirst().ifPresent(s -> assignedBy.computeIfAbsent(s.id, k -> new ArrayList<>()).add(c));
             }
         }
-        collapsed = collapsedHelpers(r, phases == null ? LOGIC_ROLES : phases.logicRoles);
+        collapsed = collapsedHelpers(r, logicRoles);
         Set<String> skip = skippedMethods(r, supCalls, collapsed);
         drawnMethods.clear();
         r.methods().stream().filter(m -> m.analyzed && !skip.contains(m.id)).forEach(m -> drawnMethods.add(m.id));
@@ -271,13 +292,13 @@ public final class FlowchartGenerator {
 
     /** YAML ID ↔ Mermaid 노드 매핑 검증 (흐름에서 뺀 바인딩 코드는 제외, else/case 는 간선으로 표현) */
     public static List<String> checkMapping(AnalysisResult r, MermaidGraph graph) {
-        return checkMapping(r, graph, Set.of(), Set.of(), collapsedHelpers(r, LOGIC_ROLES));
+        return checkMapping(r, graph, Set.of(), Set.of(), collapsedHelpers(r, DEFAULT_LOGIC_ROLES));
     }
 
     /** suppressedCalls/Blocks: 단계 보기에서 요약 노드로 대체한 진입 메서드 요소 */
     public static List<String> checkMapping(AnalysisResult r, MermaidGraph graph, Set<String> suppressedCalls,
                                             Set<String> suppressedBlocks) {
-        return checkMapping(r, graph, suppressedCalls, suppressedBlocks, collapsedHelpers(r, LOGIC_ROLES));
+        return checkMapping(r, graph, suppressedCalls, suppressedBlocks, collapsedHelpers(r, DEFAULT_LOGIC_ROLES));
     }
 
     /** collapsed: 단계 보기에서 세부를 그리지 않는 보조 메서드 */
@@ -350,7 +371,7 @@ public final class FlowchartGenerator {
 
     /** 그리지 않는 메서드: 바인딩 메서드 + catch/finally 안에서만 호출되는 메서드(전이적으로) */
     public static Set<String> skippedMethods(AnalysisResult r) {
-        return skippedMethods(r, Set.of(), collapsedHelpers(r, LOGIC_ROLES));
+        return skippedMethods(r, Set.of(), collapsedHelpers(r, DEFAULT_LOGIC_ROLES));
     }
 
     /** suppressed: 그리지 않는 진입 메서드 호출 (단계 보기의 요약 대상) */
@@ -564,7 +585,7 @@ public final class FlowchartGenerator {
         return p.flush(cur);
     }
 
-    /** int size = ParamUtil.getInt(…) 처럼 선언 값이 요청 읽기 호출 그 자체 → 요청 파라미터 노드에 "· V1 1/n" 으로 표시됨 */
+    /** int size = XxxUtil.getInt(request, …) 처럼 선언 값이 요청 읽기 호출 그 자체 → 요청 파라미터 노드에 "· V1 1/n" 으로 표시됨 */
     private boolean initShownAsRead(VariableChange c) {
         return c.callSiteIds.stream().map(r::callSite)
                 .anyMatch(x -> x.expression.equals(c.valueExpression) && requestRead(x) && !FlowView.hidden(r, x));
@@ -606,7 +627,7 @@ public final class FlowchartGenerator {
 
     /**
      * 연속된 바인딩 코드 → "VO 값 설정" 노드 1개 (ID = SET_첫요소ID). 객체별로 "필드 ← 출처" 를 나열한다.
-     * 바인딩 메서드 호출(예: toSearchVO)은 그 메서드의 바인딩을 포함한다. 상세는 mapping.md.
+     * 바인딩 메서드 호출(VO 를 채워 반환하는 메서드)은 그 메서드의 바인딩을 포함한다. 상세는 mapping.md.
      */
     private List<End> flushSets(Subgraph sg, MethodInfo m, String container, List<Object> sets, List<End> cur) {
         if (sets.isEmpty()) {
@@ -641,7 +662,7 @@ public final class FlowchartGenerator {
         int shown = 0;
         for (var e : byObject.entrySet()) {
             String via = e.getValue().stream().map(b -> b.methodId).filter(x -> !x.equals(m.id)).findFirst().orElse(null);
-            if (via != null) { // 바인딩 메서드(toSearchVO 등) 안에서 채움
+            if (via != null) { // 바인딩 메서드(VO 를 채워 반환) 안에서 채움
                 lines.add(r.method(via).name + "() 안:");
             }
             for (Binding b : e.getValue()) {
@@ -676,7 +697,7 @@ public final class FlowchartGenerator {
         return begin && end;
     }
 
-    /** 본문을 전개하지 않는 요청 값 읽기 (getParameter*, ParamUtil.getX …) */
+    /** 본문을 전개하지 않는 요청 값 읽기 (getParameter*, request-parameter-rules 의 유틸 …) */
     private boolean requestRead(CallSiteInfo s) {
         return !r.parametersAt(s.id).isEmpty() && s.expansion != Expansion.EXPANDED
                 && s.expansion != Expansion.SHARED && s.expansion != Expansion.CYCLE;
@@ -868,12 +889,12 @@ public final class FlowchartGenerator {
         boolean folded = s.targetMethodId != null && collapsed.contains(s.expansionTargetId());
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
         if (var != null && fetch(s)) {
-            // 값 조회는 바인딩으로 끝: 내부로 들어가지 않고 코드 한 줄 (#1 member = checkLogin(request))
+            // 값 조회는 바인딩으로 끝: 내부로 들어가지 않고 코드 한 줄 (#1 user = getLoginUser(request))
             g.node(sg, s.id, List.of("#" + s.order + " " + var + " = " + Labels.truncate(s.expression, 70)), Shape.RECT, "bind");
             return;
         }
         if (folded) {
-            // 내부 함수(Service·DAO 로 가지 않는 보조 메서드)는 세부 없이 코드 한 줄 (#15 items = readItems(request))
+            // 내부 함수(Service·DAO 로 가지 않는 보조 메서드)는 세부 없이 코드 한 줄 (#3 items = readItems(request))
             StringBuilder code = new StringBuilder("#" + s.order + " " + (var == null ? "" : var + " = ")
                     + Labels.truncate(s.expression, 70));
             for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) { // 값이 바뀌는 변수면 이력 순번

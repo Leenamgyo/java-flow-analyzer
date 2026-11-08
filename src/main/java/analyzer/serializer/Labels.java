@@ -200,7 +200,7 @@ public final class Labels {
         return b.conditions.isEmpty() ? "always" : String.join(" && ", b.conditions);
     }
 
-    /** 흐름도/트리용 객체 바인딩 요약: [OrderVO (order), 7 fields assigned, 2 conditional assignments, 1 type conversion] */
+    /** 흐름도/트리용 객체 바인딩 요약: [SearchVO (vo), 7 fields assigned, 2 conditional assignments, 1 type conversion] */
     public static List<String> bindingSummary(AnalysisResult r, ObjectInfo o, List<Binding> bs) {
         List<String> l = new ArrayList<>();
         l.add(o.className + " (" + o.variable + ")");

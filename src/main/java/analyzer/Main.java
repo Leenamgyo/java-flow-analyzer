@@ -16,7 +16,7 @@ import java.util.List;
  * 사용법:
  * <pre>
  *   ./gradlew run                                                           # 기본 조건 + config/analyzer.yml
- *   ./gradlew run --args="--config my-project.yml --class OrderListAction"  # 프로젝트 설정 + Action 지정
+ *   ./gradlew run --args="--config my-project.yml --class XxxAction"        # 프로젝트 설정 + Action 지정
  *   ./gradlew run --args="--source-root /abs/src/main/java --class XAction" # 기본 조건만 + 경로
  * </pre>
  * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output

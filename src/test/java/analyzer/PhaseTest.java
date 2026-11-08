@@ -22,11 +22,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** 단계 보기: 바인딩 › 체크 › 로직 › 후처리 (example/legacy-shop + sample-project) */
+/** 단계 보기: 바인딩 › 체크 › 로직 › 후처리 (옆 디렉터리 ../java-flow-example + sample-project) */
 class PhaseTest {
 
+    /** 예제 프로젝트는 이 저장소 옆(../java-flow-example). 없으면 이 테스트들은 건너뛴다 */
+    static final Path EXAMPLE_PROJECT = Path.of("../java-flow-example");
+
     static AnalyzerConfig example(String clazz) throws Exception {
-        AnalyzerConfig cfg = ConfigLoader.load(Path.of("example/analyzer.yml"));
+        org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.isDirectory(EXAMPLE_PROJECT),
+                "예제 프로젝트 없음: " + EXAMPLE_PROJECT.toAbsolutePath().normalize());
+        AnalyzerConfig cfg = ConfigLoader.load(Path.of("config/java-flow-example.yml"));
         cfg.target.className = clazz;
         return cfg;
     }
@@ -163,6 +168,20 @@ class PhaseTest {
         String mmd = new FlowchartGenerator().render(r, "TD");
         assertTrue(mmd.contains(login.id + "[\"#35;1 member = checkLogin(request)\"]"), mmd);
         assertFalse(mmd.contains("실패:"), mmd);
+    }
+
+    @Test
+    void mainFlowchartDetailFollowsLogicRolesSetting() throws Exception {
+        AnalysisResult r = Main.analyze(example("OrderRegisterAction"));
+        String selectPoint = r.methods().stream().filter(m -> m.name.equals("selectPoint") && m.analyzed)
+                .findFirst().orElseThrow().id;
+        // 기본(Service·Biz·DAO·Mapper…): DAO 메서드도 세부로
+        assertTrue(new FlowchartGenerator().build(r).has("sg_" + selectPoint));
+        // 설정에서 Service·Biz 만 로직 역할로 → DAO 메서드는 세부 없이 호출 한 줄
+        var roles = FlowchartGenerator.roles(List.of("Service", "Biz"));
+        MermaidGraph g = new FlowchartGenerator(roles).build(r);
+        assertFalse(g.has("sg_" + selectPoint));
+        assertEquals(List.of(), g.validate());
     }
 
     @Test

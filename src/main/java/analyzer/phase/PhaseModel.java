@@ -77,7 +77,7 @@ public final class PhaseModel {
 
     /**
      * PRE 영역의 체크 (바인딩 중 발견된 체크 포함), 소스 순서.
-     * 값 조회(member = checkLogin(request))는 바인딩이므로 그 안의 실패 조건은 여기 넣지 않고 ① 바인딩에 붙인다.
+     * 값 조회(user = getLoginUser(request))는 바인딩이므로 그 안의 실패 조건은 여기 넣지 않고 ① 바인딩에 붙인다.
      */
     public List<CheckItem> preChecks() {
         List<CheckItem> out = new ArrayList<>();

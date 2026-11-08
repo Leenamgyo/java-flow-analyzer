@@ -35,7 +35,8 @@ public final class OutputWriter {
         String mermaidStatus = "출력 비활성화";
         if (cfg.output.mermaid) {
             Path mmd = dir.resolve("flowchart.mmd");
-            mermaid = new FlowchartGenerator().render(r, cfg.output.direction, cfg.output.layout);
+            mermaid = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
+                    .render(r, cfg.output.direction, cfg.output.layout);
             Files.writeString(mmd, mermaid);
             written.add(mmd);
             mermaidStatus = MermaidCli.validate(mmd);

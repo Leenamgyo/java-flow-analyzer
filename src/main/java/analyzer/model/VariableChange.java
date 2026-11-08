@@ -14,7 +14,7 @@ public final class VariableChange {
     public String op;
     /** "=", "-=", "++" … (INIT/PARAM 은 null) */
     public String operator;
-    /** 소스 원문: total -= usePoint / size = Constants.MAX_PAGE_SIZE / long total = calculateTotal(items) */
+    /** 소스 원문: total -= discount / size = MAX_SIZE / long total = sum(items) */
     public String expression;
     /** 대입되는 값 식 (++/-- 는 null) */
     public String valueExpression;

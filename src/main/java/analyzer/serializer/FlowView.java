@@ -26,7 +26,7 @@ import java.util.WeakHashMap;
  * 트리·Mermaid 공용 "흐름 보기" 규칙. 흐름의 중심은 호출·분기·예외이고, 객체 바인딩은 객체당 요약 1개로 접는다.
  * <ul>
  *   <li>바인딩 코드의 호출(setter/builder/put)과 그 안의 전개되지 않은 호출(인자 속 getParameter 등)은 흐름에서 뺀다</li>
- *   <li>바인딩 메서드(본문이 바인딩 + 최상위 return 뿐, 예: toSearchVO)는 그리지 않고, 그 호출 위치에 요약을 둔다</li>
+ *   <li>바인딩 메서드(본문이 바인딩 + 최상위 return 뿐 — VO 를 채워 반환하는 메서드)는 그리지 않고, 그 호출 위치에 요약을 둔다</li>
  *   <li>메서드 안의 객체별 첫 바인딩 위치에 요약(Summary) 1개를 둔다</li>
  * </ul>
  * 상세 매핑은 analysis.yaml / mapping.md 에 모두 남는다(모델은 그대로).

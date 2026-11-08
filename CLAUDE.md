@@ -29,9 +29,10 @@
 - 설치된 JDK 는 26 뿐이라 `options.release = 21` 로 Java 21 타깃 컴파일한다(toolchain 미사용).
 - 샘플 원본 프로젝트(분석 대상, 컴파일하지 않음): `src/test/resources/sample-project/src/main/java`
   - `ScpAppListAction` — 실전형 시나리오, `CaseAction` — 테스트 케이스별 진입 메서드, `AppController` — Spring 어노테이션
-- 예제 프로젝트: `example/legacy-shop` — 멀티 모듈 `action/`(Struts Action) + `lib/`(VO/DTO + Service/Biz/DAO/Mapper/Util/common), 각각 `src/main/java`. 설정 `example/analyzer.yml`(`source-roots` 2개)
-  - `./gradlew run --args="--config example/analyzer.yml"` → `example/output/OrderRegisterAction/` (요청 파라미터 25개 → VO/DTO/Command 6종 + builder·생성자)
-  - `--class OrderListAction` → `example/output/OrderListAction/`
+- 예제 프로젝트: 이 저장소 **옆 디렉터리** `../java-flow-example` (git 밖, 별도 프로젝트처럼) — 멀티 모듈 `action/`(Struts Action) + `lib/`(VO/DTO + Service/Biz/DAO/Mapper/Util/common), 각각 `src/main/java`. 설정 `config/java-flow-example.yml`(`source-roots` 2개, 상대 경로 `../java-flow-example/...`)
+  - `./gradlew run --args="--config config/java-flow-example.yml"` → `output/OrderRegisterAction/` (요청 파라미터 25개 → VO/DTO/Command 6종 + builder·생성자)
+  - `--class OrderListAction` → `output/OrderListAction/`
+  - 이 예제를 쓰는 테스트(PhaseTest·VariableStateTest 일부)는 `../java-flow-example` 이 없으면 Assumptions 로 건너뛴다.
 - Mermaid CLI(`mmdc`)가 PATH 에 있으면 렌더링 검증, 없으면 생략하고 analysis.md 에 기록.
 
 ## 구조
@@ -157,7 +158,7 @@ analyzer/
 - v1 흐름 분석 — 대상/진입 메서드 식별(오버로딩·모호성 거부·매핑 어노테이션 추론), 접근 제어자 4종+인터페이스 암묵 제어자, 역할 분류(어노테이션>상위타입>Suffix, 근거·충돌 기록), Depth/동일 클래스 확장/중복/재귀·상호재귀, if·switch·loop·try/catch/finally·try-with-resources·return·throw, Legacy·사용자 규칙·Spring 파라미터, 역할 기반 전개(`expand-roles`)·유일 구현 후보 연결(`link-single-implementation`).
 - v2 바인딩 — setter·builder·생성자·필드 대입·Map.put·copyProperties 수집, 출처/변환/조건/기본값/재대입 추적, 필드 커버리지, 다중 할당 최종 값(mapping.md), catch 처리 방식(로그·오류 응답·재발생·반환), 호출 인자·반환값 사용.
 - 변수 상태 변화 — V*/VC* 수집(analysis.yaml `variables` + 스키마·ModelValidator), flowchart `값 변경` 노드·`→ x`, 트리 `≔`, mapping.md 이력 표, VO 줄 `⟳`, 단계 보기 요청 값 보정(fixture `CaseAction.variableState`, `VariableStateTest`).
-- 단계 보기 — `phase-flowchart.mmd`·`phase-summary.md`, 역할 `Validator`(Suffix), 설정 `phases`(fixture: example/legacy-shop, sample `ScpAppListAction`; `PhaseTest`). 생성 결과 Mermaid 11.4.1 파서 통과.
+- 단계 보기 — `phase-flowchart.mmd`·`phase-summary.md`, 역할 `Validator`(Suffix), 설정 `phases`(fixture: ../java-flow-example, sample `ScpAppListAction`; `PhaseTest`). 생성 결과 Mermaid 11.4.1 파서 통과.
 - 출력 — analysis.yaml(+스키마 검증)·flowchart.mmd(TD, 메서드별 subgraph, 요청 파라미터·VO 값 설정 요약 노드)·mapping.md·analysis.md(SPEC-v2 §8 구성)·call-tree.txt. 생성 flowchart 는 Mermaid 11.4.1 파서로 문법 확인(임시 검증, 프로젝트에는 mmdc 연동만 존재).
 
 미구현(후속): **마이그레이션 비교(SPEC-v2 §7, comparison.md)**, `class-diagram.mmd`, 고급 예외 전파(호출 대상 throws 기반), Spring 동적 호출/DI 구현체 해석, 반환값을 거친 객체 정체성·값 추적, 메서드 참조(`::`)·익명/로컬 클래스 본문, switch fall-through 흐름, `case ... when` 가드.

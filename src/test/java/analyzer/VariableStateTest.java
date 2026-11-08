@@ -98,7 +98,7 @@ class VariableStateTest {
 
     @Test
     void exampleTotalHistoryAndPhase() throws Exception {
-        AnalyzerConfig cfg = ConfigLoader.load(Path.of("example/analyzer.yml"));
+        AnalyzerConfig cfg = PhaseTest.example("OrderRegisterAction");
         AnalysisResult r = Main.analyze(cfg);
         VariableInfo total = var(r, "execute", "total");
         List<VariableChange> h = history(r, total);

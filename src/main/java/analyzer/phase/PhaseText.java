@@ -87,7 +87,7 @@ public final class PhaseText {
         return l;
     }
 
-    /** 값 조회 (코드 형식): member = checkLogin(request) */
+    /** 값 조회 (코드 형식): user = getLoginUser(request) */
     public static List<String> fetchLines(Step st) {
         List<String> l = new ArrayList<>();
         if (st.fetchVariable == null) {

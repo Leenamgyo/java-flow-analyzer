@@ -17,9 +17,12 @@
 ./gradlew run
 # → output/ScpAppListAction/
 
-# 예제 멀티 모듈 프로젝트(example/legacy-shop) — Action 하나씩
-./gradlew run --args="--config example/analyzer.yml"                          # → example/output/OrderRegisterAction/
-./gradlew run --args="--config example/analyzer.yml --class OrderListAction"  # → example/output/OrderListAction/
+# 예제 멀티 모듈 프로젝트 — 이 저장소 옆 디렉터리에 둔다 (분석 대상은 읽기만 함)
+#   Projects/
+#     java-flow-analyzer/   ← 분석기 (여기서 실행)
+#     java-flow-example/    ← 분석 대상: action/ + lib/
+./gradlew run --args="--config config/java-flow-example.yml"                          # → output/OrderRegisterAction/
+./gradlew run --args="--config config/java-flow-example.yml --class OrderListAction"  # → output/OrderListAction/
 ```
 
 ## 설정: 기본 조건 + 프로젝트 설정 덮어쓰기
