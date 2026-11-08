@@ -22,7 +22,12 @@ analysis:
   include-variable-changes: true
   classpath-jars: []
 
-# 사용자 정의 Request 유틸리티 (HttpServletRequest.getParameter/Values/Map 은 기본 내장) — 프로젝트별로 지정
+# 프로젝트 고유 요청 읽기 메서드 = 바인딩 (HttpServletRequest.getParameter/Values/Map 은 기본 내장) — 프로젝트별로 지정
+#   - class: ParamUtil                       # 생략하면 클래스 무관(메서드 이름만)
+#     methods:
+#       - { name: getString, name-arg-index: 1, default-arg-index: 2, type: String }
+#       - { name: getSystemId }                # 이름 인자 없음 → 메서드명에서 systemId
+#       - { name: getAbi, parameter: abiType } # 이름 고정
 request-parameter-rules: []
 
 # 단계 보기 (phase-flowchart.mmd · phase-summary.md): 바인딩 › 체크 › 로직 › 후처리

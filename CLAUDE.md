@@ -75,6 +75,10 @@ analyzer/
 - 솔버가 반환한 AST 는 다른 파서 인스턴스 소유이므로 `ProjectSources.mapToOwnAst` 로 같은 위치의 자체 AST 로 매핑해서 쓴다.
 - `include-external-library-calls: false` 면 origin=LIBRARY 호출은 모델에 넣지 않고 개수만 센다. 단 Request Parameter 추출은 필터 이전에 수행.
 
+**요청 읽기 규칙 (`request-parameter-rules`, `RequestParameterExtractor`)**
+- 바인딩으로 볼 프로젝트 고유 메서드는 YAML 로 관리. `class` 생략 = 메서드명만으로 매칭(상속 메서드 등). `name-arg-index` = 이름 인자 위치, `parameter` = 고정 이름, 둘 다 없으면 메서드명에서(`getSystemId` → `systemId`, nameResolution `CONFIG`). 둘 다 쓰면 설정 오류. fixture `com.example.action.vas.GetVasAppList`, `RequestRuleTest`.
+- 표시 문자열은 줄이지 않는다(`Labels.truncate`·`ConditionText.text` 는 원문 그대로, 목록 상한 없음) — 사용자 요구.
+
 **Request 스펙**
 - Request 읽기 호출(getParameter*·`request-parameter-rules`)은 `include-external-library-calls: false` 여도 모델에 남긴다(요청 스펙 근거). analysis.md 의 Unresolved 표에서는 건수만 표시.
 - `requestSpec`(RQ*) = 이름이 확정된 P* 의 이름별 집계. UNKNOWN 이름·전체 조회·body·`@ModelAttribute`(객체 바인딩)는 `unknownNameReads` / `bulkReads` 로 (`RequestParameterInfo.named()`).

@@ -57,13 +57,25 @@ output:
        - /path/to/project/action/src/main/java
        - /path/to/project/lib/src/main/java
 
-   # 프로젝트 고유 요청 파라미터 유틸 (HttpServletRequest.getParameter* 는 기본 내장)
+   # 프로젝트 고유 요청 읽기 메서드 = 바인딩 (HttpServletRequest.getParameter* 는 기본 내장)
    request-parameter-rules:
-     - class: ParamUtil
+     - class: ParamUtil                     # 클래스를 알면 지정
        methods:
          - { name: getString, name-arg-index: 1, default-arg-index: 2, type: String }
          - { name: getInt,    name-arg-index: 1, default-arg-index: 2, type: int }
+     - methods:                             # class 생략 = 메서드 이름만으로 (상속받아 바로 부르는 메서드 등)
+         - { name: getVasDeviceIdParameter, name-arg-index: 1 }   # getVasDeviceIdParameter(request, "deviceId")
+         - { name: getSystemId }                                  # 이름 인자 없음 → 메서드명에서: systemId
+         - { name: getDeviceAbiType, parameter: abiType }         # 이름 인자 없음 → 이름 고정
    ```
+
+   | 키 | 의미 |
+   |---|---|
+   | `class` | 수신/선언 클래스 단순명 또는 FQN. 생략하면 클래스 무관(같은 이름의 다른 메서드도 잡히니 이름이 고유할 때만) |
+   | `name-arg-index` | 파라미터 이름이 들어 있는 인자 위치(0부터). `-1` 이면 전체 조회 |
+   | `parameter` | 이름 인자가 없는 메서드의 고정 이름. `name-arg-index` 와 함께 쓸 수 없음 |
+   | (둘 다 없음) | 메서드명에서 이름: `getSystemId` → `systemId` |
+   | `default-arg-index` | 기본값 인자 위치 (선택) |
 
 2. 분석할 Action 만 CLI 로 골라 실행합니다.
 
@@ -108,7 +120,7 @@ output:
 | `phase-summary.md` | 단계별 요약: 실제 실행 순서, 요청 파라미터·객체, 체크 목록, 로직 호출 트리, 요소별 판정 근거 |
 | `analysis.md` | 요약 보고서 (대상, 통계, 미해결 항목 등) |
 
-흐름도의 바인딩·값 변경은 **코드 형식 `대상 = 값`** 으로 한 줄에 하나씩 씁니다
+흐름도·보고서의 코드와 식은 길어도 줄이지(`…`) 않고 전부 씁니다. 바인딩·값 변경은 **코드 형식 `대상 = 값`** 으로 한 줄에 하나씩 씁니다
 (`#n` = 메서드 안 호출 순번, call-tree·analysis.yaml 과 같은 번호. 요청 읽기 호출은 `request.이름 ?: 기본값` 으로 줄임).
 
 ```
