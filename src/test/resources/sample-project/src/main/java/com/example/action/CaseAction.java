@@ -267,4 +267,16 @@ public class CaseAction {
         }
         return result;
     }
+
+    // ---- 로직 호출 없는 변수 선언 문장 = 바인딩 한 줄 (호출마다 나누지 않음, 줄 끝 주석은 표시 안 함)
+    public void statementBinding(HttpServletRequest request) {
+        String shopID = request.getParameter("shopID");
+        String sdkVer = request.getParameter("sdkVer");
+        String pd = request.getParameter("pd");
+        boolean checkMandatoryParameterInQA = com.example.util.ODSUtil.isQAStore(shopID) && com.example.util.StringUtil.isNotEmpty(sdkVer) // 필수는 아니지만 중요한 파라메터 체크
+                && "1".equals(pd);
+        if (checkMandatoryParameterInQA) {
+            noticeBiz.list("qa");
+        }
+    }
 }

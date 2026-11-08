@@ -339,6 +339,8 @@ public final class MermaidGraph {
                 cut = i + 1;                                   // 쉼표 뒤
             } else if ((ch == '+' || ch == '-') && s.charAt(i - 1) == ' ' && s.charAt(i + 1) == ' ') {
                 cut = i;                                       // 연산자 앞
+            } else if ((ch == '&' && s.charAt(i + 1) == '&' || ch == '|' && s.charAt(i + 1) == '|') && s.charAt(i - 1) == ' ') {
+                cut = i;                                       // && / || 앞
             } else if (ch == '.' && s.charAt(i - 1) == ')') {
                 cut = i;                                       // ).method() 체인 앞
             } else if (ch == '(' && s.charAt(i + 1) != ')') {

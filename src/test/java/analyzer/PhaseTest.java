@@ -222,6 +222,27 @@ class PhaseTest {
     }
 
     @Test
+    void declarationWithOnlyUtilCallsIsOneBindingLine() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "statementBinding", c -> c.analysis.expandRoles = List.of("Biz"));
+        List<CallSiteInfo> calls = r.callSitesOf(r.entryMethodId).stream()
+                .filter(s -> s.statement != null && s.statement.startsWith("boolean checkMandatoryParameterInQA")).toList();
+        assertEquals(2, calls.size()); // isQAStore, isNotEmpty ("1".equals 는 JDK 라 모델 밖)
+        assertFalse(calls.get(0).statement.contains("필수"), calls.get(0).statement); // 주석 제외
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        assertEquals(calls.get(0).id, g.nodeOf(calls.get(1).id)); // 한 노드
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains(calls.get(0).id + "[\"#35;4–5 boolean checkMandatoryParameterInQA = com.example.util.ODSUtil.isQAStore(shopID)<br/>"
+                + "#gt; && com.example.util.StringUtil.isNotEmpty(sdkVer) && #quot;1#quot;.equals(pd)\"]"), mmd);
+        PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());
+        Step st = pm.steps.stream().filter(x -> x.group.contains(calls.get(0))).findFirst().orElseThrow();
+        assertEquals(2, st.group.size());
+        assertEquals(Phase.BINDING, st.phase);
+        assertEquals(PhaseModel.Region.PRE, st.region);
+        new FlowchartGenerator(pm).render(r, "TD");
+    }
+
+    @Test
     void checkMethodWithRequestReadInConditionIsCheck() {
         AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute",
                 c -> c.analysis.expandRoles = List.of("Service", "Biz", "DAO"));

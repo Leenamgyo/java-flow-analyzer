@@ -56,6 +56,12 @@ public final class CallSiteInfo {
     public String resultUsage;
     /** T x = call() 의 선언 타입 T (선언이 아니면 null) */
     public String resultType;
+    /** 이 호출이 들어 있는 변수 선언/대입 문장 원문 (boolean f = a() && b(); / x = a(); 아니면 null) */
+    public String statement;
+    /** DECLARATION | ASSIGNMENT (statement 가 있을 때) */
+    public String statementKind;
+    /** 그 문장의 위치 — 같은 문장의 호출끼리 묶는 키 */
+    public SourceLocation statementLocation;
     public SourceLocation location;
 
     /** 전개 판정 대상: 구현 연결이 있으면 구현 메서드, 아니면 선언 대상 */

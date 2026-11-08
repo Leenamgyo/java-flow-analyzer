@@ -27,7 +27,11 @@ public final class PhaseText {
     /** 요소 표시: 호출식 / 블록 헤더 / 생성자·필드 바인딩 */
     public static String stepLabel(Step st) {
         if (st.element instanceof CallSiteInfo s) {
-            return Labels.truncate(s.expression, 70);
+            if (s.statement != null && st.group.size() > 1) { // 한 문장으로 묶인 요소는 문장 전체
+                String t = s.statement;
+                return t.endsWith(";") ? t.substring(0, t.length() - 1) : t;
+            }
+            return s.expression;
         }
         if (st.element instanceof ControlBlock b) {
             return Labels.blockHeader(b);

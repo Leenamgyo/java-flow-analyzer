@@ -481,6 +481,7 @@ public final class MethodBodyWalker {
         mc.getArguments().forEach(a -> site.arguments.add(text(a)));
         site.resultUsage = resultUsage(mc);
         site.resultType = declaredType(mc);
+        enclosingStatement(mc, site);
         result.callSites.add(site);
         result.index(site.id, site);
         if (ctx.block() != null) {
@@ -617,6 +618,27 @@ public final class MethodBodyWalker {
         }
     }
 
+    /** 호출이 들어 있는 변수 선언/대입 문장 (람다·다른 문장 경계에서 멈춤) */
+    private void enclosingStatement(MethodCallExpr mc, CallSiteInfo site) {
+        for (Node p = mc.getParentNode().orElse(null); p != null; p = p.getParentNode().orElse(null)) {
+            if (p instanceof LambdaExpr || p instanceof CallableDeclaration<?>) {
+                return;
+            }
+            if (p instanceof com.github.javaparser.ast.stmt.Statement st) {
+                if (st instanceof com.github.javaparser.ast.stmt.ExpressionStmt es) {
+                    Expression e = es.getExpression();
+                    if (e instanceof VariableDeclarationExpr || e instanceof com.github.javaparser.ast.expr.AssignExpr) {
+                        String t = text(e);
+                        site.statement = t.endsWith(";") ? t : t + ";";
+                        site.statementKind = e instanceof VariableDeclarationExpr ? "DECLARATION" : "ASSIGNMENT";
+                        site.statementLocation = SourceLocation.of(es, file);
+                    }
+                }
+                return;
+            }
+        }
+    }
+
     /** T x = call() 이면 T (괄호·캐스트 건너뜀), 아니면 null */
     private static String declaredType(MethodCallExpr mc) {
         Node cur = mc;
@@ -697,8 +719,7 @@ public final class MethodBodyWalker {
     }
 
     static String text(Node n) {
-        String s = n.toString().replaceAll("\\s+", " ").trim();
-        return s; // 줄이지 않음
+        return analyzer.parser.Code.text(n); // 주석 제외, 줄이지 않음
     }
 
     static String simple(String type) {

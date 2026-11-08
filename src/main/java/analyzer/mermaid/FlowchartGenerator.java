@@ -563,7 +563,11 @@ public final class FlowchartGenerator {
                 cur = link(cur, id);
                 pending.clear();
             }
-            if (st.element instanceof CallSiteInfo) {
+            List<CallSiteInfo> stmt = st.element instanceof CallSiteInfo e0
+                    ? statementGroup(e0, new ArrayList<>(st.group)) : null;
+            if (stmt != null && stmt.size() == st.group.size()) {
+                cur = statementNode(sl, stmt, new ArrayList<>(), cur);
+            } else if (st.element instanceof CallSiteInfo) {
                 // 한 문장의 호출 전부(안쪽 → 바깥, 예: a.b().c()) — 일반 흐름도와 같은 규칙
                 for (CallSiteInfo s : st.group) {
                     if (FlowView.hidden(r, s)) {
@@ -641,7 +645,11 @@ public final class FlowchartGenerator {
                 .filter(VariableChange::isChange) // 선언(타입 있는 초기화)은 값 변경이 아니다
                 .filter(c -> assignedBy.values().stream().noneMatch(l -> l.contains(c)))
                 .filter(c -> !supCalls.contains(c.id)).toList());
+        java.util.Set<String> done = new java.util.HashSet<>(); // 문장 노드로 이미 그린 호출
         for (Object o : elems) {
+            if (o instanceof CallSiteInfo cs && done.contains(cs.id)) {
+                continue;
+            }
             SourceLocation at = o instanceof CallSiteInfo s ? s.location : ((ControlBlock) o).location;
             while (!orphans.isEmpty() && before(orphans.get(0).location, at)) {
                 cur = flushExcept(p, "set", cur);
@@ -653,6 +661,13 @@ public final class FlowchartGenerator {
             }
             if (o instanceof CallSiteInfo s) {
                 if (header.contains(s.position)) {
+                    continue;
+                }
+                List<CallSiteInfo> stmt = statementGroup(s, elems);
+                if (stmt != null) { // 로직 호출 없는 변수 선언/대입 = 문장 통째로 바인딩 한 줄
+                    cur = p.flush(cur);
+                    cur = statementNode(sg, stmt, changes, cur);
+                    stmt.forEach(x -> done.add(x.id));
                     continue;
                 }
                 if (FlowView.hidden(r, s)) { // 바인딩 코드(setter/builder/put, 그 인자 속 호출, 바인딩 메서드 호출)
@@ -688,6 +703,63 @@ public final class FlowchartGenerator {
     private boolean initShownAsRead(VariableChange c) {
         return c.callSiteIds.stream().map(r::callSite)
                 .anyMatch(x -> x.expression.equals(c.valueExpression) && requestRead(x) && !FlowView.hidden(r, x));
+    }
+
+    /**
+     * s 가 속한 변수 선언/대입 문장의 호출들 (같은 컨테이너 안). 문장 노드로 그릴 조건이 아니면 null:
+     * 로직 역할 호출·세부를 그리는 메서드로 가는 호출·바인딩 코드가 있거나, 요청 읽기뿐이거나,
+     * 호출 하나가 문장 전체인 단순한 경우(x = call() — 호출 노드가 이미 같은 코드).
+     */
+    private List<CallSiteInfo> statementGroup(CallSiteInfo s, List<Object> elems) {
+        if (s.statementLocation == null) {
+            return null;
+        }
+        List<CallSiteInfo> group = elems.stream().filter(o -> o instanceof CallSiteInfo c
+                        && s.statementLocation.equals(c.statementLocation)).map(o -> (CallSiteInfo) o).toList();
+        for (CallSiteInfo c : group) {
+            boolean logic = c.targetMethodId != null && (logicRoles.contains(r.classOf(r.method(c.targetMethodId)).role)
+                    || c.implementationMethodId != null && logicRoles.contains(r.classOf(r.method(c.implementationMethodId)).role));
+            boolean detailed = c.targetMethodId != null && drawnMethods.contains(c.expansionTargetId())
+                    && (c.expansion == Expansion.EXPANDED || c.expansion == Expansion.SHARED || c.expansion == Expansion.CYCLE);
+            if (logic || detailed || FlowView.hidden(r, c)) {
+                return null;
+            }
+        }
+        if (group.stream().allMatch(this::requestRead)) {
+            return null;
+        }
+        if (group.size() == 1) {
+            CallSiteInfo c = group.get(0);
+            String var = c.resultUsage != null && c.resultUsage.startsWith("assigned:") ? c.resultUsage.substring(9) : null;
+            String plain = (c.resultType == null ? "" : c.resultType + " ") + var + " = " + c.expression;
+            if (var != null && stripSemi(c.statement).equals(plain)) {
+                return null;
+            }
+        }
+        return group;
+    }
+
+    private static String stripSemi(String s) {
+        return s.endsWith(";") ? s.substring(0, s.length() - 1).trim() : s;
+    }
+
+    /** 문장 노드: #4–5 boolean flag = ODSUtil.isQAStore(shopID) && StringUtil.isNotEmpty(sdkVer) && "1".equals(pd) */
+    private List<End> statementNode(Subgraph sg, List<CallSiteInfo> group, List<VariableChange> changes, List<End> cur) {
+        CallSiteInfo first = group.get(0);
+        CallSiteInfo last = group.get(group.size() - 1);
+        StringBuilder line = new StringBuilder("#" + first.order + (group.size() > 1 ? "–" + last.order : "") + " ")
+                .append(stripSemi(Labels.codeValue(r, first.callerMethodId, first.statementLocation, first.statement)));
+        // 이 문장이 추적 변수의 선언/변경이면 이력 표시, 값 변경 노드는 따로 만들지 않음
+        for (VariableChange c : r.variableChanges) {
+            if (c.methodId.equals(first.callerMethodId) && contains(first.statementLocation, c.location)) {
+                line.append(" · ").append(Labels.historyTag(r, c));
+                changes.remove(c);
+                g.alias(c.id, first.id);
+            }
+        }
+        g.node(sg, first.id, List.of(line.toString()), Shape.RECT, "bind");
+        group.stream().skip(1).forEach(c -> g.alias(c.id, first.id));
+        return link(cur, first.id);
     }
 
     /** kind 가 아닌 쌓인 요약을 먼저 내보낸다 */

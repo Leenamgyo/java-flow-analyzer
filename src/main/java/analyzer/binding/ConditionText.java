@@ -72,7 +72,6 @@ final class ConditionText {
     }
 
     static String text(Node n) {
-        String s = n.toString().replaceAll("\\s+", " ").trim();
-        return s; // 줄이지 않음
+        return analyzer.parser.Code.text(n); // 주석 제외, 줄이지 않음
     }
 }

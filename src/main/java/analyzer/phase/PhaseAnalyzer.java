@@ -87,16 +87,18 @@ public final class PhaseAnalyzer {
         List<Object> elements = new ArrayList<>();
         collect(entry, null, elements);
         // 한 문장 안에 중첩된 호출(인자·수신 객체 속 호출, builder 체인)은 가장 바깥 호출의 요소로 묶는다
-        Map<CallSiteInfo, Step> byOuter = new java.util.IdentityHashMap<>();
+        Map<Object, Step> byOuter = new java.util.HashMap<>();
         for (Object o : elements) {
             if (o instanceof CallSiteInfo s) {
                 CallSiteInfo outer = outermost(s, elements);
-                Step st = byOuter.get(outer);
+                // 같은 변수 선언/대입 문장의 호출은 한 요소 (boolean f = a() && b())
+                Object key = s.statementLocation != null ? s.statementLocation : outer;
+                Step st = byOuter.get(key);
                 if (st == null) {
                     st = new Step();
                     st.element = outer;
-                    st.location = outer.location;
-                    byOuter.put(outer, st);
+                    st.location = s.statementLocation != null ? s.statementLocation : outer.location;
+                    byOuter.put(key, st);
                     pm.steps.add(st);
                 }
                 st.group.add(s);
@@ -190,6 +192,14 @@ public final class PhaseAnalyzer {
                     && r.method(s.expansionTargetId()).origin == Origin.SOURCE) {
                 st.phase = Phase.LOGIC;
                 st.reason = "계산·가공 메서드 (로직 역할 호출·바인딩 없음)";
+            }
+        }
+        // 3c. (3a·3b 로도 판정 안 된) 로직 역할 호출도, 본문을 전개한 메서드도 없는 변수 선언 문장 = 값 준비(바인딩)
+        for (Step st : pm.steps) {
+            if (st.phase == Phase.NONE && st.element instanceof CallSiteInfo s && "DECLARATION".equals(s.statementKind)
+                    && st.group.stream().noneMatch(this::expanded)) {
+                st.phase = Phase.BINDING;
+                st.reason = "값 준비 (유틸·조회만 쓰는 변수 선언)";
             }
         }
         // 4. 값 조회: 결과 변수가 바로 뒤 바인딩(사이에 로직 없음)에 쓰이고, 그 뒤에 로직이 더 있는 호출 → 바인딩
