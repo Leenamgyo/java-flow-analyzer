@@ -36,7 +36,7 @@ public final class OutputWriter {
         if (cfg.output.mermaid) {
             Path mmd = dir.resolve("flowchart.mmd");
             mermaid = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
-                    .render(r, cfg.output.direction, cfg.output.layout);
+                    .maxLineLength(cfg.output.maxLineLength).render(r, cfg.output.direction, cfg.output.layout);
             Files.writeString(mmd, mermaid);
             written.add(mmd);
             mermaidStatus = MermaidCli.validate(mmd);
@@ -46,7 +46,8 @@ public final class OutputWriter {
             if (cfg.output.mermaid) {
                 Path pmmd = dir.resolve("phase-flowchart.mmd");
                 try {
-                    Files.writeString(pmmd, new FlowchartGenerator(pm).render(r, cfg.output.direction, cfg.output.layout));
+                    Files.writeString(pmmd, new FlowchartGenerator(pm).maxLineLength(cfg.output.maxLineLength)
+                            .render(r, cfg.output.direction, cfg.output.layout));
                     written.add(pmmd);
                     MermaidCli.validate(pmmd);
                 } catch (IllegalStateException e) {

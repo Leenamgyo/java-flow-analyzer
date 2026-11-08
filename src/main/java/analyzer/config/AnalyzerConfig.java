@@ -81,6 +81,8 @@ public class AnalyzerConfig {
         public String direction = "TD";
         /** Mermaid 레이아웃: dagre(Mermaid 기본) | elk(직각 간선, 뷰어가 ELK 지원 시) */
         public String layout = "dagre";
+        /** 흐름도 노드 한 줄 최대 길이 — 넘으면 쉼표·연산자·체인 앞에서 끊고 다음 줄은 "> " 로 시작. 0 = 끊지 않음 */
+        public int maxLineLength = 100;
     }
 
     /**

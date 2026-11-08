@@ -194,7 +194,8 @@ public final class MermaidGraph {
             sb.append(indent).append("end\n");
         } else {
             Node n = (Node) o;
-            String label = String.join("<br/>", n.lines().stream().map(MermaidGraph::esc).toList());
+            String label = String.join("<br/>", n.lines().stream()
+                    .flatMap(l -> wrap(l, maxLineLength).stream()).map(MermaidGraph::esc).toList());
             String[] br = switch (n.shape()) {
                 case RECT -> new String[]{"[\"", "\"]"};
                 case ROUND -> new String[]{"(\"", "\")"};
@@ -206,6 +207,108 @@ public final class MermaidGraph {
             };
             sb.append(indent).append(n.id()).append(br[0]).append(label).append(br[1]).append('\n');
         }
+    }
+
+    /** 노드 한 줄 최대 길이 (넘으면 끊고 다음 줄 앞에 "> "). 0 이하면 끊지 않음 */
+    private int maxLineLength = 100;
+
+    public MermaidGraph maxLineLength(int n) {
+        this.maxLineLength = n;
+        return this;
+    }
+
+    /**
+     * 긴 코드 줄을 끊기 좋은 자리에서 나눈다: 쉼표 뒤 > + / - 앞 > '.' 앞(메서드 체인) > '(' 뒤.
+     * 이어지는 줄은 "> " 로 시작. 끊을 자리가 없으면 그대로 둔다 (단어 중간을 자르지 않음).
+     */
+    public static List<String> wrap(String line, int max) {
+        List<String> out = new ArrayList<>();
+        if (max <= 0 || line == null || line.length() <= max) {
+            out.add(line);
+            return out;
+        }
+        String rest = line;
+        boolean first = true;
+        while (true) {
+            String prefix = first ? "" : "> ";
+            int room = max - prefix.length();
+            if (rest.length() <= room) {
+                out.add(prefix + rest);
+                break;
+            }
+            int cut = breakAt(rest, room);
+            if (cut <= 0 || cut >= rest.length()) {
+                out.add(prefix + rest);
+                break;
+            }
+            out.add(prefix + rest.substring(0, cut).stripTrailing());
+            rest = rest.substring(cut).stripLeading();
+            first = false;
+        }
+        return out;
+    }
+
+    /**
+     * room 안의 끊을 자리. 강한 자리(쉼표 뒤·+/- 앞·).체인 앞)를 우선, 없으면 약한 자리('(' 뒤),
+     * 한도 안에 마땅한 자리가 없으면 한도를 넘는 첫 자리, 그것도 없으면 -1. 문자열 리터럴 안은 제외.
+     */
+    private static int breakAt(String s, int room) {
+        int strong = -1;
+        int weak = -1;
+        int after = -1;
+        char quote = 0;
+        for (int i = 0; i < s.length() - 1; i++) {
+            char ch = s.charAt(i);
+            if (quote != 0) {
+                if (ch == '\\') {
+                    i++;
+                } else if (ch == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (ch == '"' || ch == '\'') {
+                quote = ch;
+                continue;
+            }
+            if (i == 0) {
+                continue;
+            }
+            int cut = -1;
+            boolean isStrong = true;
+            if (ch == ',' && s.charAt(i + 1) == ' ') {
+                cut = i + 1;                                   // 쉼표 뒤
+            } else if ((ch == '+' || ch == '-') && s.charAt(i - 1) == ' ' && s.charAt(i + 1) == ' ') {
+                cut = i;                                       // 연산자 앞
+            } else if (ch == '.' && s.charAt(i - 1) == ')') {
+                cut = i;                                       // ).method() 체인 앞
+            } else if (ch == '(' && s.charAt(i + 1) != ')') {
+                cut = i + 1;                                   // 여는 괄호 뒤 (약한 자리)
+                isStrong = false;
+            }
+            if (cut <= 0) {
+                continue;
+            }
+            if (cut <= room) {
+                if (isStrong) {
+                    strong = cut;
+                } else {
+                    weak = cut;
+                }
+            } else if (after < 0) {
+                after = cut;
+            }
+        }
+        if (strong > room / 3) {
+            return strong;
+        }
+        if (weak > room / 3) {
+            return weak;
+        }
+        if (after > 0) {
+            return after;
+        }
+        return Math.max(strong, weak);
     }
 
     /** 라벨 특수문자를 Mermaid 엔티티로 치환 (# 먼저) */

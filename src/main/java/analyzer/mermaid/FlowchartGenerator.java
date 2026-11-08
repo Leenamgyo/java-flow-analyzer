@@ -288,7 +288,15 @@ public final class FlowchartGenerator {
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
         }
-        return graph.render(direction, layout, phases == null ? CLASS_DEFS : PHASE_CLASS_DEFS);
+        return graph.maxLineLength(maxLineLength).render(direction, layout, phases == null ? CLASS_DEFS : PHASE_CLASS_DEFS);
+    }
+
+    private int maxLineLength = 100;
+
+    /** 노드 한 줄 최대 길이 (설정 output.max-line-length, 0 = 끊지 않음) */
+    public FlowchartGenerator maxLineLength(int n) {
+        this.maxLineLength = n;
+        return this;
     }
 
     /** YAML ID ↔ Mermaid 노드 매핑 검증 (흐름에서 뺀 바인딩 코드는 제외, else/case 는 간선으로 표현) */
