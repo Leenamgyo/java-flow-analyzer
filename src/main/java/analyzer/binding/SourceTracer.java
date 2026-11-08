@@ -132,7 +132,7 @@ final class SourceTracer {
             }
             trace(u.getExpression(), methodId, via, false, true, hops, acc);
         } else if (e instanceof ConditionalExpr c) {
-            acc.transforms.add("조건식: " + ConditionText.text(c.getCondition()) + " ? … : …");
+            acc.transforms.add("조건식: " + ConditionText.text(c));
             trace(c.getThenExpr(), methodId, via, true, inExpr, hops, acc);
             trace(c.getElseExpr(), methodId, via, true, inExpr, hops, acc);
         } else if (e instanceof ObjectCreationExpr o) {

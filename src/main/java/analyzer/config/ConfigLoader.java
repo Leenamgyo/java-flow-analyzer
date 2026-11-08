@@ -112,8 +112,16 @@ public final class ConfigLoader {
             }
         }
         for (var rule : cfg.requestParameterRules) {
-            if (rule.className == null || rule.methods == null || rule.methods.isEmpty()) {
-                throw new IllegalArgumentException("request-parameter-rules 항목에는 class 와 methods 가 필요합니다.");
+            if (rule.methods == null || rule.methods.isEmpty()) {
+                throw new IllegalArgumentException("request-parameter-rules 항목에는 methods 가 필요합니다 (class 는 생략 가능).");
+            }
+            for (var m : rule.methods) {
+                if (m.name == null || m.name.isBlank()) {
+                    throw new IllegalArgumentException("request-parameter-rules.methods 항목에는 name 이 필요합니다.");
+                }
+                if (m.nameArgIndex != null && m.parameter != null) {
+                    throw new IllegalArgumentException("request-parameter-rules." + m.name + ": name-arg-index 와 parameter 는 함께 쓸 수 없습니다.");
+                }
             }
         }
     }

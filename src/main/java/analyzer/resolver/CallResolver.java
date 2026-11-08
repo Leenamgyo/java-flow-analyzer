@@ -212,6 +212,6 @@ public final class CallResolver {
             return "";
         }
         String line = s.lines().findFirst().orElse("");
-        return line.length() > 160 ? line.substring(0, 160) + "…" : line;
+        return line; // 줄이지 않음
     }
 }

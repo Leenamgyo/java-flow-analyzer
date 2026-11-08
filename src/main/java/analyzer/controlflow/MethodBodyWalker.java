@@ -686,7 +686,7 @@ public final class MethodBodyWalker {
 
     static String text(Node n) {
         String s = n.toString().replaceAll("\\s+", " ").trim();
-        return s.length() > 300 ? s.substring(0, 300) + "…" : s;
+        return s; // 줄이지 않음
     }
 
     static String simple(String type) {

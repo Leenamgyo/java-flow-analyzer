@@ -42,8 +42,17 @@ import java.util.Set;
  */
 public final class RequestParameterExtractor {
 
-    private record Rule(String className, String method, int nameArgIndex, Integer defaultArgIndex, String type) {
+    /**
+     * className null = 클래스 무관(메서드명만). nameArgIndex: 0 이상 = 그 인자가 이름, -1 = 전체 조회, FIXED = fixedName 사용
+     */
+    private record Rule(String className, String method, int nameArgIndex, Integer defaultArgIndex, String type,
+                        String fixedName) {
+        Rule(String className, String method, int nameArgIndex, Integer defaultArgIndex, String type) {
+            this(className, method, nameArgIndex, defaultArgIndex, type, null);
+        }
     }
+
+    private static final int FIXED = -2;
 
     private static final Set<String> SPRING = Set.of("RequestParam", "PathVariable", "RequestHeader", "RequestBody",
             "ModelAttribute");
@@ -63,7 +72,12 @@ public final class RequestParameterExtractor {
         }
         for (var r : custom) {
             for (var m : r.methods) {
-                rules.add(new Rule(r.className, m.name, m.nameArgIndex, m.defaultArgIndex, m.type));
+                if (m.nameArgIndex != null) {
+                    rules.add(new Rule(r.className, m.name, m.nameArgIndex, m.defaultArgIndex, m.type));
+                } else {
+                    String fixed = m.parameter != null ? m.parameter : nameFromMethod(m.name);
+                    rules.add(new Rule(r.className, m.name, FIXED, m.defaultArgIndex, m.type, fixed));
+                }
             }
         }
     }
@@ -75,11 +89,15 @@ public final class RequestParameterExtractor {
             return List.of();
         }
         RequestParameterInfo p = new RequestParameterInfo();
-        p.extraction = TypeNames.simple(rule.className()) + "." + rule.method();
+        p.extraction = rule.className() == null ? rule.method() : TypeNames.simple(rule.className()) + "." + rule.method();
         p.sourceMethodId = source.id;
         p.location = SourceLocation.of(call, file);
         p.type = rule.type();
-        if (rule.nameArgIndex() < 0) {
+        if (rule.nameArgIndex() == FIXED) {
+            p.name = rule.fixedName();
+            p.nameResolution = "CONFIG"; // 설정 규칙의 고정 이름 (parameter 또는 메서드명)
+            p.nameExpression = rule.method() + "()";
+        } else if (rule.nameArgIndex() < 0) {
             p.name = null;
             p.nameResolution = "ALL_PARAMETERS";
         } else {
@@ -166,6 +184,9 @@ public final class RequestParameterExtractor {
             if (r.nameArgIndex() >= 0 && call.getArguments().size() <= r.nameArgIndex()) {
                 continue;
             }
+            if (r.className() == null) {
+                return r; // 클래스 무관 규칙
+            }
             for (String tn : typeNames) {
                 if (tn.equals(r.className()) || TypeNames.simple(tn).equals(r.className())) {
                     return r;
@@ -173,6 +194,12 @@ public final class RequestParameterExtractor {
             }
         }
         return null;
+    }
+
+    /** getSystemId → systemId, getDeviceAbiType → deviceAbiType, systemId → systemId */
+    static String nameFromMethod(String method) {
+        String n = method.matches("(get|read|fetch)[A-Z].*") ? method.replaceFirst("^(get|read|fetch)", "") : method;
+        return Character.toLowerCase(n.charAt(0)) + n.substring(1);
     }
 
     /** 문자열 리터럴 또는 static final String 상수(같은 클래스/상위/다른 source 타입) 값. Map 키 해석에도 사용 */

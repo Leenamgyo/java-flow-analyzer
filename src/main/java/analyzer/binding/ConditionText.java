@@ -73,6 +73,6 @@ final class ConditionText {
 
     static String text(Node n) {
         String s = n.toString().replaceAll("\\s+", " ").trim();
-        return s.length() > 120 ? s.substring(0, 119) + "…" : s;
+        return s; // 줄이지 않음
     }
 }

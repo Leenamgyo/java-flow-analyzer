@@ -83,7 +83,10 @@ public class AnalyzerConfig {
         public String layout = "dagre";
     }
 
-    /** 사용자 정의 Request 유틸리티 규칙 */
+    /**
+     * 사용자 정의 Request 읽기 규칙 (바인딩으로 볼 프로젝트 고유 메서드).
+     * class 를 생략하면 메서드 이름만으로 매칭한다 (상속받아 바로 부르는 getXxxParameter(request, "x") 등).
+     */
     public static class RequestParameterRule {
         @JsonProperty("class")
         public String className;
@@ -92,8 +95,10 @@ public class AnalyzerConfig {
 
     public static class MethodRule {
         public String name;
-        /** 파라미터명 인자 위치 (0부터). -1 이면 전체 파라미터 조회 */
-        public int nameArgIndex = 0;
+        /** 파라미터명 인자 위치 (0부터). -1 이면 전체 파라미터 조회. parameter 와 함께 쓸 수 없음 */
+        public Integer nameArgIndex;
+        /** 이름 인자가 없는 메서드(getSystemId(request))의 고정 파라미터명. name-arg-index·parameter 둘 다 없으면 메서드명에서 (getSystemId → systemId) */
+        public String parameter;
         public Integer defaultArgIndex;
         public String type;
     }

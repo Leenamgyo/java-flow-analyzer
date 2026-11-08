@@ -672,27 +672,20 @@ public final class FlowchartGenerator {
         bs.forEach(b -> byObject.computeIfAbsent(b.objectId, k -> new ArrayList<>()).add(b));
         List<String> lines = new ArrayList<>(List.of("VO 값 설정 · " + String.join(", ", byObject.keySet().stream()
                 .map(k -> r.object(k).className).distinct().toList())));
-        int shown = 0;
         for (var e : byObject.entrySet()) {
             String via = e.getValue().stream().map(b -> b.methodId).filter(x -> !x.equals(m.id)).findFirst().orElse(null);
             if (via != null) { // 바인딩 메서드(VO 를 채워 반환) 안에서 채움
                 lines.add(r.method(via).name + "() 안:");
             }
             for (Binding b : e.getValue()) {
-                if (shown++ < SET_LINES) {
-                    lines.add(Labels.bindingLine(r, b, b.methodId.equals(m.id)));
-                }
+                lines.add(Labels.bindingLine(r, b, b.methodId.equals(m.id)));
             }
-        }
-        if (shown > SET_LINES) {
-            lines.add("… 외 " + (shown - SET_LINES) + "개 (mapping.md)");
         }
         String id = "SET_" + first;
         g.node(sg, id, lines, Shape.RECT, "bind");
         return link(cur, id);
     }
 
-    private static final int SET_LINES = 10;
 
     private static boolean before(SourceLocation a, SourceLocation b) {
         return a != null && b != null && (a.beginLine() < b.beginLine()
@@ -870,7 +863,7 @@ public final class FlowchartGenerator {
             List<CallSiteInfo> fc = r.callSites.stream().filter(x -> x.callerMethodId.equals(m.id) && x.controlBlockId != null
                     && x.controlBlockId.equals(f.id)).toList();
             fc.stream().filter(x -> fc.stream().noneMatch(o -> o != x && contains(o.location, x.location))) // 바깥 호출만
-                    .limit(3).forEach(x -> lines.add(Labels.truncate(x.expression, 60)));
+                    .forEach(x -> lines.add(x.expression));
             g.node(sg, f.id, lines, Shape.RECT, "fin");
             return link(out, f.id);
         }

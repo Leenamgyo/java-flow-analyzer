@@ -28,7 +28,7 @@ public final class Labels {
         if (s == null) {
             return "";
         }
-        return s.length() > max ? s.substring(0, max - 1) + "…" : s;
+        return s; // 줄임(…) 없이 전체 — 사용자 요구. max 는 호출부 호환용으로만 남김
     }
 
     /** 호출 대상 표시: 같은 클래스면 signature, 다른 클래스면 Class.signature, 미해결이면 원문 */
