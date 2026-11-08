@@ -185,6 +185,14 @@ class PhaseTest {
     }
 
     @Test
+    void phaseViewDrawsEveryCallOfChainedStatement() {
+        // SdkClient.getInstance().push("y") — 안쪽 getInstance() 도 노드로 (기존: "호출 노드 누락")
+        AnalysisResult r = Fixtures.analyze("CaseAction", "unresolvedCalls");
+        PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());
+        new FlowchartGenerator(pm).render(r, "TD");
+    }
+
+    @Test
     void checkMethodWithRequestReadInConditionIsCheck() {
         AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute",
                 c -> c.analysis.expandRoles = List.of("Service", "Biz", "DAO"));

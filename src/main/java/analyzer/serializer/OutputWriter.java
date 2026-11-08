@@ -45,9 +45,15 @@ public final class OutputWriter {
             analyzer.phase.PhaseModel pm = analyzer.phase.PhaseAnalyzer.analyze(r, cfg.phases);
             if (cfg.output.mermaid) {
                 Path pmmd = dir.resolve("phase-flowchart.mmd");
-                Files.writeString(pmmd, new FlowchartGenerator(pm).render(r, cfg.output.direction, cfg.output.layout));
-                written.add(pmmd);
-                MermaidCli.validate(pmmd);
+                try {
+                    Files.writeString(pmmd, new FlowchartGenerator(pm).render(r, cfg.output.direction, cfg.output.layout));
+                    written.add(pmmd);
+                    MermaidCli.validate(pmmd);
+                } catch (IllegalStateException e) {
+                    // 단계 보기는 파생 보기 — 검증에 실패해도 나머지 출력(analysis.yaml·flowchart·mapping…)은 만든다
+                    Files.deleteIfExists(pmmd);
+                    System.err.println("[WARN] phase-flowchart.mmd 생략 — " + e.getMessage());
+                }
             }
             Path ps = dir.resolve("phase-summary.md");
             Files.writeString(ps, new analyzer.phase.PhaseReportWriter().render(r, pm));

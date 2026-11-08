@@ -116,6 +116,16 @@ class VariableStateTest {
     }
 
     @Test
+    void phaseViewDrawsChangeAtTopOfTryWithoutCalls() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "stateInTry", c -> c.analysis.expandRoles = List.of("Biz"));
+        PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());
+        String mmd = new FlowchartGenerator(pm).render(r, "TD"); // 기존: "변수 변경 노드 누락"
+        VariableInfo retry = var(r, "stateInTry", "retry");
+        assertTrue(mmd.contains("retry++ · " + retry.id + " 2/2"), mmd);
+        new FlowchartGenerator().render(r, "TD");
+    }
+
+    @Test
     void exampleTotalHistoryAndPhase() throws Exception {
         AnalyzerConfig cfg = PhaseTest.example("OrderRegisterAction");
         AnalysisResult r = Main.analyze(cfg);

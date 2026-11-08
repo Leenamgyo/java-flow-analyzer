@@ -251,4 +251,20 @@ public class CaseAction {
             count += noticeBiz.list("b").size();             // 블록 안: Biz 호출 + 값 변경
         }
     }
+
+    // ---- try 본문 최상위에 호출 없는 값 변경만 있고 나머지는 블록 (단계 보기에서 변경이 빠지면 안 됨)
+    public String stateInTry(HttpServletRequest request) {
+        String result = "N";
+        int retry = 0;
+        try {
+            retry++;                                         // try 최상위: 호출 없는 값 변경
+            if (request != null) {
+                noticeBiz.list("x");
+                result = "Y";
+            }
+        } catch (RuntimeException e) {
+            result = "E";
+        }
+        return result;
+    }
 }

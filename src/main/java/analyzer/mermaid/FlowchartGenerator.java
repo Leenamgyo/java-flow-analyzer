@@ -330,7 +330,8 @@ public final class FlowchartGenerator {
                         && !suppressedCalls.contains(c.id))
                 .forEach(c -> {
                     if (!graph.has(c.id)) {
-                        e.add("변수 변경 노드 누락: " + c.id);
+                        e.add("변수 변경 노드 누락: " + c.id + " `" + c.expression + "` (" + r.method(c.methodId).name + " · "
+                                + c.location.shortText() + ", block " + c.controlBlockId + ")");
                     }
                 });
         for (var ed : graph.edges()) {
@@ -476,10 +477,18 @@ public final class FlowchartGenerator {
                 cur = link(cur, id);
                 pending.clear();
             }
-            if (st.element instanceof CallSiteInfo s) {
-                if (!FlowView.hidden(r, s)) {
-                    callNode(sl, s);
-                    cur = link(cur, s.id);
+            if (st.element instanceof CallSiteInfo) {
+                // 한 문장의 호출 전부(안쪽 → 바깥, 예: a.b().c()) — 일반 흐름도와 같은 규칙
+                for (CallSiteInfo s : st.group) {
+                    if (FlowView.hidden(r, s)) {
+                        continue;
+                    }
+                    if (requestRead(s)) {
+                        cur = flushReads(sl, new ArrayList<>(List.of(s)), cur);
+                    } else {
+                        callNode(sl, s);
+                        cur = link(cur, s.id);
+                    }
                 }
             } else if (st.element instanceof ControlBlock b) {
                 cur = block(sl, m, b, cur);

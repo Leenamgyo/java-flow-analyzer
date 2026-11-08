@@ -110,9 +110,9 @@ public final class PhaseAnalyzer {
             }
         }
         // 호출 없는 최상위 바인딩(생성자·필드 대입) → 별도 요소
-        Set<String> containers = new HashSet<>();
+        // 최상위 컨테이너: 메서드 본문(null) + 펼친 try 본문 전부 (try 안에 직접 호출이 없어도 포함)
+        Set<String> containers = new HashSet<>(flattenedTries);
         containers.add(null);
-        elements.stream().filter(o -> o instanceof CallSiteInfo).map(o -> ((CallSiteInfo) o).controlBlockId).forEach(containers::add);
         Set<Binding> covered = pm.steps.stream().flatMap(s -> s.bindings.stream()).collect(Collectors.toCollection(
                 () -> java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>())));
         for (Binding b : r.bindings) {
@@ -262,9 +262,13 @@ public final class PhaseAnalyzer {
         return pm;
     }
 
+    /** 진입 메서드에서 본문을 펼친 try 블록 */
+    private final Set<String> flattenedTries = new HashSet<>();
+
     private void collect(String methodId, String blockId, List<Object> out) {
         for (Object o : Labels.elements(r, methodId, blockId, false)) {
             if (o instanceof ControlBlock b && b.type == BlockType.TRY) {
+                flattenedTries.add(b.id);
                 for (String cid : b.callIds) { // try-with-resources 리소스 초기화 호출
                     CallSiteInfo s = r.callSite(cid);
                     if (s != null && Objects.equals(s.controlBlockId, b.id) && "RESOURCE".equals(s.position)) {
