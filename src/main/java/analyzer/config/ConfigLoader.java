@@ -61,9 +61,27 @@ public final class ConfigLoader {
         }
     }
 
+    private static final java.util.Set<String> TOP_LEVEL = java.util.Set.of("target", "analysis", "output",
+            "request-parameter-rules", "phases");
+
     private static AnalyzerConfig toConfig(ObjectMapper mapper, JsonNode tree) throws IOException {
-        AnalyzerConfig cfg = mapper.treeToValue(tree, AnalyzerConfig.class);
-        return cfg == null ? new AnalyzerConfig() : cfg;
+        try {
+            AnalyzerConfig cfg = mapper.treeToValue(tree, AnalyzerConfig.class);
+            return cfg == null ? new AnalyzerConfig() : cfg;
+        } catch (com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException e) {
+            // 오타·들여쓰기 실수를 짧게 안내 (스택 대신)
+            String key = e.getPropertyName();
+            String where = e.getPath().stream().limit(Math.max(0, e.getPath().size() - 1))
+                    .map(r -> r.getFieldName() != null ? r.getFieldName() : "[" + r.getIndex() + "]")
+                    .reduce((x, y) -> x + "." + y).orElse("(최상위)");
+            String known = e.getKnownPropertyIds() == null ? "" : String.join(", ",
+                    e.getKnownPropertyIds().stream().map(String::valueOf).sorted().toList());
+            String hint = TOP_LEVEL.contains(key) && !"(최상위)".equals(where)
+                    ? " — '" + key + "' 는 최상위 키입니다. 들여쓰기를 없애 target 과 같은 단계로 옮기세요."
+                    : "";
+            throw new IllegalArgumentException("알 수 없는 설정 키 '" + key + "' (위치: " + where + ")" + hint
+                    + (known.isEmpty() ? "" : "\n  이 위치에서 가능한 키: " + known));
+        }
     }
 
     /** 맵은 재귀 병합, 그 밖(목록·스칼라·null)은 덮어쓴 값으로 교체 */

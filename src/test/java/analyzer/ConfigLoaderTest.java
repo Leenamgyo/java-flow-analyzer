@@ -62,6 +62,20 @@ class ConfigLoaderTest {
         assertThrows(Exception.class, () -> ConfigLoader.load(f));
     }
 
+    @Test
+    void misindentedTopLevelKeyGivesShortHint(@TempDir Path tmp) throws Exception {
+        Path f = tmp.resolve("p.yml");
+        Files.writeString(f, """
+                target:
+                  class: X
+                  request-parameter-rules:
+                    - methods: [ { name: getX } ]
+                """);
+        var e = assertThrows(IllegalArgumentException.class, () -> ConfigLoader.load(f));
+        assertTrue(e.getMessage().contains("'request-parameter-rules' 는 최상위 키입니다"), e.getMessage());
+        assertTrue(e.getMessage().contains("위치: target"), e.getMessage());
+    }
+
     /** 다른 프로젝트 경로 + 특정 Action 만: 설정 파일 없이 CLI 로 */
     @Test
     void otherProjectPathWithCliOnly(@TempDir Path tmp) throws Exception {
