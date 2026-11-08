@@ -97,6 +97,25 @@ class VariableStateTest {
     }
 
     @Test
+    void phaseViewDrawsChangeOnStatementWithLogicCall() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "stateWithLogic",
+                c -> c.analysis.expandRoles = List.of("Biz"));
+        PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());
+        VariableInfo count = var(r, "stateWithLogic", "count");
+        // 기존: "변수 변경 노드 누락" 으로 render 실패
+        String mmd = new FlowchartGenerator(pm).render(r, "TD");
+        MermaidGraph g = new FlowchartGenerator(pm).build(r);
+        for (VariableChange c : history(r, count)) {
+            if (c.isChange()) {
+                assertTrue(g.has(c.id), c.id + " " + c.expression);
+            }
+        }
+        assertTrue(mmd.contains("count = count + noticeBiz.list(#quot;a#quot;).size() · " + count.id + " 2/3"), mmd);
+        // 일반 흐름도도 동일
+        new FlowchartGenerator().render(r, "TD");
+    }
+
+    @Test
     void exampleTotalHistoryAndPhase() throws Exception {
         AnalyzerConfig cfg = PhaseTest.example("OrderRegisterAction");
         AnalysisResult r = Main.analyze(cfg);

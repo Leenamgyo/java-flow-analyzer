@@ -486,6 +486,10 @@ public final class FlowchartGenerator {
             } else if (st.element instanceof VariableChange c) {
                 cur = flushVars(sl, new ArrayList<>(List.of(c)), cur);
             }
+            // 같은 문장의 값 변경(count = count + svc.get() 등)이 아직 안 그려졌으면 호출 뒤에 값 변경 노드로
+            List<VariableChange> rest = new ArrayList<>(st.changes.stream()
+                    .filter(c -> c.isChange() && !g.has(c.id) && !supCalls.contains(c.id)).toList());
+            cur = flushVars(sl, rest, cur);
         }
         List<Step> post = phases.region(Region.POST).stream().filter(s -> s.phase == Phase.POST).toList();
         if (!post.isEmpty()) {

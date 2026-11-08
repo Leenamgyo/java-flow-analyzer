@@ -241,4 +241,14 @@ public class CaseAction {
         SearchVO vo = new SearchVO();
         vo.setPage(size);                                      // 값이 바뀌는 변수 → ⟳
     }
+
+    // ---- 변수 변경 + 로직 호출이 한 문장에 (단계 보기에서 변경이 호출 노드에 묻히지 않아야 함)
+    public void stateWithLogic(HttpServletRequest request) {
+        int size = Integer.parseInt(request.getParameter("size"));
+        int count = 0;
+        count = count + noticeBiz.list("a").size();          // 최상위: Biz 호출 + 값 변경
+        if (size > 0) {
+            count += noticeBiz.list("b").size();             // 블록 안: Biz 호출 + 값 변경
+        }
+    }
 }
