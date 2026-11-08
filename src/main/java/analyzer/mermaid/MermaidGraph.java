@@ -11,14 +11,23 @@ import java.util.Set;
 public final class MermaidGraph {
 
     /** 노드 여백·간격·자동 줄바꿈 폭 (라벨은 &lt;br/&gt; 로 직접 줄바꿈) */
-    public static final String INIT = init("dagre");
 
     /**
      * 렌더링 설정 줄. layout "dagre" = Mermaid 기본, "elk" = 직각 간선 레이아웃(뷰어가 ELK 를 지원해야 함).
      */
+    /** 코드 줄(#n …)이 들어가는 노드 클래스 — 글자를 가운데가 아니라 왼쪽에 맞춘다 */
+    public static final List<String> LEFT_ALIGNED = List.of("codeline", "req", "bind", "var", "depth", "external", "unresolved", "cycle", "fin", "exc", "check", "post");
+
+    private static final String LEFT_ALIGN_CSS = String.join(", ", LEFT_ALIGNED.stream()
+            .map(c -> "." + c + " .nodeLabel, ." + c + " .nodeLabel p").toList()) + " { text-align: left !important; }";
+
+    /** 기본(dagre) 설정 줄 — LEFT_ALIGN_CSS 뒤에 선언해야 초기화 순서가 맞다 */
+    public static final String INIT = init("dagre");
+
     public static String init(String layout) {
-        return "%%{init: {\"flowchart\": {\"padding\": 20, \"nodeSpacing\": 40, \"rankSpacing\": 50, \"wrappingWidth\": 600}"
-                + ("elk".equals(layout) ? ", \"layout\": \"elk\"" : "") + "}}%%";
+        return "%%{init: {\"flowchart\": {\"padding\": 20, \"nodeSpacing\": 40, \"rankSpacing\": 50, \"wrappingWidth\": 2400}"
+                + ("elk".equals(layout) ? ", \"layout\": \"elk\"" : "")
+                + ", \"themeCSS\": \"" + LEFT_ALIGN_CSS + "\"}}%%";
     }
 
     public enum Shape { RECT, ROUND, STADIUM, DIAMOND, HEX, SUBROUTINE, ASYM }
@@ -72,7 +81,14 @@ public final class MermaidGraph {
         return s;
     }
 
+    /** class 이름으로 쓰면 파서가 깨지는 Mermaid 예약어 */
+    private static final Set<String> RESERVED_CLASS = Set.of("call", "click", "class", "classDef", "style", "end",
+            "subgraph", "graph", "flowchart", "default", "href", "callback", "linkStyle", "interpolate", "direction");
+
     public Node node(Subgraph parent, String id, List<String> lines, Shape shape, String css) {
+        if (css != null && RESERVED_CLASS.contains(css)) {
+            errors.add("Mermaid 예약어 class: " + css);
+        }
         Node n = new Node(id, lines, shape, css);
         claim(id, n);
         parent.items.add(n);

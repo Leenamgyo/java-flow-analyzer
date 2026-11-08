@@ -61,6 +61,7 @@ public final class FlowchartGenerator {
         CLASS_DEFS.put("req", "fill:#ccfbf1,stroke:#0f766e,stroke-width:2px");
         CLASS_DEFS.put("bind", "fill:#ecfeff,stroke:#0e7490");
         CLASS_DEFS.put("var", "fill:#fff7ed,stroke:#ea580c");
+        CLASS_DEFS.put("codeline", "fill:#eef2ff,stroke:#6366f1");
         CLASS_DEFS.put("fin", "fill:#f1f5f9,stroke:#475569,stroke-dasharray:3 3");
         PHASE_CLASS_DEFS.putAll(CLASS_DEFS);
         PHASE_CLASS_DEFS.put("check", "fill:#fefce8,stroke:#a16207");
@@ -926,7 +927,7 @@ public final class FlowchartGenerator {
             if (!vos.isEmpty()) {
                 lines.add("VO 값 설정 · " + String.join(", ", vos));
             }
-            g.node(sg, s.id, lines, Shape.RECT, vos.isEmpty() ? null : "bind");
+            g.node(sg, s.id, lines, Shape.RECT, vos.isEmpty() ? "codeline" : "bind");
             assignedBy.getOrDefault(s.id, List.of()).forEach(c -> g.alias(c.id, s.id));
             return;
         }
@@ -943,7 +944,7 @@ public final class FlowchartGenerator {
             case CYCLE -> "cycle";
             case DEPTH_LIMIT -> req != null ? "req" : "depth";
             case EXTERNAL, NO_BODY -> req != null ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "external" : "unresolved";
-            default -> req != null ? "req" : s.resolution == ResolutionStatus.RESOLVED ? null : "unresolved";
+            default -> req != null ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "codeline" : "unresolved";
         };
         g.node(sg, s.id, lines, Shape.RECT, css);
         assignedBy.getOrDefault(s.id, List.of()).forEach(c -> g.alias(c.id, s.id));

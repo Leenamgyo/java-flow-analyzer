@@ -57,6 +57,9 @@ class OutputConsistencyTest {
         String mmd = Files.readString(dir.resolve("flowchart.mmd"));
         String tree = Files.readString(dir.resolve("call-tree.txt"));
         assertTrue(mmd.startsWith(MermaidGraph.INIT + "\nflowchart TD"));
+        // 코드 줄 노드는 왼쪽 정렬 (themeCSS), 자동 줄바꿈 폭은 넉넉히
+        assertTrue(MermaidGraph.INIT.contains(".codeline .nodeLabel") && MermaidGraph.INIT.contains("text-align: left"), MermaidGraph.INIT);
+        assertTrue(MermaidGraph.INIT.contains("\"wrappingWidth\": 2400"));
         MermaidGraph graph = new FlowchartGenerator().build(r);
         for (Map<String, Object> c : (List<Map<String, Object>>) doc.get("calls")) {
             String id = (String) c.get("id");
