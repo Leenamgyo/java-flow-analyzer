@@ -173,6 +173,23 @@ class OutputConsistencyTest {
     }
 
     @Test
+    void tryWithOnlyExternalCallsShowsBodyAndReturnCallIsNotDuplicated() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "tryOnlyExternal");
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        ControlBlock t = r.blocks.stream().filter(b -> b.type == analyzer.model.BlockType.TRY).findFirst().orElseThrow();
+        // 빈 try 상자 대신 본문 코드 노드, 흐름이 그 노드를 지난다
+        assertTrue(mmd.contains("BODY_" + t.id + "[\"Long.parseLong(versionCode);\"]"), mmd);
+        assertTrue(g.edges().stream().anyMatch(e -> e.to().equals("BODY_" + t.id)), mmd);
+        // return errorView("1002") — 호출 노드 없이 return 노드 하나
+        CallSiteInfo ev = r.callSites.stream().filter(c -> c.expression.equals("errorView(\"1002\")")).findFirst().orElseThrow();
+        assertFalse(mmd.contains(ev.id + "[\""), mmd);
+        assertTrue(g.nodeOf(ev.id).startsWith("RET"), g.nodeOf(ev.id));
+    }
+
+    @Test
     void implementationLinkIsConsistentAcrossOutputs() {
         AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute", c -> {
             c.analysis.expandRoles = List.of("Service", "DAO");

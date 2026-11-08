@@ -30,6 +30,8 @@ public final class ControlBlock {
     public boolean isDefault;
 
     // ---- try ----
+    /** try 본문 원문 (주석 제외) — 본문에 그릴 호출이 없을 때(외부 라이브러리 호출뿐) 흐름도에 표시 */
+    public String bodyText;
     public final List<String> catchBlockIds = new ArrayList<>();
     public String finallyBlockId;
     public final List<TryResource> resources = new ArrayList<>();

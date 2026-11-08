@@ -303,6 +303,7 @@ public final class MethodBodyWalker {
         }
         boolean hasFinally = t.getFinallyBlock().isPresent();
         ControlBlock tb = newBlock(BlockType.TRY, ctx, null, t);
+        tb.bodyText = String.join(" ", t.getTryBlock().getStatements().stream().map(MethodBodyWalker::text).toList());
         WalkContext tryCtx = ctx.at(tb, "BODY").push(new TryFrame(tb, hasFinally, Region.TRY_BODY, null));
 
         NodeList<Expression> res = t.getResources();

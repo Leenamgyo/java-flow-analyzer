@@ -163,6 +163,14 @@ public final class FlowchartGenerator {
     private final Set<String> drawnMethods = new java.util.HashSet<>();
     /** 그리지 않는 메서드 (build 에서 계산) */
     private Set<String> skipSet = Set.of();
+    /** return/throw 리프에 포함시켜 따로 그리지 않는 호출 */
+    private final Set<String> inLeaf = new java.util.HashSet<>();
+
+    /** 세부 박스(그리는 메서드)로 이어지는 호출 — ==> 간선이 필요해 노드로 남긴다 */
+    private boolean leadsToDetail(CallSiteInfo c) {
+        return c.targetMethodId != null && drawnMethods.contains(c.expansionTargetId())
+                && (c.expansion == Expansion.EXPANDED || c.expansion == Expansion.SHARED || c.expansion == Expansion.CYCLE);
+    }
     private final Map<String, Subgraph> layers = new LinkedHashMap<>();
 
     /** 단계 보기 레이어: 진입 클래스 쪽(Action) / Service·Biz / DAO·Mapper·Repository */
@@ -239,6 +247,7 @@ public final class FlowchartGenerator {
         this.g = new MermaidGraph();
         methodGraphs.clear();
         methodParents.clear();
+        inLeaf.clear();
         assignedBy.clear();
         for (VariableChange c : r.variableChanges) {
             if ("ASSIGN".equals(c.op) || "INIT".equals(c.op)) {
@@ -666,7 +675,7 @@ public final class FlowchartGenerator {
                 .filter(c -> !supCalls.contains(c.id)).toList());
         java.util.Set<String> done = new java.util.HashSet<>(); // 문장 노드로 이미 그린 호출
         for (Object o : elems) {
-            if (o instanceof CallSiteInfo cs && done.contains(cs.id)) {
+            if (o instanceof CallSiteInfo cs && (done.contains(cs.id) || inLeaf.contains(cs.id))) {
                 continue;
             }
             SourceLocation at = o instanceof CallSiteInfo s ? s.location : ((ControlBlock) o).location;
@@ -954,8 +963,17 @@ public final class FlowchartGenerator {
                 return in;
             }
             case RETURN, THROW -> {
+                // return/throw 식 안의 호출은 리프 노드에 이미 보이므로 따로 그리지 않는다 (세부 박스로 가는 호출만 남김)
+                List<String> folded = new ArrayList<>();
+                for (Object o : Labels.elements(r, m.id, b.id, false)) {
+                    if (o instanceof CallSiteInfo c && !leadsToDetail(c)) {
+                        folded.add(c.id);
+                    }
+                }
+                inLeaf.addAll(folded);
                 List<End> p = emit(sg, m, b, in);
                 leaf(sg, m, b);
+                folded.forEach(id -> g.alias(id, b.id));
                 link(p, b.id);
                 return List.of();
             }
@@ -1006,7 +1024,15 @@ public final class FlowchartGenerator {
      */
     private List<End> tryBlock(Subgraph sg, MethodInfo m, ControlBlock t, List<End> in) {
         Subgraph ts = g.subgraph(sg, "sg_" + t.id, Labels.blockHeader(t));
-        List<End> out = new ArrayList<>(emit(ts, m, t, in));
+        int before = g.nodeIds().size();
+        List<End> body = emit(ts, m, t, in);
+        if (g.nodeIds().size() == before) {
+            // 본문에 그릴 노드가 없음(외부 호출뿐, 예: Long.parseLong(x)) — 본문 코드를 노드 하나로, 흐름이 try 를 지나가게
+            String id = "BODY_" + t.id;
+            g.node(ts, id, List.of(t.bodyText == null || t.bodyText.isBlank() ? "(빈 try)" : t.bodyText), Shape.RECT, "codeline");
+            body = link(in, id);
+        }
+        List<End> out = new ArrayList<>(body);
         for (String cid : t.catchBlockIds) {
             ControlBlock c = r.block(cid);
             List<String> how = new ArrayList<>();
@@ -1061,7 +1087,7 @@ public final class FlowchartGenerator {
     private final Map<String, Subgraph> methodParents = new HashMap<>();
 
     private void leaf(Subgraph sg, MethodInfo m, ControlBlock b) {
-        List<String> lines = new ArrayList<>(List.of(Labels.blockHeader(b)));
+        List<String> lines = new ArrayList<>(List.of(Labels.codeValue(r, b.methodId, b.location, Labels.blockHeader(b))));
         if (b.type == BlockType.THROW && b.exceptionResolution == ResolutionStatus.UNRESOLVED) {
             lines.add("(catch 경로 unresolved)");
         }

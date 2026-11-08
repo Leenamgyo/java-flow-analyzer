@@ -280,4 +280,24 @@ public class CaseAction {
             noticeBiz.list(com.example.util.ODSUtil.isQAStore(shopID) ? "qa" : "live");                                  // 로직 호출의 인자 안
         }
     }
+
+    // ---- 외부 호출뿐인 try 본문 + return 안 호출 (흐름도: try 본문 코드 노드, return 은 한 노드)
+    public Object tryOnlyExternal(HttpServletRequest request) {
+        String versionCode = request.getParameter("versionCode");
+        if (versionCode != null) {
+            try {
+                Long.parseLong(versionCode);
+            } catch (NumberFormatException ex) {
+                return errorView("1001");
+            }
+        }
+        if (request.getParameter("appId") == null) {
+            return errorView("1002");
+        }
+        return "ok";
+    }
+
+    private Object errorView(String code) {
+        return code;
+    }
 }
