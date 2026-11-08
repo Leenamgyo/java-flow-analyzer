@@ -276,7 +276,8 @@ public class CaseAction {
         boolean checkMandatoryParameterInQA = com.example.util.ODSUtil.isQAStore(shopID) && com.example.util.StringUtil.isNotEmpty(sdkVer) // 필수는 아니지만 중요한 파라메터 체크
                 && "1".equals(pd);
         if (checkMandatoryParameterInQA) {
-            noticeBiz.list("qa");
+            System.out.println("Mandatory parameter is missing : " + com.example.util.StringUtil.getParam(request, "url")); // 인자 안 호출
+            noticeBiz.list(com.example.util.ODSUtil.isQAStore(shopID) ? "qa" : "live");                                  // 로직 호출의 인자 안
         }
     }
 }

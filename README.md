@@ -137,6 +137,7 @@ if (couponCode != null                       for (OrderItemVO item
 && !couponCode.isEmpty())                    : items)
 ```
 
+- 다른 호출의 인자 안에 있는 호출(`LOG.error("…" + VasUtil.getFullUrl(request))` 의 `getFullUrl`)은 흐름도에 그리지 않음 — Service·DAO 세부로 이어지는 호출과 요청 읽기는 예외. 조건식 안의 호출도 조건 노드에만 표시.
 - 로직(Service·DAO…) 호출이 없는 변수 선언·대입 문장은 호출마다 나누지 않고 **문장 통째로 바인딩 한 줄** (`#4–5 boolean f = ODSUtil.isQAStore(shopID) && StringUtil.isNotEmpty(sdkVer) && "1".equals(pd)`), 단계 보기에서도 바인딩. 소스 주석은 표시하지 않음.
 - 모든 줄은 `타입 대상 = 값` 코드 한 줄 (타입 = 받는 변수의 선언 타입 / VO 필드 타입 / 요청 규칙의 type). 역할·접근제어자·Depth·depth-limit 같은 꼬리표는 쓰지 않고 색으로만 구분.
 - VO 값 설정은 변수명·타입 없이 `프로퍼티 = 값` (클래스는 노드 제목). 타입은 값을 받아 오는 줄(요청 파라미터·값 조회·호출 결과)에만. 한 노드에 객체가 둘 이상이면 `· 클래스` 줄로 구분.

@@ -157,6 +157,7 @@ public final class AnalysisYamlWriter {
                     .put2("resultUsage", s.resultUsage)
                     .put2("resultType", s.resultType)
                     .put2("statement", s.statement)
+                    .put2("inArgument", s.inArgument)
                     .put2("scope", s.scopeExpression)
                     .put2("receiverType", s.receiverType)
                     .put2("resolution", s.resolution.name())

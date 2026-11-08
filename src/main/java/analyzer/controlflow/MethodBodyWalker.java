@@ -482,6 +482,7 @@ public final class MethodBodyWalker {
         site.resultUsage = resultUsage(mc);
         site.resultType = declaredType(mc);
         enclosingStatement(mc, site);
+        site.inArgument = inArgument(mc);
         result.callSites.add(site);
         result.index(site.id, site);
         if (ctx.block() != null) {
@@ -616,6 +617,21 @@ public final class MethodBodyWalker {
                 cb.errorResponseCalls.add(t);
             }
         }
+    }
+
+    /** 다른 호출·객체 생성의 인자 안(깊이 무관)에 있는지 — 수신 객체 체인(a.b().c())은 인자가 아님 */
+    private static boolean inArgument(MethodCallExpr mc) {
+        Node child = mc;
+        for (Node p = mc.getParentNode().orElse(null); p != null && !(p instanceof com.github.javaparser.ast.stmt.Statement)
+                && !(p instanceof LambdaExpr); p = p.getParentNode().orElse(null)) {
+            Node c0 = child;
+            if (p instanceof MethodCallExpr outer && outer.getArguments().stream().anyMatch(a -> a == c0)
+                    || p instanceof ObjectCreationExpr oc && oc.getArguments().stream().anyMatch(a -> a == c0)) {
+                return true;
+            }
+            child = p;
+        }
+        return false;
     }
 
     /** 호출이 들어 있는 변수 선언/대입 문장 (람다·다른 문장 경계에서 멈춤) */

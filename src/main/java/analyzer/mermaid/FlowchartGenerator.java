@@ -161,6 +161,8 @@ public final class FlowchartGenerator {
     /** 단계 보기: 세부를 그리지 않는 Action 쪽 보조 메서드 (Service·DAO 등 로직 역할 호출에 닿지 않음) */
     private Set<String> collapsed = Set.of();
     private final Set<String> drawnMethods = new java.util.HashSet<>();
+    /** 그리지 않는 메서드 (build 에서 계산) */
+    private Set<String> skipSet = Set.of();
     private final Map<String, Subgraph> layers = new LinkedHashMap<>();
 
     /** 단계 보기 레이어: 진입 클래스 쪽(Action) / Service·Biz / DAO·Mapper·Repository */
@@ -247,6 +249,7 @@ public final class FlowchartGenerator {
         }
         collapsed = collapsedHelpers(r, logicRoles);
         Set<String> skip = skippedMethods(r, supCalls, collapsed);
+        skipSet = skip;
         drawnMethods.clear();
         r.methods().stream().filter(m -> m.analyzed && !skip.contains(m.id)).forEach(m -> drawnMethods.add(m.id));
         layers.clear();
@@ -446,8 +449,24 @@ public final class FlowchartGenerator {
     }
 
     /** 흐름도에 그리는 호출: 바인딩 코드가 아니고, catch/finally 안이 아니며, 그리는 메서드 안 */
+    /**
+     * 인자 안의 호출(log.error("…" + util.x(req)) 의 util.x)은 흐름도에 그리지 않는다 — 사용자 요구.
+     * 단 세부 박스로 이어지는 호출(==> 필요)과 요청 읽기(바인딩)는 그린다.
+     */
+    static boolean argumentOnly(AnalysisResult r, Set<String> skip, CallSiteInfo s) {
+        if (!s.inArgument) {
+            return false;
+        }
+        boolean detailed = s.targetMethodId != null && !skip.contains(s.expansionTargetId())
+                && r.method(s.expansionTargetId()).analyzed
+                && (s.expansion == Expansion.EXPANDED || s.expansion == Expansion.SHARED || s.expansion == Expansion.CYCLE);
+        boolean read = !r.parametersAt(s.id).isEmpty();
+        return !detailed && !read;
+    }
+
     private static boolean drawn(AnalysisResult r, Set<String> skip, Set<String> suppressed, CallSiteInfo s) {
         return !FlowView.hidden(r, s) && !skip.contains(s.callerMethodId) && !suppressed.contains(s.id)
+                && !argumentOnly(r, skip, s)
                 && (s.controlBlockId == null || !inHandler(r, s.controlBlockId));
     }
 
@@ -570,7 +589,7 @@ public final class FlowchartGenerator {
             } else if (st.element instanceof CallSiteInfo) {
                 // 한 문장의 호출 전부(안쪽 → 바깥, 예: a.b().c()) — 일반 흐름도와 같은 규칙
                 for (CallSiteInfo s : st.group) {
-                    if (FlowView.hidden(r, s)) {
+                    if (FlowView.hidden(r, s) || argumentOnly(r, skipSet, s)) {
                         continue;
                     }
                     if (requestRead(s)) {
@@ -668,6 +687,9 @@ public final class FlowchartGenerator {
                     cur = p.flush(cur);
                     cur = statementNode(sg, stmt, changes, cur);
                     stmt.forEach(x -> done.add(x.id));
+                    continue;
+                }
+                if (argumentOnly(r, skipSet, s)) { // 인자 안의 호출은 그리지 않음 (바깥 호출·문장이 대표)
                     continue;
                 }
                 if (FlowView.hidden(r, s)) { // 바인딩 코드(setter/builder/put, 그 인자 속 호출, 바인딩 메서드 호출)

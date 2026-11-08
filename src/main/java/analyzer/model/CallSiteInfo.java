@@ -60,6 +60,8 @@ public final class CallSiteInfo {
     public String statement;
     /** DECLARATION | ASSIGNMENT (statement 가 있을 때) */
     public String statementKind;
+    /** 다른 호출(또는 new)의 인자 안에 있는 호출 — log.error("…" + util.x(req)) 의 util.x */
+    public boolean inArgument;
     /** 그 문장의 위치 — 같은 문장의 호출끼리 묶는 키 */
     public SourceLocation statementLocation;
     public SourceLocation location;

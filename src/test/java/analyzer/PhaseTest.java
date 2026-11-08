@@ -248,6 +248,25 @@ class PhaseTest {
     }
 
     @Test
+    void callsInsideArgumentsAreNotDrawn() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "statementBinding", c -> c.analysis.expandRoles = List.of("Biz"));
+        CallSiteInfo inLog = r.callSites.stream().filter(c -> c.expression.contains("getParam(request, \"url\")")).findFirst().orElseThrow();
+        CallSiteInfo inLogic = r.callSites.stream().filter(c -> c.expression.equals("com.example.util.ODSUtil.isQAStore(shopID)")
+                && c.inArgument).findFirst().orElseThrow();
+        assertTrue(inLog.inArgument);
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        // 인자 안 호출은 노드 없음 (요청 읽기는 예외 — getParam 은 규칙이 없으니 일반 유틸 호출)
+        assertFalse(g.has(inLog.id));
+        assertFalse(g.has(inLogic.id));
+        // 바깥 로직 호출(noticeBiz.list)은 그대로
+        CallSiteInfo list = r.callSites.stream().filter(c -> c.expression.startsWith("noticeBiz.list(com.example")).findFirst().orElseThrow();
+        assertTrue(g.has(list.id));
+        // 모델·트리에는 그대로
+        assertTrue(new analyzer.serializer.CallTreeWriter(true).render(r).contains("(" + inLog.id + ")"));
+    }
+
+    @Test
     void bindingNodeIsNeverEmpty() {
         // var client = SdkClient.getInstance(); 처럼 값 준비만 있는 ① 바인딩도 내용이 있어야 (기존: PH_BIND[""] 파싱 오류)
         AnalysisResult r = Fixtures.analyze("CaseAction", "unresolvedCalls");
