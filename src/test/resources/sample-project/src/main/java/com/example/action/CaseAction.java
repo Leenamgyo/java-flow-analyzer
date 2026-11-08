@@ -216,4 +216,29 @@ public class CaseAction {
         SearchVO copy = new SearchVO();
         BeanUtils.copyProperties(cmd, copy);
     }
+
+    // ---- 변수 상태 변화: 요청 값 보정(조건부 대입) / 복합 대입 / 증감 / 파라미터 재대입 / 호출 결과 대입
+    //      제외: for 헤더 변수, 향상된 for 변수, 필드, 한 번만 대입되는 변수
+    private int counter;
+
+    public void variableState(HttpServletRequest request, int limit) {
+        int size = Integer.parseInt(request.getParameter("size"));
+        if (size > 100) {
+            size = 100;                                        // 요청 값 보정
+        }
+        String once = request.getParameter("once");            // 변경 없음 → 대상 아님
+        long total = 0;
+        for (int i = 0; i < size; i++) {                        // i 는 for 헤더 → 제외
+            total += i;                                        // 복합 대입 (loop)
+        }
+        for (String item : List.of("a")) {                     // item → 제외
+            total++;
+        }
+        limit = limit * 2;                                     // 파라미터 재대입
+        String label;
+        label = format(once);                                  // 호출 결과 대입
+        counter = counter + 1;                                 // 필드 → 제외
+        SearchVO vo = new SearchVO();
+        vo.setPage(size);                                      // 값이 바뀌는 변수 → ⟳
+    }
 }

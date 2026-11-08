@@ -8,14 +8,16 @@ import analyzer.model.ModelValidator;
 import analyzer.parser.AnalysisException;
 import analyzer.serializer.OutputWriter;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
 /**
  * 사용법:
  * <pre>
- *   ./gradlew run --args="--config config/analyzer.yml"
- *   ./gradlew run --args="--config config/analyzer.yml --class ScpAppListAction --method execute"
+ *   ./gradlew run                                                           # 기본 조건 + config/analyzer.yml
+ *   ./gradlew run --args="--config my-project.yml --class OrderListAction"  # 프로젝트 설정 + Action 지정
+ *   ./gradlew run --args="--source-root /abs/src/main/java --class XAction" # 기본 조건만 + 경로
  * </pre>
  * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output
  */
@@ -35,7 +37,7 @@ public final class Main {
     }
 
     public static int run(String[] args) throws Exception {
-        Path configPath = Path.of("config/analyzer.yml");
+        Path configPath = null;
         List<String> sourceRoots = new java.util.ArrayList<>();
         String clazz = null, method = null, output = null;
         for (int i = 0; i < args.length; i++) {
@@ -49,7 +51,12 @@ public final class Main {
                 default -> throw new IllegalArgumentException("알 수 없는 옵션: " + args[i]);
             }
         }
-        AnalyzerConfig cfg = ConfigLoader.load(configPath);
+        // 설정: 내장 기본 조건 < 프로젝트 설정 파일 < CLI.
+        // --config 가 없으면: --source-root 를 줬으면 기본 조건만, 아니면 ./config/analyzer.yml (있을 때)
+        if (configPath == null && sourceRoots.isEmpty() && Files.isRegularFile(Path.of("config/analyzer.yml"))) {
+            configPath = Path.of("config/analyzer.yml");
+        }
+        AnalyzerConfig cfg = configPath == null ? ConfigLoader.defaults() : ConfigLoader.load(configPath);
         if (!sourceRoots.isEmpty()) {   // CLI 지정 시 설정 파일의 루트를 대체
             cfg.target.sourceRoot = null;
             cfg.target.sourceRoots = sourceRoots;

@@ -2,7 +2,7 @@
 
 지정한 Action/Controller **하나**의 진입 메서드에서 시작해 Java 소스를 정적 분석하고,
 **하나의 공통 모델**로 실행 흐름 + **데이터 바인딩 명세**(어떤 값이 어느 객체 필드로 가는지)를 만드는 마이그레이션 분석 도구.
-출력: `analysis.yaml`(Source of Truth) · `flowchart.mmd` · `mapping.md` · `analysis.md` · `call-tree.txt`.
+출력: `analysis.yaml`(Source of Truth) · `flowchart.mmd` · `mapping.md` · `analysis.md` · `call-tree.txt` · `phase-flowchart.mmd` · `phase-summary.md`.
 요구사항: [docs/SPEC-v2.md](docs/SPEC-v2.md)(현행, 바인딩·YAML·비교) ⊃ [docs/SPEC.md](docs/SPEC.md)(v1 흐름 분석). 애매하면 v2 → v1 순으로 기준.
 
 ## 절대 규칙 (SPEC §1–2)
@@ -21,7 +21,7 @@
 
 ```bash
 ./gradlew test                                   # 전체 테스트 (JUnit 5)
-./gradlew run                                    # config/analyzer.yml 로 실행 → output/<Class>/
+./gradlew run                                    # 내장 기본 조건 + config/analyzer.yml(덮어쓰기) → output/<Class>/
 ./gradlew run --args="--config config/analyzer.yml --class CaseAction --method throwCases"
 #   옵션: --config --source-root(반복 가능) --class --method --output
 ```
@@ -40,17 +40,18 @@
 analyzer/
   Main.java              CLI, 모델 무결성 검증 후 출력
   FlowAnalyzer.java      오케스트레이터: BFS 로 메서드 본문 분석, Depth/Expansion/cycle 결정
-  config/                analyzer.yml 바인딩(kebab-case, 알 수 없는 키는 오류)
+  config/                analyzer.yml 바인딩(kebab-case, 알 수 없는 키는 오류). 내장 기본 조건 src/main/resources/analyzer-defaults.yml < --config 파일(맵 키 단위 병합, 목록·값 교체) < CLI
   parser/                ProjectSources(파일 인덱스+지연 파싱+심볼솔버), EntryPointLocator, TypeNames
   classifier/            ClassRoleClassifier
   resolver/              CallResolver(심볼솔버 → 선언타입 폴백), TypeLookup(import/변수/필드 타입), ImplementationFinder(source 내 유일 구현)
   controlflow/           MethodBodyWalker(블록+호출 순서), WalkContext, ExceptionTypeMatcher
   parameter/             RequestParameterExtractor(Legacy + 사용자 규칙 + Spring 어노테이션)
-  binding/               BindingCollector(객체 O* · 바인딩 B*), SourceTracer(값 → 최초 출처+변환), ConditionText, RequestSpecBuilder(RQ*)
+  binding/               BindingCollector(객체 O* · 바인딩 B*), VariableStateCollector(변수 V* · 변경 VC*), SourceTracer(값 → 최초 출처+변환), ConditionText, RequestSpecBuilder(RQ*)
   model/                 공통 모델 + ModelValidator
   serializer/            AnalysisYamlWriter + AnalysisSchema(내장 스키마 검증), MappingReportWriter(mapping.md),
                          AnalysisReportWriter(analysis.md), CallTreeWriter, FlowView(흐름 보기 규칙), Labels(표시 문자열), OutputWriter
-  mermaid/               MermaidGraph(중간표현+검증), FlowchartGenerator, MermaidCli
+  mermaid/               MermaidGraph(중간표현+검증), FlowchartGenerator(일반 / 단계 보기 모드), MermaidCli
+  phase/                 PhaseAnalyzer(진입 메서드 요소 → 바인딩·체크·로직·후처리), PhaseModel, PhaseText(표시), PhaseReportWriter(phase-summary.md)
 ```
 
 ## 핵심 설계 결정 (코드만 봐서는 이유가 안 보이는 것)
@@ -89,10 +90,26 @@ analyzer/
 - Lombok 등 생성 코드는 builder/생성자 resolution 을 `PARTIALLY_RESOLVED`/`UNRESOLVED` 로 낮추고 사유 기록.
 - JavaParser `Node.equals` 는 구조 비교라 AST 키 맵은 `IdentityHashMap`.
 
+**변수 상태 변화 (`binding/VariableStateCollector`, V* / VC*)**
+- 대상: 분석한 메서드의 지역 변수·파라미터 중 선언 뒤 `=`·복합 대입·`++/--` 가 있는 것. 제외: 필드(선언 없는 이름), for 헤더(init/update) 변수, 향상된 for 변수. 바인딩 수집 뒤 같은 AST 재순회.
+- 이력 첫 항목은 INIT(선언, 값 없을 수 있음) / PARAM, 이후 ASSIGN / COMPOUND / INCREMENT / DECREMENT. 조건(`ConditionText`)·소속 블록·식 안 호출(`callSiteIds`)·출처(값 식의 피연산자를 `SourceTracer` 로, 변수 자기 자신 제외)를 남긴다.
+- 표시(이력 전체를 흐름 위에서 추적): flowchart `값 변경` 노드(`VAR_<VC>`, 코드 그대로, 식 안 호출이 끝난 뒤 = 변경 끝 위치 이후 첫 요소 앞; 나머지 VC 는 alias). 선언(INIT, 값 있음)도 그린다 — 값 식 == 호출식이면(선언·대입 모두) 호출 노드에 `→ x · V1 1/3` + alias, 값 식 == 요청 읽기 호출이면 요청 파라미터 줄 `· V1 1/n`. 트리 `≔` 줄. mapping.md `## 변수 상태 변화`. VO 값 설정 줄의 값이 이런 변수면 `⟳n (V*)`. `Labels.changeLine` 의 `V1 3/3` = 이력 중 순번(1 = 선언).
+- 단계 보기: 요청 값에서 온 변수(초기값 출처 REQUEST)의 변경 = 바인딩(요청 값 보정). 그 밖의 최상위 변경은 근거 없음 → 이웃 단계. 변경 ID 도 `suppressedCalls` 로 요약 대상 관리.
+
 **흐름 보기 (`FlowView`, 트리·Mermaid 공용)**
-- 흐름 중심은 호출·분기·예외. 바인딩 코드(setter/builder/put 호출과 그 인자 안의 전개되지 않은 호출)는 흐름에서 빼고, **(객체, 메서드)당 요약 1개**(`BIND_<O>_<M>`: `N fields assigned · N conditional · N type conversion`)를 둔다. **요약은 call-tree 에만** — flowchart 에는 바인딩 노드를 전혀 그리지 않는다(노드 수 폭증 방지, 상세는 mapping.md).
+- 흐름 중심은 호출·분기·예외. 바인딩 코드(setter/builder/put 호출과 그 인자 안의 전개되지 않은 호출)는 흐름에서 빼고, **(객체, 메서드)당 요약 1개**(`BIND_<O>_<M>`: `N fields assigned · N conditional · N type conversion`)를 둔다(call-tree). flowchart 는 이 요약 대신 흐름 위치마다 `VO 값 설정` 노드(아래 Mermaid 참고).
 - 요약 위치 = 그 메서드에서 해당 객체 바인딩을 모두 감싸는 가장 가까운 공통 컨테이너(then/else 에 흩어지면 그 if 앞).
 - 바인딩 메서드(본문이 바인딩 + 최상위 return 뿐, 예 `toSearchVO`)는 그리지 않고 호출 위치에 요약(`BIND_<O>_<CALL>`).
+
+**단계 보기 (`phase/`, 설정 `phases`)**
+- 사용자 앱 공통 구조 = 바인딩(getParameter·Util·VO 채우기·값 조회) › 체크 › 로직(Service·DAO…) 실행. 문장 단위 흐름도에서 요청 읽기 노드가 로직을 묻는 문제를 해결하려고 만든 **파생 보기**(모델에서만 계산, analysis.yaml 에는 넣지 않음).
+- step = 진입 메서드 최상위 요소(try 본문 펼침). 한 문장의 중첩 호출(인자 속 호출·builder 체인)은 가장 바깥 호출 1개 step(`group`). 호출 없는 최상위 바인딩(생성자)도 step.
+- 판정 우선순위: logic-roles 호출 → 로직, check-roles 호출 → 체크 > 요청 읽기·바인딩 코드(FlowView.hidden) → 바인딩 > 전개한 메서드 본문 집계(로직 > 바인딩 > 체크) > 종료형 분기(throw, 진입 메서드는 return 포함; 조건식 안 호출은 체크 일부) > check-method-names. catch/finally 안은 판정에서 제외. Validator 류 메서드의 `catch → throw` 도 체크.
+- 최상위 보정: 근거 없는 호출에 진입 메서드의 요청 객체(…ServletRequest 등 파라미터)를 넘기면 = 요청 컨텍스트 값 조회(바인딩, `fetchVariable`) → 로직·바인딩 없는 source 메서드 = 로직(계산) → 결과 변수가 사이에 로직 없는 뒤 바인딩의 출처이고 그 뒤에 로직이 더 있으면 값 조회(바인딩) → 근거 없는 요소는 앞(없으면 뒤) 요소 단계. 근거는 `reason` 으로 남긴다.
+- 값 조회 step(`fetchVariable`)은 바인딩으로 끝: ① 노드에 `조회: x = call(…)` 한 줄, 그 안의 체크는 `preChecks()`·흐름도에 넣지 않는다(사용자 모델: 로그인 사용자 조회 = 바인딩, checkLogin 이어도).
+- 영역: PRE(첫 로직 전) / LOGIC(첫~마지막 로직; 순수 입력(요청·리터럴·상수) 없는 바인딩은 "로직 결과 값 설정"으로 로직) / POST(마지막 로직 뒤 = 후처리).
+- 레이어(단계 보기만): 메서드 subgraph 를 `sg_LAYER_ACTION`(진입 클래스 역할) / `sg_LAYER_SERVICE`(Service·Biz) / `sg_LAYER_DAO`(DAO·Mapper·Repository) 안에 둔다. 로직 역할이 아니고 전이적으로 로직 역할 호출에 닿지 않는 보조 메서드(`collapsedHelpers`)는 subgraph 없이 호출 노드에 `세부 생략` — `skippedMethods(r, suppressed, seed)`·`checkMapping(…, collapsed)` 에 반영, 그리지 않는 메서드로의 `==>` 는 만들지 않음.
+- 흐름도: PRE 는 ① 바인딩 요약 노드 1개 + ② 체크 노드(조건 → 결과, PRE 의 모든 체크: 진입 분기·바인딩 중·Validator 본문), LOGIC 은 기존 emit 로 상세(사이 바인딩·체크는 `PH_INL*` 요약), POST 는 `PH_POST`. 요약된 요소에서만 호출되는 메서드는 subgraph 생략(`skippedMethods(r, suppressedCalls)`), `checkMapping` 도 suppressed 제외.
 
 **ID**
 - 사람이 읽기 쉬운 순차 ID(C1, M1, CALL1, T1, CATCH1, P1, RQ1, O1, B1 …)를 쓰고, 정체성은 `key`(`FQN#name(erasure 타입들)`)로 판정해 중복 생성하지 않는다. 같은 입력이면 ID 순서가 결정적이다.
@@ -115,8 +132,14 @@ analyzer/
 **Mermaid (SPEC-v2 §5)**
 - 기본 `TD`(위→아래). subgraph 는 분석한 메서드당 1개(중첩 없음). 본문 미분석 메서드는 노드를 만들지 않고 호출 노드 라벨로만 표시.
 - if/else-if/switch/반복문 = 조건 노드(◇) + 분기 간선(`Yes`/`No`, case 라벨, `loop`/`next`/`done`). else/case 는 노드 없이 간선으로.
-- try/catch/finally 는 **흐름도에 그리지 않는다**(구현 세부). try 본문은 정상 흐름에 이어 붙이고, catch/finally 본문과 그 안에서만 호출되는 메서드(전이적, `skippedMethods`)는 생략. 대신 메서드 시작 노드에 `⚠ catch X → log · error response · rethrow… / finally` 요약. 잡히는 throw 는 노드에 `→ catch X` 표시 후 끊김. 트리·YAML 에는 그대로 남는다.
+- try = **블록(subgraph `sg_T*`) 1개** — 본문은 그 안에 정상 흐름, 예외는 블록 단위로 `sg_T1 -.->|예외 타입| CATCH*`(catch 노드 = 처리 방식 요약: 로그·오류 응답·다시 던짐·새 예외·catch 본문 최상위 return). 다시/새로 던지면 catch → `M*_uncaught`, return 이면 끝, 그 밖이면 try 뒤로 합류. finally 는 try·catch 뒤 노드 1개(`FINALLY*`, 바깥 호출식 최대 3개). 개별 throw 에 `→ catch` 표시 없음, 메서드 시작 노드 `⚠ catch` 요약은 단계 보기 진입 메서드(try 를 단계별로 펼침)에만. catch/finally 본문 노드와 그 안에서만 호출되는 메서드는 여전히 생략(`skippedMethods`). 메서드 subgraph 안에 중첩되는 subgraph 는 try 블록뿐.
 - 흐름 연결은 "열린 끝" 목록으로 계산(분기 끝들이 다음 요소로 합류). return/throw 뒤는 끊김.
+- 바인딩·요청 읽기·값 변경은 **코드 형식 `대상 = 값`** (`Labels.requestLine` / `bindingLine` / `changeLine`, 값 식 안 요청 읽기 호출은 `Labels.codeValue` 로 `request.이름 ?: 기본값`).
+- 연속된 요청 값 읽기 호출(본문 미전개, 조건식 밖)은 `요청 파라미터` + 한 줄에 하나 `#n 변수 = request.이름 ?: 기본값` 요약 노드 1개(노드 ID = 첫 호출 ID, 나머지는 `MermaidGraph.alias` → `has()`/`nodeOf()`).
+- 연속된 바인딩 코드(setter·builder·put·생성자·바인딩 메서드 호출)는 `VO 값 설정 · 클래스들` 노드 1개(`SET_<첫 요소 ID>`, `#n obj.field = 값`, Map 은 `m["key"] = 값`, 바뀌는 변수면 `⟳V*`, 바인딩 메서드 안 바인딩은 번호 없이 `메서드() 안:` 아래, 최대 10줄). 바인딩 호출 자체는 노드/alias 가 아니다. 단계 보기의 바인딩·후처리 노드는 `요청 파라미터` / `VO:` / `조회:` 형식.
+- **세부(subgraph)는 Service 쪽으로 넘어가는 흐름만** (사용자 원칙: Action → Service, Service → 다른 Service·Biz·DAO·Mapper). 내부 함수 = 로직 역할이 아니고 전이적으로 로직 역할 호출에 닿지 않는 메서드(`collapsedHelpers`; readItems·readDelivery·preparePayment·calculateTotal 등)는 **일반 흐름도·단계 보기 모두** subgraph 없이 코드 한 줄 `#15 items = readItems(request)` + `VO 값 설정 · 클래스`(안에서 채우는 VO) + 값이 바뀌는 변수면 `· V1 1/3`. 본문 분석(요청 파라미터·바인딩·체크·mapping.md)은 그대로 한다. Service 클래스 안의 private 메서드(nextOrderNo)는 Service 세부의 일부로 그린다. 값 조회 — 결과를 변수에 받는데 본문을 전개하지 않은 source 메서드(로직 역할·VO·Util 제외, 예 상위 클래스 `checkLogin`) — 는 바인딩 한 줄 `#1 member = checkLogin(request)` (`FlowchartGenerator.fetch`, css bind). 상위 클래스 메서드를 일부러 전개하지 않는다(과거에 시도했다가 checkLogin 내부 if 가 로직처럼 보여 되돌림). 단계 보기의 접힌 보조 메서드는 `collapsedHelpers`.
+- return/throw 는 메서드 박스 안 흐름 끝(실선, 분기 라벨 Yes/No), 처리되지 않은 throw 만 `-.->` `M*_uncaught`. (박스 밖 '이탈' 배치를 시도했으나 Mermaid 는 노드 좌표·박스 크기를 지정할 수 없어 dagre 는 끝으로 밀어내고 ELK 도 원하는 '오른쪽 배치'가 안 돼 되돌림.) 레이아웃 `output.layout` 기본 dagre, 옵션 elk(`MermaidGraph.init(layout)`).
+- 렌더링 첫 줄은 `MermaidGraph.INIT`(`%%{init: …}%%` 노드 padding·wrappingWidth) — 여러 줄 라벨이 잘리지 않게.
 - `-->` 정상 흐름, `==>` 본문을 전개한 호출(EXPANDED/SHARED/CYCLE → 메서드 시작 노드), `-.->` 처리되지 않은 throw(`M*_uncaught`).
 - 라벨 이스케이프는 `#` 먼저 → `#35;` `#quot;` `#lt;` `#gt;` `#124;`. 렌더 전 `MermaidGraph.validate()` + `FlowchartGenerator.checkMapping()` 실패 시 예외.
 
@@ -133,6 +156,8 @@ analyzer/
 - 멀티 모듈 소스 루트(`source-roots`, fixture `src/test/resources/multi-module`).
 - v1 흐름 분석 — 대상/진입 메서드 식별(오버로딩·모호성 거부·매핑 어노테이션 추론), 접근 제어자 4종+인터페이스 암묵 제어자, 역할 분류(어노테이션>상위타입>Suffix, 근거·충돌 기록), Depth/동일 클래스 확장/중복/재귀·상호재귀, if·switch·loop·try/catch/finally·try-with-resources·return·throw, Legacy·사용자 규칙·Spring 파라미터, 역할 기반 전개(`expand-roles`)·유일 구현 후보 연결(`link-single-implementation`).
 - v2 바인딩 — setter·builder·생성자·필드 대입·Map.put·copyProperties 수집, 출처/변환/조건/기본값/재대입 추적, 필드 커버리지, 다중 할당 최종 값(mapping.md), catch 처리 방식(로그·오류 응답·재발생·반환), 호출 인자·반환값 사용.
-- 출력 — analysis.yaml(+스키마 검증)·flowchart.mmd(TD, 메서드별 subgraph, 바인딩 노드 없음)·mapping.md·analysis.md(SPEC-v2 §8 구성)·call-tree.txt. 생성 flowchart 는 Mermaid 11.4.1 파서로 문법 확인(임시 검증, 프로젝트에는 mmdc 연동만 존재).
+- 변수 상태 변화 — V*/VC* 수집(analysis.yaml `variables` + 스키마·ModelValidator), flowchart `값 변경` 노드·`→ x`, 트리 `≔`, mapping.md 이력 표, VO 줄 `⟳`, 단계 보기 요청 값 보정(fixture `CaseAction.variableState`, `VariableStateTest`).
+- 단계 보기 — `phase-flowchart.mmd`·`phase-summary.md`, 역할 `Validator`(Suffix), 설정 `phases`(fixture: example/legacy-shop, sample `ScpAppListAction`; `PhaseTest`). 생성 결과 Mermaid 11.4.1 파서 통과.
+- 출력 — analysis.yaml(+스키마 검증)·flowchart.mmd(TD, 메서드별 subgraph, 요청 파라미터·VO 값 설정 요약 노드)·mapping.md·analysis.md(SPEC-v2 §8 구성)·call-tree.txt. 생성 flowchart 는 Mermaid 11.4.1 파서로 문법 확인(임시 검증, 프로젝트에는 mmdc 연동만 존재).
 
 미구현(후속): **마이그레이션 비교(SPEC-v2 §7, comparison.md)**, `class-diagram.mmd`, 고급 예외 전파(호출 대상 throws 기반), Spring 동적 호출/DI 구현체 해석, 반환값을 거친 객체 정체성·값 추적, 메서드 참조(`::`)·익명/로컬 클래스 본문, switch fall-through 흐름, `case ... when` 가드.

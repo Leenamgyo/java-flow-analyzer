@@ -20,7 +20,7 @@ class ClassRoleClassifierTest {
             "ScpAppListAction,ACTION", "AppController,CONTROLLER", "AppService,SERVICE", "AppServiceImpl,SERVICE",
             "AppBiz,BIZ", "AppBizImpl,BIZ", "AppDAO,DAO", "AppDao,DAO", "AppRepository,REPOSITORY",
             "AppMapper,MAPPER", "StringUtil,UTIL", "StringUtils,UTIL", "AppListCommand,VO",
-            "OrderVO,VO", "OrderVo,VO", "OrderDTO,VO", "OrderDto,VO", "SearchForm,VO"})
+            "OrderVO,VO", "OrderVo,VO", "OrderDTO,VO", "OrderDto,VO", "SearchForm,VO", "OrderValidator,VALIDATOR"})
     void suffix(String name, ClassRole expected) {
         var r = c.classify(name, List.of(), List.of());
         assertEquals(expected, r.role());

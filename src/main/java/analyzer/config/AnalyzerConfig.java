@@ -11,6 +11,21 @@ public class AnalyzerConfig {
     public Analysis analysis = new Analysis();
     public Output output = new Output();
     public List<RequestParameterRule> requestParameterRules = new ArrayList<>();
+    public Phases phases = new Phases();
+
+    /**
+     * 단계 보기(바인딩 › 체크 › 로직 › 후처리) 판정 규칙. 결과는 phase-flowchart.mmd / phase-summary.md.
+     * 판정은 분석 모델만 사용한다(요청 읽기·바인딩·역할·분기 종료 형태).
+     */
+    public static class Phases {
+        public boolean enabled = true;
+        /** 이 역할의 클래스 호출 = 로직 */
+        public List<String> logicRoles = new ArrayList<>(List.of("Service", "Biz", "DAO", "Repository", "Mapper"));
+        /** 이 역할의 클래스 호출 = 체크 */
+        public List<String> checkRoles = new ArrayList<>(List.of("Validator"));
+        /** 이 이름(* 와일드카드)의 source 메서드 호출 = 체크 (본문이 로직·바인딩을 포함하면 본문 기준) */
+        public List<String> checkMethodNames = new ArrayList<>(List.of("validate*", "check*"));
+    }
 
     public static class Target {
         /** 단일 소스 루트 (source-roots 와 함께 쓰면 맨 앞에 합쳐진다) */
@@ -53,6 +68,8 @@ public class AnalyzerConfig {
         public boolean linkSingleImplementation = false;
         /** VO/DTO/Command 및 Map 바인딩(setter·builder·생성자·필드 대입·put·복사)을 수집하고 값의 출처를 추적한다 */
         public boolean includeBindings = true;
+        /** 선언 뒤 값이 바뀌는 지역 변수·파라미터의 변경 이력(=, +=, ++ …)을 수집한다 */
+        public boolean includeVariableChanges = true;
     }
 
     public static class Output {
@@ -62,6 +79,8 @@ public class AnalyzerConfig {
         public boolean treeIncludeControlBlocks = true;
         public boolean mermaid = true;
         public String direction = "TD";
+        /** Mermaid 레이아웃: dagre(Mermaid 기본) | elk(직각 간선, 뷰어가 ELK 지원 시) */
+        public String layout = "dagre";
     }
 
     /** 사용자 정의 Request 유틸리티 규칙 */

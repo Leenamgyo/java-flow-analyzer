@@ -6,6 +6,8 @@ import analyzer.model.ClassInfo;
 import analyzer.model.MethodInfo;
 import analyzer.model.ObjectInfo;
 import analyzer.model.ResolutionStatus;
+import analyzer.model.VariableChange;
+import analyzer.model.VariableInfo;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,7 +25,8 @@ public final class MappingReportWriter {
         sb.append("> 원본 데이터: `analysis.yaml` 의 `objects`. 같은 필드에 여러 번 설정되면 모두 순서대로 기록합니다. ")
                 .append("출처를 확정할 수 없으면 `unresolved` 로 남기며 추측하지 않습니다.\n\n");
         if (r.objects.isEmpty()) {
-            sb.append("바인딩 대상 객체 없음.\n");
+            sb.append("바인딩 대상 객체 없음.\n\n");
+            variables(r, sb);
             return sb.toString();
         }
         sb.append("## 요약\n\n");
@@ -39,7 +42,52 @@ public final class MappingReportWriter {
         for (ObjectInfo o : r.objects) {
             object(r, o, sb);
         }
+        variables(r, sb);
         return sb.toString();
+    }
+
+    /**
+     * 변수 상태 변화: 선언 뒤 값이 바뀌는 지역 변수·파라미터의 전체 이력 (선언 → 변경 …, 조건 포함).
+     * 바인딩 값이 이런 변수면 "최종 값"은 실행 경로(조건)에 따라 달라진다.
+     */
+    private void variables(AnalysisResult r, StringBuilder sb) {
+        sb.append("## 변수 상태 변화\n\n");
+        if (r.variables.isEmpty()) {
+            sb.append("선언 뒤 값이 바뀌는 변수 없음.\n");
+            return;
+        }
+        sb.append("> 원본 데이터: `analysis.yaml` 의 `variables`. 선언(또는 파라미터) 뒤에 `=`·`+=`·`++` 등으로 값이 바뀌는 지역 변수만 대상입니다 ")
+                .append("(필드·for 헤더 변수 제외). 이 변수가 VO 에 들어가면 바인딩 표에 `⟳` 로 표시됩니다.\n\n");
+        sb.append("| Variable | 메서드 | 타입 | 변경 횟수 | 바인딩에 사용 |\n|---|---|---|---|---|\n");
+        for (VariableInfo v : r.variables) {
+            List<String> used = r.bindings.stream().filter(b -> b.methodId.equals(v.methodId) && v.name.equals(b.valueExpression))
+                    .map(b -> b.id + " " + r.object(b.objectId).className + "." + b.field).toList();
+            sb.append("| ").append(v.id).append(" `").append(v.name).append("` | ").append(method(r, v.methodId)).append(" | `")
+                    .append(v.type).append("` | ").append(Labels.changeCount(r, v)).append(" | ")
+                    .append(used.isEmpty() ? "-" : String.join(", ", used)).append(" |\n");
+        }
+        sb.append('\n');
+        for (VariableInfo v : r.variables) {
+            sb.append("### ").append(v.id).append(" `").append(v.name).append("` — ").append(method(r, v.methodId)).append("\n\n");
+            sb.append("| # | 변경 | 코드 | 출처 | 조건 | 위치 |\n|---|---|---|---|---|---|\n");
+            for (String cid : v.changeIds) {
+                VariableChange c = r.variableChange(cid);
+                String op = switch (c.op) {
+                    case "INIT" -> c.valueExpression == null ? "선언(값 없음)" : "선언";
+                    case "PARAM" -> "파라미터";
+                    case "ASSIGN" -> "대입 =";
+                    case "COMPOUND" -> "복합 " + c.operator;
+                    case "INCREMENT" -> "증가 ++";
+                    default -> "감소 --";
+                };
+                sb.append("| ").append(c.id).append(" | ").append(op).append(" | `").append(c.expression.replace("|", "\\|"))
+                        .append("` | ").append(c.sources.isEmpty() ? "-" : String.join(" + ",
+                                c.sources.stream().map(x -> x.display().replace("|", "\\|")).toList()))
+                        .append(" | ").append(c.conditions.isEmpty() ? "always" : "`" + String.join(" && ", c.conditions).replace("|", "\\|") + "`")
+                        .append(" | ").append(c.location.shortText()).append(" |\n");
+            }
+            sb.append('\n');
+        }
     }
 
     private void object(AnalysisResult r, ObjectInfo o, StringBuilder sb) {

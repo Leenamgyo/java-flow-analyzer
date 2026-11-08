@@ -1,0 +1,43 @@
+# 기본 분석 조건 (내장). 프로젝트 설정 파일(--config)은 바꿀 키만 쓰면 이 값 위에 덮어쓴다.
+#   - 맵(analysis, phases, output …)은 키 단위로 합쳐지고, 목록·값은 통째로 교체된다.
+#   - 우선순위: 이 파일 < 프로젝트 설정 파일 < CLI 옵션(--source-root, --class, --method, --output)
+target:
+  # entry-method 를 비우면 매핑 어노테이션(@RequestMapping 등) → public execute() 순으로 찾는다
+  entry-method:
+
+analysis:
+  max-depth: 1
+  expand-same-class-methods: true
+  include-conditions: true
+  include-exceptions: true
+  include-request-parameters: true
+  include-external-library-calls: false
+  # max-depth 를 넘어도 본문을 분석할 역할 (Util 등은 제외 → depth-limit)
+  expand-roles: [Service, Biz, DAO, Repository, Mapper, Validator]
+  # 인터페이스 호출: source-root 내 구현 클래스가 정확히 1개면 구현 후보로 연결 (런타임 DI 확정 아님)
+  link-single-implementation: true
+  # VO/DTO/Command/Map 바인딩 수집 + 값 출처·변환·조건 추적
+  include-bindings: true
+  # 선언 뒤 값이 바뀌는 지역 변수·파라미터(total -= usePoint, size = MAX …) 변경 이력 수집
+  include-variable-changes: true
+  classpath-jars: []
+
+# 사용자 정의 Request 유틸리티 (HttpServletRequest.getParameter/Values/Map 은 기본 내장) — 프로젝트별로 지정
+request-parameter-rules: []
+
+# 단계 보기 (phase-flowchart.mmd · phase-summary.md): 바인딩 › 체크 › 로직 › 후처리
+phases:
+  enabled: true
+  logic-roles: [Service, Biz, DAO, Repository, Mapper]
+  check-roles: [Validator]
+  check-method-names: ["validate*", "check*"]
+
+output:
+  directory: output     # 결과는 <directory>/<클래스명>/
+  yaml: true
+  tree: true
+  tree-include-control-blocks: true
+  mermaid: true
+  direction: TD
+  # Mermaid 레이아웃: dagre = Mermaid 기본 / elk = 직각 간선 (뷰어가 ELK 를 지원할 때)
+  layout: dagre

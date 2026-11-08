@@ -7,6 +7,10 @@ import analyzer.model.ControlBlock;
 import analyzer.model.Expansion;
 import analyzer.model.MethodInfo;
 
+import analyzer.model.SourceLocation;
+import analyzer.model.VariableChange;
+
+import java.util.ArrayList;
 import java.util.List;
 
 /** 진입 메서드를 루트로 하는 텍스트 호출 트리. */
@@ -37,9 +41,44 @@ public final class CallTreeWriter {
 
     private void renderMethod(MethodInfo m, String prefix) {
         List<Object> items = includeBlocks
-                ? FlowView.elements(r, m.id, null, true)
+                ? withChanges(m, null, FlowView.elements(r, m.id, null, true))
                 : r.callSitesOf(m.id).stream().filter(s -> !FlowView.hidden(r, s)).map(s -> (Object) s).toList();
         renderItems(m, items, prefix);
+    }
+
+    /** 변수 값 변경(≔)을 평가 순서 위치에 끼운다: 식 안의 호출이 끝난 뒤 */
+    private List<Object> withChanges(MethodInfo m, String container, List<Object> items) {
+        List<VariableChange> cs = r.changesIn(m.id, container);
+        if (cs.isEmpty()) {
+            return items;
+        }
+        List<Object> out = new ArrayList<>(items);
+        for (VariableChange c : cs) {
+            int at = out.size();
+            for (int i = 0; i < out.size(); i++) {
+                SourceLocation l = location(out.get(i));
+                if (l != null && (c.location.endLine() < l.beginLine()
+                        || c.location.endLine() == l.beginLine() && c.location.endColumn() < l.beginColumn())) {
+                    at = i;
+                    break;
+                }
+            }
+            out.add(at, c);
+        }
+        return out;
+    }
+
+    private static SourceLocation location(Object o) {
+        if (o instanceof CallSiteInfo s) {
+            return s.location;
+        }
+        if (o instanceof ControlBlock b) {
+            return b.location;
+        }
+        if (o instanceof VariableChange c) {
+            return c.location;
+        }
+        return ((FlowView.Summary) o).at();
     }
 
     private void renderItems(MethodInfo m, List<Object> items, String prefix) {
@@ -48,7 +87,10 @@ public final class CallTreeWriter {
             String branch = last ? "└── " : "├── ";
             String childPrefix = prefix + (last ? "    " : "│   ");
             Object o = items.get(i);
-            if (o instanceof FlowView.Summary sm) {
+            if (o instanceof VariableChange c) {
+                sb.append(prefix).append(branch).append("≔ ").append(Labels.changeLine(r, c))
+                        .append("  (").append(c.id).append(")\n");
+            } else if (o instanceof FlowView.Summary sm) {
                 sb.append(prefix).append(branch).append("✎ ")
                         .append(String.join(" · ", Labels.bindingSummary(r, sm.object(), sm.bindings())))
                         .append("  (").append(sm.object().id).append(")\n");
@@ -61,7 +103,7 @@ public final class CallTreeWriter {
                 ControlBlock b = (ControlBlock) o;
                 sb.append(prefix).append(branch).append(Labels.blockHeader(b)).append("  (").append(b.id).append(")")
                         .append(Labels.blockNotes(b)).append('\n');
-                renderItems(m, FlowView.elements(r, m.id, b.id, true), childPrefix);
+                renderItems(m, withChanges(m, b.id, FlowView.elements(r, m.id, b.id, true)), childPrefix);
             }
         }
     }

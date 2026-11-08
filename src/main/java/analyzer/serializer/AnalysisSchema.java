@@ -35,6 +35,7 @@ public final class AnalysisSchema {
         return new F(name, T.STR, Set.of(values), null);
     }
 
+    private static final String V = "V\\d+", VC = "VC\\d+";
     private static final String C = "C\\d+", M = "M\\d+", CALL = "CALL\\d+", P = "P\\d+", O = "O\\d+", B = "B\\d+",
             R = "R\\d+", BLOCK = "(IF|ELSEIF|ELSE|SW|CASE|FOR|FOREACH|WHILE|DO|T|CATCH|FINALLY|RET|THROW)\\d+";
 
@@ -64,6 +65,12 @@ public final class AnalysisSchema {
             new F("default", T.STR_OR_NULL), new F("sources", T.LIST), new F("conditions", T.LIST),
             id("methodId", M), ref("callSiteId", CALL), ref("controlBlockId", BLOCK),
             oneOf("resolution", "RESOLVED", "PARTIALLY_RESOLVED", "UNRESOLVED", "AMBIGUOUS"), new F("location", T.MAP));
+    private static final List<F> VARIABLE = List.of(id("id", V), new F("name", T.STR), new F("type", T.STR),
+            oneOf("kind", "LOCAL", "PARAMETER"), id("methodId", M), new F("location", T.MAP), new F("changes", T.LIST));
+    private static final List<F> CHANGE = List.of(id("id", VC), new F("order", T.INT),
+            oneOf("op", "INIT", "PARAM", "ASSIGN", "COMPOUND", "INCREMENT", "DECREMENT"), new F("operator", T.STR_OR_NULL),
+            new F("expression", T.STR), new F("value", T.STR_OR_NULL), new F("sources", T.LIST), new F("condition", T.STR),
+            new F("conditions", T.LIST), ref("controlBlockId", BLOCK), new F("callSiteIds", T.LIST), new F("location", T.MAP));
     private static final List<F> SOURCE = List.of(
             oneOf("kind", "REQUEST", "LITERAL", "CONSTANT", "PARAMETER", "CALL", "FIELD", "NEW", "LOOP", "UNRESOLVED"),
             new F("value", T.STR), new F("display", T.STR), ref("parameterId", P), new F("via", T.LIST));
@@ -88,6 +95,7 @@ public final class AnalysisSchema {
         Set<String> blockIds = items(doc, "controlBlocks", BLOCKS, e);
         Set<String> paramIds = items(doc, "requestParameters", PARAM, e);
         Set<String> objectIds = items(doc, "objects", OBJECT, e);
+        items(doc, "variables", VARIABLE, e);
         if (!(doc.get("excludedExternalLibraryCalls") instanceof Integer)) {
             e.add("excludedExternalLibraryCalls: 정수 필요");
         }
@@ -122,6 +130,20 @@ public final class AnalysisSchema {
             }
             if (item.get("location") instanceof Map<?, ?> loc) {
                 check((Map<String, Object>) loc, LOCATION, where + ".location", e);
+            }
+            if (section.equals("variables") && item.get("changes") instanceof List<?> cs) {
+                for (int j = 0; j < cs.size(); j++) {
+                    Map<String, Object> c = (Map<String, Object>) cs.get(j);
+                    check(c, CHANGE, where + ".changes[" + j + "]", e);
+                    if (c.get("location") instanceof Map<?, ?> loc) {
+                        check((Map<String, Object>) loc, LOCATION, where + ".changes[" + j + "].location", e);
+                    }
+                    if (c.get("sources") instanceof List<?> ss) {
+                        for (int k = 0; k < ss.size(); k++) {
+                            check((Map<String, Object>) ss.get(k), SOURCE, where + ".changes[" + j + "].sources[" + k + "]", e);
+                        }
+                    }
+                }
             }
             if (section.equals("objects") && item.get("bindings") instanceof List<?> bs) {
                 for (int j = 0; j < bs.size(); j++) {
@@ -198,6 +220,18 @@ public final class AnalysisSchema {
                 for (Map<String, Object> s : (List<Map<String, Object>>) b.get("sources")) {
                     need(paramIds, s.get("parameterId"), w + ".sources.parameterId", e);
                     ((List<Object>) s.get("via")).forEach(v -> need(callIds, v, w + ".sources.via", e));
+                }
+            }
+        }
+        for (Map<String, Object> v : (List<Map<String, Object>>) doc.get("variables")) {
+            need(methodIds, v.get("methodId"), v.get("id") + ".methodId", e);
+            for (Map<String, Object> c : (List<Map<String, Object>>) v.get("changes")) {
+                String w = v.get("id") + "/" + c.get("id");
+                need(blockIds, c.get("controlBlockId"), w + ".controlBlockId", e);
+                ((List<Object>) c.get("callSiteIds")).forEach(x -> need(callIds, x, w + ".callSiteIds", e));
+                for (Map<String, Object> s : (List<Map<String, Object>>) c.get("sources")) {
+                    need(paramIds, s.get("parameterId"), w + ".sources.parameterId", e);
+                    ((List<Object>) s.get("via")).forEach(x -> need(callIds, x, w + ".sources.via", e));
                 }
             }
         }

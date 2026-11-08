@@ -28,6 +28,9 @@ public final class AnalysisResult {
     public final List<ObjectInfo> objects = new ArrayList<>();
     /** 객체 필드 할당 (B*) */
     public final List<Binding> bindings = new ArrayList<>();
+    /** 값이 바뀌는 변수 (V*) 와 변경 이력 (VC*) */
+    public final List<VariableInfo> variables = new ArrayList<>();
+    public final List<VariableChange> variableChanges = new ArrayList<>();
     /** 이름별 요청 스펙 (RQ*) — parameters 의 집계 */
     public final List<RequestSpecEntry> requestSpec = new ArrayList<>();
     /** 분석 중 생략/제약 사항 */
@@ -103,6 +106,25 @@ public final class AnalysisResult {
 
     public RequestParameterInfo parameter(String id) {
         return (RequestParameterInfo) byId.get(id);
+    }
+
+    public VariableInfo variable(String id) {
+        return (VariableInfo) byId.get(id);
+    }
+
+    public VariableChange variableChange(String id) {
+        return (VariableChange) byId.get(id);
+    }
+
+    /** 메서드 안 변수 이름으로 (없으면 null) */
+    public VariableInfo variableNamed(String methodId, String name) {
+        return variables.stream().filter(v -> v.methodId.equals(methodId) && v.name.equals(name)).findFirst().orElse(null);
+    }
+
+    /** 메서드(또는 블록 직속)의 실제 상태 변화 (INIT/PARAM 제외), 소스 순서 */
+    public List<VariableChange> changesIn(String methodId, String blockId) {
+        return variableChanges.stream().filter(c -> c.isChange() && c.methodId.equals(methodId)
+                && java.util.Objects.equals(c.controlBlockId, blockId)).toList();
     }
 
     public List<ControlBlock> blocksOf(String methodId) {

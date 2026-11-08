@@ -10,6 +10,17 @@ import java.util.Set;
 /** Mermaid flowchart 중간 표현. 렌더링 전에 ID 충돌·엣지 끝점을 검증한다. */
 public final class MermaidGraph {
 
+    /** 노드 여백·간격·자동 줄바꿈 폭 (라벨은 &lt;br/&gt; 로 직접 줄바꿈) */
+    public static final String INIT = init("dagre");
+
+    /**
+     * 렌더링 설정 줄. layout "dagre" = Mermaid 기본, "elk" = 직각 간선 레이아웃(뷰어가 ELK 를 지원해야 함).
+     */
+    public static String init(String layout) {
+        return "%%{init: {\"flowchart\": {\"padding\": 20, \"nodeSpacing\": 40, \"rankSpacing\": 50, \"wrappingWidth\": 600}"
+                + ("elk".equals(layout) ? ", \"layout\": \"elk\"" : "") + "}}%%";
+    }
+
     public enum Shape { RECT, ROUND, STADIUM, DIAMOND, HEX, SUBROUTINE, ASYM }
 
     public enum EdgeStyle {
@@ -45,6 +56,8 @@ public final class MermaidGraph {
 
     private final Subgraph root = new Subgraph(null, null);
     private final Map<String, Object> ids = new LinkedHashMap<>();
+    /** 다른 노드에 합쳐진 모델 ID → 대표 노드 ID (렌더링하지 않음, has() 만 참) */
+    private final Map<String, String> aliases = new LinkedHashMap<>();
     private final List<Edge> edges = new ArrayList<>();
     private final List<String> errors = new ArrayList<>();
 
@@ -67,7 +80,19 @@ public final class MermaidGraph {
     }
 
     public boolean has(String id) {
-        return ids.containsKey(id);
+        return ids.containsKey(id) || aliases.containsKey(id);
+    }
+
+    /** 모델 요소 id 를 이미 있는 노드 nodeId 에 합친다 (요약 노드) */
+    public void alias(String id, String nodeId) {
+        if (ids.containsKey(id) || aliases.putIfAbsent(id, nodeId) != null) {
+            errors.add("Mermaid ID 충돌(alias): " + id);
+        }
+    }
+
+    /** 합쳐진 경우 대표 노드 ID, 아니면 그대로 */
+    public String nodeOf(String id) {
+        return aliases.getOrDefault(id, id);
     }
 
     public void edge(String from, String to, String label, EdgeStyle style) {
@@ -117,7 +142,12 @@ public final class MermaidGraph {
     }
 
     public String render(String direction, Map<String, String> classDefs) {
-        StringBuilder sb = new StringBuilder("flowchart ").append(direction).append('\n');
+        return render(direction, "dagre", classDefs);
+    }
+
+    public String render(String direction, String layout, Map<String, String> classDefs) {
+        // 여러 줄 라벨(요청 파라미터·VO 값 설정)이 잘리지 않도록 노드 여백·줄바꿈 폭을 넉넉히
+        StringBuilder sb = new StringBuilder(init(layout)).append('\n').append("flowchart ").append(direction).append('\n');
         for (Object o : root.items) {
             renderItem(sb, o, "    ");
         }

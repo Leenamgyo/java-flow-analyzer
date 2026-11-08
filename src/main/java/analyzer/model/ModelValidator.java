@@ -207,6 +207,35 @@ public final class ModelValidator {
                 });
             }
         }
+        for (VariableInfo v : r.variables) {
+            if (r.method(v.methodId) == null) {
+                e.add(v.id + ": method " + v.methodId + " 없음");
+            }
+            if (v.changeIds.isEmpty()) {
+                e.add(v.id + ": 변경 이력 없음");
+            }
+            for (String cid : v.changeIds) {
+                VariableChange c = r.variableChange(cid);
+                if (c == null || !v.id.equals(c.variableId) || !v.methodId.equals(c.methodId)) {
+                    e.add(v.id + ": change " + cid + " 불일치");
+                    continue;
+                }
+                if (c.controlBlockId != null && (r.block(c.controlBlockId) == null
+                        || !r.block(c.controlBlockId).methodId.equals(c.methodId))) {
+                    e.add(c.id + ": control-block " + c.controlBlockId + " 불일치");
+                }
+                c.callSiteIds.forEach(sid -> {
+                    if (r.callSite(sid) == null || !r.callSite(sid).callerMethodId.equals(c.methodId)) {
+                        e.add(c.id + ": call-site " + sid + " 불일치");
+                    }
+                });
+                for (ValueSource s : c.sources) {
+                    if (s.parameterId() != null && r.parameter(s.parameterId()) == null) {
+                        e.add(c.id + ": request parameter " + s.parameterId() + " 없음");
+                    }
+                }
+            }
+        }
         for (RequestSpecEntry q : r.requestSpec) {
             for (String pid : q.parameterIds) {
                 RequestParameterInfo p = r.parameter(pid);

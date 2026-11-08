@@ -73,6 +73,7 @@ public final class AnalysisYamlWriter {
                 .put2("requestParameters", parameters(r))
                 .put2("requestSpec", requestSpec(r))
                 .put2("objects", objects(r))
+                .put2("variables", variables(r))
                 .put2("excludedExternalLibraryCalls", r.excludedExternalCalls)
                 .put2("notes", r.notes);
     }
@@ -311,6 +312,40 @@ public final class AnalysisYamlWriter {
                             .put2("unassigned", o.unassignedFields)
                             .put2("unknown", o.unknownFields))
                     .put2("bindings", bs));
+        }
+        return out;
+    }
+
+    private List<Object> variables(AnalysisResult r) {
+        List<Object> out = new ArrayList<>();
+        for (analyzer.model.VariableInfo v : r.variables) {
+            List<Object> cs = new ArrayList<>();
+            for (String cid : v.changeIds) {
+                analyzer.model.VariableChange c = r.variableChange(cid);
+                cs.add(Y.map()
+                        .put2("id", c.id)
+                        .put2("order", c.order)
+                        .put2("op", c.op)
+                        .put2("operator", c.operator)
+                        .put2("expression", c.expression)
+                        .put2("value", c.valueExpression)
+                        .put2("source", c.sources.isEmpty() ? null
+                                : String.join(" + ", c.sources.stream().map(ValueSource::display).toList()))
+                        .put2("sources", c.sources.stream().map(AnalysisYamlWriter::source).toList())
+                        .put2("condition", c.conditions.isEmpty() ? "always" : String.join(" && ", c.conditions))
+                        .put2("conditions", c.conditions)
+                        .put2("controlBlockId", c.controlBlockId)
+                        .put2("callSiteIds", c.callSiteIds)
+                        .put2("location", Y.loc(c.location)));
+            }
+            out.add(Y.map()
+                    .put2("id", v.id)
+                    .put2("name", v.name)
+                    .put2("type", v.type)
+                    .put2("kind", v.kind)
+                    .put2("methodId", v.methodId)
+                    .put2("location", Y.loc(v.location))
+                    .put2("changes", cs));
         }
         return out;
     }

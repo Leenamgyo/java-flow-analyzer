@@ -10,6 +10,8 @@ public enum ClassRole {
     MAPPER("Mapper"),
     /** 값 객체: VO / DTO / Command / (Struts) Form */
     VO("VO"),
+    /** 입력 검증 클래스 (Suffix Validator) */
+    VALIDATOR("Validator"),
     UTIL("Util"),
     OTHER("Other");
 

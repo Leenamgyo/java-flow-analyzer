@@ -10,6 +10,10 @@ import analyzer.model.Binding;
 import analyzer.model.ObjectInfo;
 import analyzer.model.RequestParameterInfo;
 import analyzer.model.ResolutionStatus;
+import analyzer.model.SourceLocation;
+import analyzer.model.ValueSource;
+import analyzer.model.VariableChange;
+import analyzer.model.VariableInfo;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -83,6 +87,88 @@ public final class Labels {
             return null;
         }
         return "REQ " + String.join(", ", ps.stream().map(Labels::parameterName).toList());
+    }
+
+    /** 요청 파라미터 요약: ["요청 파라미터 (3)", "mode", "orderNo", "agreeTerms"] — 한 줄에 하나 */
+    public static List<String> paramSummary(List<String> names) {
+        List<String> out = new ArrayList<>();
+        out.add("요청 파라미터 (" + names.size() + ")");
+        out.addAll(names);
+        return out;
+    }
+
+    /**
+     * 흐름도 VO 값 설정 1줄 — 코드 형식 "대상 = 값": #6 order.memberId = member.getMemberId(),
+     * cond["status"] = status, order.memo = StringUtil.trimToEmpty(request.memo).
+     * 값 식 안의 요청 읽기 호출은 request.이름 으로 줄이고, 값이 상태가 바뀌는 변수면 끝에 ⟳V1.
+     * numbered: 같은 메서드의 호출 번호(#n)를 붙인다 (바인딩 메서드 안의 바인딩이면 false).
+     */
+    public static String bindingLine(AnalysisResult r, Binding b, boolean numbered) {
+        ObjectInfo o = r.object(b.objectId);
+        String target = "MAP".equals(o.kind) ? o.variable + "[\"" + b.field + "\"]"
+                : o.variable + "." + b.field;
+        String value = codeValue(r, b.methodId, b.location, b.valueExpression);
+        if (b.valueExpression != null && b.valueExpression.matches("[A-Za-z_$][\\w$]*")) {
+            VariableInfo v = r.variableNamed(b.methodId, b.valueExpression);
+            if (v != null) {
+                value += "  ⟳" + v.id;
+            }
+        }
+        CallSiteInfo s = b.callSiteId == null || !numbered ? null : r.callSite(b.callSiteId);
+        return truncate((s == null ? "" : "#" + s.order + " ") + target + " = " + value, 80);
+    }
+
+    /** 값 식 안의 요청 읽기 호출을 request.이름(?: 기본값) 으로 바꾼 코드 */
+    public static String codeValue(AnalysisResult r, String methodId, SourceLocation at, String expr) {
+        if (expr == null) {
+            return "?";
+        }
+        String out = expr;
+        for (CallSiteInfo s : r.callSitesOf(methodId)) {
+            List<RequestParameterInfo> ps = r.parametersAt(s.id);
+            if (ps.size() == 1 && contains(at, s.location) && out.contains(s.expression)) {
+                out = out.replace(s.expression, requestValue(ps.get(0)));
+            }
+        }
+        return out;
+    }
+
+    /** request.mode ?: "NEW" / request.?("sort_" + userId) / request.(전체) */
+    public static String requestValue(RequestParameterInfo p) {
+        return "request." + parameterName(p) + (p.defaultValue == null ? "" : " ?: " + p.defaultValue);
+    }
+
+    /** 요청 파라미터 노드 1줄 — 코드 형식: #2 mode = request.mode ?: "NEW" (값이 바뀌는 변수면 · V1 1/2) */
+    public static String requestLine(AnalysisResult r, CallSiteInfo s, RequestParameterInfo p) {
+        String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
+        String line = "#" + s.order + " " + (var == null ? "" : var + " = ") + requestValue(p);
+        VariableInfo v = var == null ? null : r.variableNamed(s.callerMethodId, var);
+        if (v != null) {
+            line += " · " + v.id + " 1/" + v.changeIds.size();
+        }
+        return truncate(line, 80);
+    }
+
+    private static boolean contains(SourceLocation outer, SourceLocation inner) {
+        if (outer == null || inner == null || !java.util.Objects.equals(outer.file(), inner.file())) {
+            return false;
+        }
+        boolean begin = outer.beginLine() < inner.beginLine()
+                || outer.beginLine() == inner.beginLine() && outer.beginColumn() <= inner.beginColumn();
+        boolean end = inner.endLine() < outer.endLine()
+                || inner.endLine() == outer.endLine() && inner.endColumn() <= outer.endColumn();
+        return begin && end;
+    }
+
+    /** 실제 상태 변화 횟수 (선언·파라미터 제외) */
+    public static long changeCount(AnalysisResult r, VariableInfo v) {
+        return v.changeIds.stream().map(r::variableChange).filter(VariableChange::isChange).count();
+    }
+
+    /** 값 변경 1줄 — 코드 그대로 + 변수 이력 중 순번: total -= usePoint · V1 3/3 (1 = 선언/파라미터) */
+    public static String changeLine(AnalysisResult r, VariableChange c) {
+        VariableInfo v = r.variable(c.variableId);
+        return truncate(codeValue(r, c.methodId, c.location, c.expression), 64) + " · " + v.id + " " + c.order + "/" + v.changeIds.size();
     }
 
     /** 메서드 선언부(Spring 어노테이션)에서 받은 요청 파라미터: REQ @PathVariable status, ... (없으면 null) */

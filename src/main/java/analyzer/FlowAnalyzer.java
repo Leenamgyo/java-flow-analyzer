@@ -132,6 +132,9 @@ public final class FlowAnalyzer {
                         }
                     }).collect();
         }
+        if (cfg.analysis.includeVariableChanges) {
+            new analyzer.binding.VariableStateCollector(result, declarations, paramsByCall, callExprs).collect();
+        }
         if (cfg.analysis.includeRequestParameters) {
             analyzer.binding.RequestSpecBuilder.build(result);
         }

@@ -45,6 +45,7 @@ public final class ClassRoleClassifier {
         SUFFIXES.put("Dto", ClassRole.VO);
         SUFFIXES.put("Form", ClassRole.VO);
         SUFFIXES.put("Command", ClassRole.VO);
+        SUFFIXES.put("Validator", ClassRole.VALIDATOR);
         SUFFIXES.put("Utils", ClassRole.UTIL);
         SUFFIXES.put("Util", ClassRole.UTIL);
     }
