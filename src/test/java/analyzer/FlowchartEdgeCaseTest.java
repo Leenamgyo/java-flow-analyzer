@@ -148,4 +148,21 @@ class FlowchartEdgeCaseTest {
         // JDK 호출뿐인 삼항 문장도 사라지지 않는다
         assertTrue(mmd.contains("extraInfo.isEmpty() ? null : extraInfo.get(0)"), mmd);
     }
+
+    @Test
+    void consecutivePlainCallsShareOneNode() {
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "plainCallRun");
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        String first = g.nodeOf(call(r, "extraInfo.add(\"A\")").id);
+        for (String e : List.of("extraInfo.add(\"B\")", "v.trim()", "Long.parseLong(v)")) {
+            assertEquals(first, g.nodeOf(call(r, e).id), e);
+        }
+        // touch()(상태 변화)가 끼면 새 노드
+        assertFalse(first.equals(g.nodeOf(call(r, "extraInfo.add(\"C\")").id)));
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("#35;1 extraInfo.add(#quot;A#quot;)<br/>#35;2 extraInfo.add(#quot;B#quot;)<br/>"
+                + "#35;3 String t = v.trim()<br/>#35;4 long n = Long.parseLong(v)\"]"), mmd);
+    }
 }

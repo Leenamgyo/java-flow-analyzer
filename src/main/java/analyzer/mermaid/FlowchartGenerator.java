@@ -826,6 +826,7 @@ public final class FlowchartGenerator {
      *       값 조회 · 로직 호출 없는 선언문</li>
      *   <li>state — 상태 변화: 반환 타입이 void 인 호출(수신 객체 버전 v1, v2 …) + 변수 값 변경(V1 k/n)</li>
      *   <li>log — 로그: 로깅 호출을 간략히 (배경색으로 구분)</li>
+     *   <li>code:&lt;css&gt; — 일반 호출: 세부 상자로 가지 않는 호출 코드 줄 (색 구분이 같은 것끼리, 하나뿐이면 예전 호출 노드)</li>
      * </ul>
      * 노드 ID = 첫 요소의 ID(호출 ID, 변수 변경이면 VAR_, 호출 없는 바인딩이면 SET_), 나머지 모델 ID 는 alias.
      */
@@ -839,6 +840,8 @@ public final class FlowchartGenerator {
         final List<String> members = new ArrayList<>();
         /** 상태 변화 블록 안의 호출 (본문을 그리는 메서드면 블록 → 메서드 ==> 간선) */
         final List<CallSiteInfo> calls = new ArrayList<>();
+        /** 일반 호출 블록의 호출들 */
+        final List<CallSiteInfo> codeCalls = new ArrayList<>();
         final Set<String> seenBindings = new java.util.HashSet<>();
         /** 상태 변화 블록을 지난 뒤의 버전 (블록에 들어올 때의 버전에서 시작) */
         Map<String, Integer> versions;
@@ -975,6 +978,13 @@ public final class FlowchartGenerator {
             return cur;
         }
 
+        /** 일반 호출 (세부 상자로 가지 않는 호출) — 색 구분(css)이 같으면 이어 쌓는다 */
+        List<End> code(CallSiteInfo s, List<End> cur) {
+            cur = start("code:" + callCss(s), cur, s.id);
+            codeCalls.add(s);
+            return cur;
+        }
+
         List<End> change(VariableChange c, List<End> cur) {
             cur = start("state", cur, "VAR_" + c.id);
             lines.add(new Line(Labels.changeLine(r, c), null, null));
@@ -989,6 +999,34 @@ public final class FlowchartGenerator {
             kind = null;
             nodeId = null;
             versions = null;
+            if (k != null && k.startsWith("code:")) {
+                List<CallSiteInfo> cs = new ArrayList<>(codeCalls);
+                codeCalls.clear();
+                if (cs.size() == 1) {
+                    callNode(sg, cs.get(0));
+                    return link(cur, id);
+                }
+                List<String> out = new ArrayList<>();
+                for (CallSiteInfo c : cs) {
+                    out.add(callCode(c));
+                    String impl = Labels.implementationTarget(r, c);
+                    if (impl != null) {
+                        out.add("  impl 후보: " + impl);
+                    }
+                    String req = Labels.requestTag(r, c);
+                    if (req != null) {
+                        out.add("  " + req);
+                    }
+                }
+                g.node(sg, id, out, Shape.RECT, k.substring(5));
+                for (CallSiteInfo c : cs) {
+                    if (!c.id.equals(id)) {
+                        g.alias(c.id, id);
+                    }
+                    assignedBy.getOrDefault(c.id, List.of()).forEach(v -> g.alias(v.id, id));
+                }
+                return link(cur, id);
+            }
             if (k == null || lines.isEmpty()) {
                 lines.clear();
                 members.clear();
@@ -1224,6 +1262,8 @@ public final class FlowchartGenerator {
                     cur = p.fetch(s, cur);
                 } else if (stateChange(s) && !(s.targetMethodId != null && collapsed.contains(s.expansionTargetId()))) {
                     cur = p.stateCall(s, cur);
+                } else if (plainCall(s)) { // 일반 호출: 이어지는 것끼리 노드 1개 (기본 블록처럼)
+                    cur = p.code(s, cur);
                 } else {
                     cur = p.flush(cur);
                     callNode(sg, s);
@@ -1632,6 +1672,26 @@ public final class FlowchartGenerator {
      * 호출 노드 = 코드 한 줄(줄이지 않음): #1 MemberVO member = checkLogin(request) · V1 1/3.
      * 역할·접근제어자·Depth·depth-limit 같은 꼬리표는 쓰지 않는다 (색으로만 구분). 구현 후보는 따로 한 줄.
      */
+    /** 일반 호출 블록으로 합칠 호출: 세부 상자로 가지 않고, 접힌 보조 메서드·값 조회가 아닌 호출 */
+    private boolean plainCall(CallSiteInfo s) {
+        if (leadsToDetail(s) || s.targetMethodId != null && collapsed.contains(s.expansionTargetId())) {
+            return false;
+        }
+        return !(fetch(s) && s.resultUsage != null && s.resultUsage.startsWith("assigned:"));
+    }
+
+    /** 호출 노드 색 구분 (해석·전개 상태) */
+    private String callCss(CallSiteInfo s) {
+        boolean req = Labels.requestTag(r, s) != null;
+        return switch (s.expansion) {
+            case NOT_APPLICABLE -> "unresolved";
+            case CYCLE -> "cycle";
+            case DEPTH_LIMIT -> req ? "req" : "depth";
+            case EXTERNAL, NO_BODY -> req ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "external" : "unresolved";
+            default -> req ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "codeline" : "unresolved";
+        };
+    }
+
     private void callNode(Subgraph sg, CallSiteInfo s) {
         List<String> lines = new ArrayList<>();
         boolean folded = s.targetMethodId != null && collapsed.contains(s.expansionTargetId());
@@ -1662,14 +1722,7 @@ public final class FlowchartGenerator {
         if (req != null) {
             lines.add(req);
         }
-        String css = switch (s.expansion) {
-            case NOT_APPLICABLE -> "unresolved";
-            case CYCLE -> "cycle";
-            case DEPTH_LIMIT -> req != null ? "req" : "depth";
-            case EXTERNAL, NO_BODY -> req != null ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "external" : "unresolved";
-            default -> req != null ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "codeline" : "unresolved";
-        };
-        g.node(sg, s.id, lines, Shape.RECT, css);
+        g.node(sg, s.id, lines, Shape.RECT, callCss(s));
         assignedBy.getOrDefault(s.id, List.of()).forEach(c -> g.alias(c.id, s.id));
         if (s.targetMethodId != null && drawnMethods.contains(s.expansionTargetId())
                 && (s.expansion == Expansion.EXPANDED || s.expansion == Expansion.SHARED

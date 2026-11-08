@@ -182,4 +182,15 @@ public class EdgeAction {
         touch();
         return extraInfo;
     }
+
+    // ---- 이어지는 일반 호출은 노드 1개 (기본 블록처럼), 상태 변화가 끼면 나뉜다
+    public String plainCallRun(List<String> extraInfo, String v) {
+        extraInfo.add("A");
+        extraInfo.add("B");
+        String t = v.trim();
+        long n = Long.parseLong(v);
+        touch();
+        extraInfo.add("C");
+        return t;
+    }
 }
