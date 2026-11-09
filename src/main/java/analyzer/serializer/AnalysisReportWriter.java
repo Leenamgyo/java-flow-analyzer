@@ -35,11 +35,11 @@ public final class AnalysisReportWriter {
                 .append("필드 매핑 전체는 `mapping.md`, 호출 트리는 `call-tree.txt`, 메서드 호출 관계·메서드 목록·미해결(UNRESOLVED) 항목은 `analysis.yaml` ")
                 .append("(methods · calls 의 resolution) 에 있습니다.\n\n");
 
+        requestParameters(r, sb);
         overview(r, target, entry, sb);
-        sb.append("## 2. 실행 흐름도\n\n");
+        sb.append("## 3. 실행 흐름도\n\n");
         sb.append("조건문·try/catch·주요 메서드 호출 중심이며, 객체 바인딩은 객체당 요약 노드 1개로 표시합니다(`flowchart.mmd`).\n\n");
         sb.append("```mermaid\n").append(mermaidText == null ? "" : mermaidText).append("```\n\n");
-        requestParameters(r, sb);
         bindings(r, sb);
         exceptions(r, sb);
         appendix(r, mermaidStatus, sb);
@@ -49,7 +49,7 @@ public final class AnalysisReportWriter {
     // ------------------------------------------------------------------ 1
 
     private void overview(AnalysisResult r, ClassInfo target, MethodInfo entry, StringBuilder sb) {
-        sb.append("## 1. 분석 개요\n\n| 항목 | 값 |\n|---|---|\n");
+        sb.append("## 2. 분석 개요\n\n| 항목 | 값 |\n|---|---|\n");
         sb.append("| 대상 클래스 | `").append(target.qualifiedName).append("` (").append(target.id).append(", ")
                 .append(target.role.label()).append(") |\n");
         sb.append("| 대상 메서드 | `").append(entry.signature).append("` (").append(entry.id).append(", ")
@@ -67,22 +67,73 @@ public final class AnalysisReportWriter {
         sb.append("| 선언 예외 | ").append(entry.thrownTypes.isEmpty() ? "-" : String.join(", ", entry.thrownTypes)).append(" |\n");
         sb.append("| 소스 위치 | `").append(entry.location.file()).append(":").append(entry.location.beginLine())
                 .append("-").append(entry.location.endLine()).append("` |\n\n");
-        sb.append("**관련 클래스** (진입 메서드에서 도달한 source 클래스)\n\n| ID | 클래스 | 역할 | 근거 |\n|---|---|---|---|\n");
-        for (ClassInfo c : r.classes()) {
-            if (c.origin != Origin.SOURCE) {
-                continue;
-            }
+        sb.append("**관련 클래스** (진입 메서드에서 도달한 source 클래스 — 인터페이스 먼저, 그다음 클래스)\n\n")
+                .append("| ID | 종류 | 클래스 | 역할 | 근거 | 사용 위치 |\n|---|---|---|---|---|---|\n");
+        List<ClassInfo> source = r.classes().stream().filter(c -> c.origin == Origin.SOURCE).toList();
+        List<ClassInfo> ordered = new java.util.ArrayList<>(source.stream().filter(c -> "INTERFACE".equals(c.kind)).toList());
+        source.stream().filter(c -> !"INTERFACE".equals(c.kind)).forEach(ordered::add);
+        for (ClassInfo c : ordered) {
             String ev = String.join(", ", c.roleEvidence.stream().map(e -> e.kind() + ":" + e.value()).toList());
-            sb.append("| ").append(c.id).append(" | `").append(c.name).append("` | ").append(c.role.label())
-                    .append(c.roleConflict ? " ⚠️충돌" : "").append(" | ").append(ev.isEmpty() ? "-" : ev).append(" |\n");
+            sb.append("| ").append(c.id).append(" | ").append(kindLabel(c)).append(" | `").append(c.name).append("` | ")
+                    .append(c.role.label()).append(c.roleConflict ? " ⚠️충돌" : "").append(" | ").append(ev.isEmpty() ? "-" : ev)
+                    .append(" | ").append(usages(r, c)).append(" |\n");
         }
         sb.append('\n');
+    }
+
+    private static String kindLabel(ClassInfo c) {
+        return switch (c.kind == null ? "" : c.kind) {
+            case "INTERFACE" -> "인터페이스";
+            case "ENUM" -> "enum";
+            case "RECORD" -> "record";
+            case "ANNOTATION" -> "어노테이션";
+            default -> c.isAbstract ? "추상 클래스" : "클래스";
+        };
+    }
+
+    /**
+     * 클래스를 어디서 쓰는지: 진입 클래스 · 그 클래스 메서드를 부르는 호출 위치(호출자 → 메서드, 같은 쌍은 한 줄에 호출 ID 모음) ·
+     * 구현 후보로 연결된 호출 · 그 클래스로 만든 바인딩 객체.
+     */
+    private static String usages(AnalysisResult r, ClassInfo c) {
+        java.util.Map<String, List<String>> calls = new java.util.LinkedHashMap<>();
+        java.util.Map<String, List<String>> impls = new java.util.LinkedHashMap<>();
+        for (CallSiteInfo s : r.callSites) {
+            if (s.targetMethodId != null && r.method(s.targetMethodId).classId.equals(c.id)) {
+                calls.computeIfAbsent(usageKey(r, s, r.method(s.targetMethodId)), k -> new java.util.ArrayList<>()).add(usageRef(s));
+            }
+            if (s.implementationMethodId != null && r.method(s.implementationMethodId).classId.equals(c.id)) {
+                impls.computeIfAbsent(usageKey(r, s, r.method(s.targetMethodId)), k -> new java.util.ArrayList<>()).add(usageRef(s));
+            }
+        }
+        List<String> out = new java.util.ArrayList<>();
+        if (c.id.equals(r.targetClassId)) {
+            out.add("진입 클래스 (`" + r.method(r.entryMethodId).name + "()`)");
+        }
+        calls.forEach((k, v) -> out.add(k + " · " + String.join(", ", v)));
+        impls.forEach((k, v) -> out.add("구현 후보: " + k + " · " + String.join(", ", v)));
+        for (var o : r.objects) {
+            if (c.id.equals(o.classId)) {
+                out.add("객체 `" + (o.variable == null ? o.className : o.variable) + "` (" + o.id + ") · "
+                        + MappingReportWriter.method(r, o.methodId));
+            }
+        }
+        return out.isEmpty() ? "-" : String.join("<br>", out);
+    }
+
+    private static String usageKey(AnalysisResult r, CallSiteInfo s, MethodInfo target) {
+        MethodInfo caller = r.method(s.callerMethodId);
+        return "`" + r.classOf(caller).name + "." + caller.name + "` → `" + r.classOf(target).name + "." + target.name + "()`";
+    }
+
+    private static String usageRef(CallSiteInfo s) {
+        return s.id + " :" + s.location.beginLine();
     }
 
     // ------------------------------------------------------------------ 3
 
     private void requestParameters(AnalysisResult r, StringBuilder sb) {
-        sb.append("## 3. Request Parameter 분석\n\n");
+        sb.append("## 1. Request Parameter 분석\n\n");
         if (r.requestSpec.isEmpty()) {
             sb.append("이름이 확인된 요청 파라미터 없음.\n");
         } else {

@@ -293,7 +293,7 @@ class OutputConsistencyTest {
         String mapping = new MappingReportWriter().render(r);
         r.bindings.forEach(b -> assertTrue(mapping.contains("| " + b.id + " |"), b.id));
         String md = new analyzer.serializer.AnalysisReportWriter().render(r, "flowchart LR\n", "SKIPPED");
-        for (String section : List.of("## 1. 분석 개요", "## 2. 실행 흐름도", "## 3. Request Parameter 분석",
+        for (String section : List.of("## 1. Request Parameter 분석", "## 2. 분석 개요", "## 3. 실행 흐름도",
                 "## 4. VO / DTO / Command 바인딩 명세", "## 5. 예외 처리")) {
             assertTrue(md.contains(section), section);
         }
