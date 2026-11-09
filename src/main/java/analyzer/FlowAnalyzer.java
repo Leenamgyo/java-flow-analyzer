@@ -48,6 +48,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -179,9 +180,7 @@ public final class FlowAnalyzer {
         if (result.callSites.stream().noneMatch(s -> s.sql != null)) {
             return;
         }
-        List<java.nio.file.Path> roots = analyzer.sql.SqlCalls.xmlRoots(cfg.analysis.mapperXmlRoots, sources.sourceRoots());
-        analyzer.sql.MapperXmlIndex idx = analyzer.sql.MapperXmlIndex.scan(roots);
-        idx.errors().forEach(e -> result.notes.add("매퍼 XML: " + e));
+        analyzer.sql.MapperXmlIndex idx = sqlIndex();
         java.nio.file.Path base = projectBase();
         for (CallSiteInfo s : result.callSites) {
             if (s.sql != null) {
@@ -214,6 +213,47 @@ public final class FlowAnalyzer {
                 s.sql.notes.add("id 는 파라미터 " + s.sql.statementId + " — 호출하는 쪽에서 정함: " + String.join(", ", callers));
             }
         }
+    }
+
+    private analyzer.sql.MapperXmlIndex sqlIndex;
+
+    /** 매퍼 XML 색인 (처음 한 번, 읽기 전용) — 분석 중 문자열 검색과 분석 뒤 매칭에 같이 쓴다 */
+    private analyzer.sql.MapperXmlIndex sqlIndex() {
+        if (sqlIndex == null) {
+            sqlIndex = analyzer.sql.MapperXmlIndex.scan(
+                    analyzer.sql.SqlCalls.xmlRoots(cfg.analysis.mapperXmlRoots, sources.sourceRoots()));
+            sqlIndex.errors().forEach(e -> result.notes.add("매퍼 XML: " + e));
+        }
+        return sqlIndex;
+    }
+
+    /**
+     * statement id 후보 문자열: 리터럴·상수(params.stringValue), 지역 변수면 선언 값(한 번만 정해지는 변수 —
+     * String id = NAMESPACE + "selectX"; selectList(id))
+     */
+    private Optional<String> sqlString(com.github.javaparser.ast.expr.Expression e, TypeDeclaration<?> type,
+                                       com.github.javaparser.ast.Node context) {
+        Optional<String> v = params.stringValue(e, type, context);
+        if (v.isPresent() || !(e instanceof com.github.javaparser.ast.expr.NameExpr n)) {
+            return v;
+        }
+        var body = context.findAncestor(com.github.javaparser.ast.body.CallableDeclaration.class).orElse(null);
+        if (body == null) {
+            return v;
+        }
+        String name = n.getNameAsString();
+        List<com.github.javaparser.ast.body.VariableDeclarator> decl = ((com.github.javaparser.ast.Node) body)
+                .findAll(com.github.javaparser.ast.body.VariableDeclarator.class, d -> d.getNameAsString().equals(name));
+        boolean reassigned = !((com.github.javaparser.ast.Node) body).findAll(com.github.javaparser.ast.expr.AssignExpr.class,
+                a -> a.getTarget() instanceof com.github.javaparser.ast.expr.NameExpr t && t.getNameAsString().equals(name)).isEmpty();
+        if (decl.size() != 1 || reassigned || decl.get(0).getInitializer().isEmpty()) {
+            return v;
+        }
+        com.github.javaparser.ast.expr.Expression init = decl.get(0).getInitializer().get();
+        if (init instanceof com.github.javaparser.ast.expr.NameExpr) {
+            return v; // 변수 → 변수 사슬은 따라가지 않음
+        }
+        return analyzer.sql.SqlCalls.evalString(init, x -> params.stringValue(x, type, context));
     }
 
     /** 경로 표시 기준: source 기준 폴더가 …/src/… 아래면 src 의 부모(프로젝트 폴더) */
@@ -286,10 +326,12 @@ public final class FlowAnalyzer {
                 // SqlSession.selectList("ns.id") 류는 매퍼 XML statement 의 근거이므로 남긴다
                 boolean sql = cfg.analysis.includeSqlIds && analyzer.sql.SqlCalls.isSessionCall(call, t.receiverType());
                 if (sql) {
-                    sqlByCall.put(call, analyzer.sql.SqlCalls.sessionRef(call, e -> params.stringValue(e, callerType, call)));
+                    sqlByCall.put(call, analyzer.sql.SqlCalls.sessionRef(call, e -> sqlString(e, callerType, call)));
                 } else if (cfg.analysis.includeSqlIds) {
-                    // 상속 메서드(EgovAbstractDAO.selectList …)·공통 DAO 빈 호출: 첫 인자가 XML statement 와 맞을 때만 SQL (sqlIds)
-                    analyzer.model.SqlRef ref = analyzer.sql.SqlCalls.byStatementArgument(call, e -> params.stringValue(e, callerType, call));
+                    // 문자열 검색: 인자 문자열이 매퍼 XML id 와 일치하면 SQL 호출 (상속 selectList·list·공통 DAO 빈 … 이름 무관)
+                    ClassRole role = result.clazz(caller.classId).role;
+                    boolean bare = role == ClassRole.DAO || role == ClassRole.MAPPER || role == ClassRole.REPOSITORY;
+                    analyzer.model.SqlRef ref = analyzer.sql.SqlCalls.byXml(call, e -> sqlString(e, callerType, call), sqlIndex(), bare);
                     if (ref != null) {
                         sqlByCall.put(call, ref);
                         sql = true;

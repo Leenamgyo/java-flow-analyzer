@@ -11,6 +11,11 @@ public abstract class BaseDAO {
         return sqlSession.selectList(statementId, param);
     }
 
+    /** 이름이 SQL 동사가 아닌 공통 메서드 — 이름과 무관하게 문자열 인자로 찾는다 */
+    protected Object commonQuery(String statementId, Object param) {
+        return sqlSession.selectOne(statementId, param);
+    }
+
     protected int insert(String statementId, Object param) {
         return sqlSession.insert(statementId, param);
     }

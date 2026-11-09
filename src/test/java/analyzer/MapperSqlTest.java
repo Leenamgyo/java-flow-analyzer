@@ -54,7 +54,11 @@ class MapperSqlTest {
                 {"super.insert(\"notice.insertNotice\", vo)", "notice.insertNotice", "TB_NOTICE"},
                 {"list(\"article.selectArticles\", vo)", "article.selectArticles", "TB_ARTICLE"},
                 {"commonDao.selectList(\"notice.countNotices\", vo)", "notice.countNotices", "TB_NOTICE"},
-                {"memberDAO.selectMember(memberId)", "com.example.dao.MemberDAO.selectMember", "TB_MEMBER"}}) {
+                {"memberDAO.selectMember(memberId)", "com.example.dao.MemberDAO.selectMember", "TB_MEMBER"},
+                // 문자열 검색: 메서드 이름 무관 · 지역 변수 선언 값(상수 연결) · DAO 안 namespace 없는 id
+                {"commonQuery(\"notice.countNotices\", vo)", "notice.countNotices", "TB_NOTICE"},
+                {"selectList(id, vo)", "notice.selectNotices", "TB_NOTICE"},
+                {"insert(\"insertNotice\", vo)", "insertNotice", "TB_NOTICE"}}) {
             SqlRef ref = sql(r, e[0]);
             assertNotNull(ref, e[0]);
             assertEquals("FOUND", ref.xmlStatus, e[0]);
@@ -70,6 +74,13 @@ class MapperSqlTest {
                 .findFirst().orElseThrow().sql;
         assertEquals("SKIPPED", inner.xmlStatus);
         assertTrue(inner.notes.stream().anyMatch(n -> n.contains("notice.countNotices")), inner.notes.toString());
+        // 분석서 2.3: XML id 를 못 찾은 DAO 메서드만 (공통 메서드·위임 메서드는 제외)
+        String md = new analyzer.serializer.AnalysisReportWriter().render(r, "SKIPPED");
+        String missing = md.substring(md.indexOf("### 2.3"), md.indexOf("## 3."));
+        assertTrue(missing.contains("`NoticeDAO.notSql`"), missing);
+        for (String ok : List.of("findNotices", "delegate", "BaseDAO.selectList", "CommonDAO.selectList", "count`", "byVariable", "bare")) {
+            assertFalse(missing.contains(ok), ok + "\n" + missing);
+        }
     }
 
     @Test

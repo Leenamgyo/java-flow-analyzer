@@ -16,6 +16,10 @@ public class DaoPatternAction {
         noticeDAO.findNotices(vo);
         noticeDAO.addNotice(vo);
         noticeDAO.notSql();
+        noticeDAO.count(vo);
+        noticeDAO.byVariable(vo);
+        noticeDAO.bare(vo);
+        noticeDAO.delegate(vo);
         articleDAO.findArticles(vo);
         commonDao.selectList("notice.countNotices", vo);
         Object m = memberDAO.selectMember(memberId);

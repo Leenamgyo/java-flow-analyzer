@@ -39,38 +39,35 @@ public final class SqlCalls {
     static final Set<String> SQL_ANNOTATIONS = Set.of("Select", "Insert", "Update", "Delete", "SelectProvider",
             "InsertProvider", "UpdateProvider", "DeleteProvider");
 
-    /**
-     * SqlSession 타입이 아닌 수신 객체에서도 SQL 호출로 쓰이는 메서드 이름 — 상속 메서드(EgovAbstractDAO·EgovAbstractMapper·
-     * SqlSessionDaoSupport·프로젝트 BaseDAO 의 selectList/list/insert …)나 공통 DAO 빈(commonDao.selectList("ns.id"))
-     */
-    static final Set<String> SQL_VERBS;
-
-    static {
-        Set<String> v = new java.util.HashSet<>(SESSION_METHODS);
-        v.addAll(Set.of("list", "listWithPaging", "selectByPk", "selectListWithPaging", "selectPaging", "queryForInt",
-                "queryForLong", "queryForString", "selectCount", "count", "exists", "merge", "save", "execute"));
-        SQL_VERBS = Set.copyOf(v);
-    }
-
     private SqlCalls() {
     }
 
     /**
-     * SqlSession 류가 아닌 호출 중 SQL 동사 이름 + 첫 인자가 문자열(리터럴·상수·그 연결)이고 statement id 모양인 것 →
-     * XML 확인이 필요한 SqlRef (requiresXmlMatch). 아니면 null. 매퍼 XML 에 그 id 가 없으면 나중에 버린다.
+     * 문자열 검색: 호출 인자 중 문자열(리터럴·상수·그 + 연결·지역 변수 선언 값)이 매퍼 XML statement id 와 일치하면 SqlRef.
+     * 메서드 이름·수신 타입과 무관 (사용자: grep 으로 id 찾으면 됨 — DAO 의 SQL 은 반드시 XML 에 1:1 로 있다).
+     * 점 없는 id(iBatis 단독 id)는 bareAllowed(DAO·Mapper·Repository 클래스 안)일 때만 — "delete" 같은 흔한 단어 오탐 방지.
      */
-    public static SqlRef byStatementArgument(MethodCallExpr call, Function<Expression, Optional<String>> strings) {
-        if (!SQL_VERBS.contains(call.getNameAsString()) || call.getArguments().isEmpty()) {
+    public static SqlRef byXml(MethodCallExpr call, Function<Expression, Optional<String>> strings, MapperXmlIndex idx,
+                               boolean bareAllowed) {
+        if (idx == null) {
             return null;
         }
-        SqlRef ref = sessionRef(call, strings);
-        if ("UNRESOLVED".equals(ref.basis) || !ref.statementId.matches("[A-Za-z_$][\\w$.\\-]*")) {
-            return null;
+        for (int i = 0; i < call.getArguments().size(); i++) {
+            Expression arg = call.getArgument(i);
+            boolean[] constant = {false};
+            Optional<String> v = eval(arg, strings, constant);
+            if (v.isEmpty() || !v.get().matches("[A-Za-z_$][\\w$.\\-]*") || !v.get().contains(".") && !bareAllowed
+                    || idx.find(v.get()).isEmpty()) {
+                continue;
+            }
+            SqlRef ref = new SqlRef();
+            ref.statementId = v.get();
+            ref.basis = constant[0] ? "CONSTANT" : "LITERAL";
+            ref.notes.add("문자열 검색: " + (i + 1) + "번째 인자가 매퍼 XML id 와 일치 (" + call.getScope().map(x -> x + ".").orElse("")
+                    + call.getNameAsString() + ")");
+            return ref;
         }
-        ref.requiresXmlMatch = true;
-        ref.notes.add("SqlSession 타입이 아닌 호출(" + call.getScope().map(x -> x + ".").orElse("") + call.getNameAsString()
-                + ") — 첫 인자가 매퍼 XML statement 와 일치해서 SQL 호출로 봄");
-        return ref;
+        return null;
     }
 
     /**
@@ -133,6 +130,11 @@ public final class SqlCalls {
             ref.basis = "UNRESOLVED";
         }
         return ref;
+    }
+
+    /** 문자열 리터럴·상수의 + 연결 값 (못 정하면 empty) */
+    public static Optional<String> evalString(Expression e, Function<Expression, Optional<String>> strings) {
+        return eval(e, strings, new boolean[]{false});
     }
 
     /** "ns." + "selectX" / NAMESPACE + "selectX" 처럼 문자열 리터럴·상수의 + 연결만 계산 */
