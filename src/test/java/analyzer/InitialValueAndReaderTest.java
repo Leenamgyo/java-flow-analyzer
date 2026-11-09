@@ -73,12 +73,43 @@ class InitialValueAndReaderTest {
         assertNotNull(cv.readerLogic);
         assertTrue(cv.readerLogic.contains("VasUtil.normalize"), cv.readerLogic);
 
+        // 같은 규칙(default-arg-index: 2)으로 인자 2개 호출도: 기본값 없이 읽기, 이름 인자도 없는 호출은 규칙 미적용
+        RequestParameterInfo page = r.parameters.stream().filter(p -> "page".equals(p.name)).findFirst().orElseThrow();
+        assertNull(page.defaultValue);
+        assertEquals("StringUtil.getParameter", page.extraction);
+        assertEquals(List.of("appId", "scVersion", "mode", "clientVersion", "page"), r.parameters.stream().map(p -> p.name).toList());
+
         String mmd = new FlowchartGenerator().render(r, "TD");
         // 함수 호출 기본값도 요청 값 표기 전체가 한 색 (괄호 앞에서 끊기지 않음)
         assertTrue(mmd.contains("String scVersion = " + REQ + "request.scVersion ?: VasUtil.getExceptionScVersion(appId)</font>"), mmd);
         // 로직 있는 읽기 함수는 호출 코드 그대로 + 어떤 요청 값인지
         assertTrue(mmd.contains("String clientVersion = getClientVersion(request, #quot;clientVersion#quot;)  ⇒ "
                 + REQ + "request.clientVersion</font>"), mmd);
+    }
+
+    /** 오버로드마다 규칙을 따로 적어도 (기본값 없는 규칙이 먼저여도) 인자 수에 맞는 규칙이 쓰인다 */
+    @Test
+    void separateRulesPerOverload(@TempDir Path tmp) throws Exception {
+        Path f = tmp.resolve("rules2.yml");
+        Files.writeString(f, """
+                target:
+                  source-root: %s
+                  class: ScVersionAction
+                analysis:
+                  expand-same-class-methods: false
+                request-parameter-rules:
+                  - class: StringUtil
+                    methods:
+                      - { name: getParameter, name-arg-index: 1, type: String }
+                      - { name: getParameter, name-arg-index: 1, default-arg-index: 2, type: String }
+                """.formatted(Path.of(Fixtures.SOURCE_ROOT).toAbsolutePath()));
+        AnalyzerConfig cfg = ConfigLoader.load(f);
+        ConfigLoader.validate(cfg);
+        AnalysisResult r = Main.analyze(cfg);
+        RequestParameterInfo mode = r.parameters.stream().filter(p -> "mode".equals(p.name)).findFirst().orElseThrow();
+        assertEquals("\"LIST\"", mode.defaultValue);
+        RequestParameterInfo page = r.parameters.stream().filter(p -> "page".equals(p.name)).findFirst().orElseThrow();
+        assertNull(page.defaultValue);
     }
 
     @Test

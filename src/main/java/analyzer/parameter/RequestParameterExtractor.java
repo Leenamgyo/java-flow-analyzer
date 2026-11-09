@@ -269,23 +269,36 @@ public final class RequestParameterExtractor {
         if (target.declaringType() != null) {
             typeNames.add(TypeNames.erasure(target.declaringType()));
         }
+        // 인자 수가 다른 오버로드(getParameter(req, name) / getParameter(req, name, def))를 한 규칙으로도, 따로 적어도
+        // 오류 없이: 이름 인자가 없는 호출엔 규칙을 쓰지 않고, 기본값 인자는 있을 때만 읽는다.
+        // 같은 메서드 규칙이 여럿이면 기본값 위치까지 인자 수에 맞는 규칙을 먼저 고른다.
+        Rule fallback = null;
+        int n = call.getArguments().size();
         for (Rule r : rules) {
             if (!r.method().equals(call.getNameAsString())) {
                 continue;
             }
-            if (r.nameArgIndex() > WRAP_BASE && r.nameArgIndex() >= 0 && call.getArguments().size() <= r.nameArgIndex()) {
+            if (r.nameArgIndex() > WRAP_BASE && r.nameArgIndex() >= 0 && n <= r.nameArgIndex()) {
                 continue;
             }
-            if (r.className() == null) {
-                return r; // 클래스 무관 규칙
-            }
+            boolean typeOk = r.className() == null; // 클래스 무관 규칙
             for (String tn : typeNames) {
                 if (tn.equals(r.className()) || TypeNames.simple(tn).equals(r.className())) {
-                    return r;
+                    typeOk = true;
                 }
             }
+            if (!typeOk) {
+                continue;
+            }
+            if (r.defaultArgIndex() == null || r.defaultArgIndex() < n) {
+                if (fallback == null || fallback.defaultArgIndex() == null && r.defaultArgIndex() != null) {
+                    fallback = r; // 인자 수에 맞는 규칙 (기본값까지 쓰는 규칙 우선)
+                }
+            } else if (fallback == null) {
+                fallback = r;     // 기본값 인자가 없는 호출 — 기본값 없이 적용
+            }
         }
-        return null;
+        return fallback;
     }
 
     /** getSystemId → systemId, getDeviceAbiType → deviceAbiType, systemId → systemId */

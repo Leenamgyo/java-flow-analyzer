@@ -17,7 +17,9 @@ public class ScVersionAction {
         String scVersion = StringUtil.getParameter(request, "scVersion", VasUtil.getExceptionScVersion(appId));
         String mode = StringUtil.getParameter(request, "mode", "LIST");
         String clientVersion = getClientVersion(request, "clientVersion");
-        return scVersion + mode + clientVersion;
+        String page = StringUtil.getParameter(request, "page"); // 인자 2개 오버로드 — 같은 규칙(default-arg-index: 2)
+        String lang = StringUtil.getParameter(request);          // 이름 인자 없음 — 규칙 미적용, 오류 없음
+        return scVersion + mode + clientVersion + page + lang;
     }
 
     /** 요청 읽기 + 로직 (접두사 제거·정규화) */

@@ -24,6 +24,11 @@ request-parameter-rules:
   - class: ParameterUtil
     methods:
       - { name: getInt, name-arg-index: 1, default-arg-index: 2, type: int }
+  # 인자 수가 다른 오버로드 — 규칙 하나로 충분: getParameter(req, "x") 는 기본값 없이, getParameter(req, "x", def) 는 def 가 기본값
+  #   (def 가 VasUtil.getExceptionScVersion(appId) 같은 함수 호출이어도 됨). 이름 인자가 없는 호출에는 규칙을 쓰지 않는다(오류 아님)
+  # - class: StringUtil
+  #   methods:
+  #     - { name: getParameter, name-arg-index: 1, default-arg-index: 2, type: String }
   # 인수 없는 요청 읽기 메서드 — 이름을 직접 정한다 (parameter: 이름). class 생략 = 메서드 이름만으로 매칭
   #   parameter 도 name-arg-index 도 없으면 메서드명에서 추론 (getSystemId → systemId)
   # - class: VasBaseAction
