@@ -242,7 +242,7 @@ class PhaseTest {
         String mmd = new FlowchartGenerator().render(r, "TD");
         assertTrue(g.labelOf(g.nodeOf(calls.get(0).id)).equals("바인딩"), g.labelOf(g.nodeOf(calls.get(0).id)));
         assertTrue(mmd.contains("</font><br/>#35;4–6 boolean checkMandatoryParameterInQA = com.example.util.ODSUtil.isQAStore(shopID)"
-                + " && com.example.util.StringUtil.isNotEmpty(sdkVer) && #quot;1#quot;.equals(pd)\"]"), mmd); // 150자 안이라 한 줄
+                + " && com.example.util.StringUtil.isNotEmpty(sdkVer)<br/>#gt; && #quot;1#quot;.equals(pd)\"]"), mmd); // 150자에서 && 앞 줄바꿈
         PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());
         Step st = pm.steps.stream().filter(x -> x.group.contains(calls.get(0))).findFirst().orElseThrow();
         assertEquals(3, st.group.size());
