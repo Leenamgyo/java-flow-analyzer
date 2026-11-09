@@ -143,7 +143,7 @@ public final class Labels {
         String value = codeValue(r, b.methodId, b.location, b.valueExpression);
         if (b.valueExpression != null && b.valueExpression.matches("[A-Za-z_$][\\w$]*")) {
             VariableInfo v = r.variableNamed(b.methodId, b.valueExpression);
-            if (v != null) {
+            if (v != null && changeCount(r, v) > 0) {
                 value += "  ⟳ 변경 " + changeCount(r, v) + "회";
             }
         }
@@ -159,7 +159,8 @@ public final class Labels {
         String out = expr;
         for (CallSiteInfo s : r.callSitesOf(methodId)) {
             List<RequestParameterInfo> ps = r.parametersAt(s.id);
-            if (ps.size() == 1 && contains(at, s.location) && out.contains(s.expression)) {
+            // 로직 있는 읽기 함수는 request.이름 으로 줄이지 않고 호출 코드 그대로 (함수가 보여야 함)
+            if (ps.size() == 1 && ps.get(0).readerLogic == null && contains(at, s.location) && out.contains(s.expression)) {
                 out = out.replace(s.expression, requestValue(ps.get(0)));
             }
         }
@@ -176,14 +177,17 @@ public final class Labels {
     public static String requestLine(AnalysisResult r, CallSiteInfo s, RequestParameterInfo p) {
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
         String type = p.variableType != null ? p.variableType : p.type;
+        // 로직 있는 읽기 함수: 호출 코드 그대로 + "⇒ request.이름" (어떤 요청 값을 읽는지)
+        String value = p.readerLogic == null ? requestValue(p) : s.expression;
+        String tail = p.readerLogic == null ? "" : "  ⇒ " + requestValue(p);
         String line = "#" + s.order + " " + (var == null
-                ? (type == null ? "" : "(" + type + ") ") + requestValue(p)
-                : (type == null ? "" : type + " ") + var + " = " + requestValue(p));
+                ? (type == null ? "" : "(" + type + ") ") + value
+                : (type == null ? "" : type + " ") + var + " = " + value);
         if (var == null && s.statement != null && s.statementLocation != null) {
             // 변수에 바로 받지 않는 읽기(int size = Integer.parseInt(request.getParameter("size"))) — 문장 그대로
             String st = codeValue(r, s.callerMethodId, s.statementLocation, s.statement).trim();
             // 줄이지 않는다 (코드가 빠지면 안 됨) — 긴 줄은 흐름도가 끊어 그린다
-            return "#" + s.order + " " + (st.endsWith(";") ? st.substring(0, st.length() - 1).trim() : st);
+            return "#" + s.order + " " + (st.endsWith(";") ? st.substring(0, st.length() - 1).trim() : st) + tail;
         }
         VariableInfo v = var == null ? null : r.variableNamed(s.callerMethodId, var);
         if (v != null) {
@@ -195,7 +199,7 @@ public final class Labels {
                 }
             }
         }
-        return truncate(line, 80);
+        return truncate(line + tail, 80);
     }
 
     private static boolean contains(SourceLocation outer, SourceLocation inner) {
@@ -248,6 +252,11 @@ public final class Labels {
     /** 실제 상태 변화 횟수 (선언·파라미터 제외) */
     public static long changeCount(AnalysisResult r, VariableInfo v) {
         return v.changeIds.stream().map(r::variableChange).filter(VariableChange::isChange).count();
+    }
+
+    /** 호출 없는 변수 선언 1줄 — 코드 그대로: boolean data = false, String label (값 없는 선언) */
+    public static String declarationLine(AnalysisResult r, VariableChange c) {
+        return codeValue(r, c.methodId, c.location, c.expression);
     }
 
     /** 값 변경 1줄 — 코드 그대로 + 변수 버전: total -= usePoint · total v3 (선언 = v1) */

@@ -31,7 +31,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 분석된 메서드에서 "선언 뒤에 값이 바뀌는" 지역 변수·파라미터를 찾아 변경 이력(VC*)을 만든다.
+ * 분석된 메서드의 지역 변수 선언(전부)과 "선언 뒤에 값이 바뀌는" 지역 변수·파라미터의 변경 이력(VC*)을 만든다.
+ * 값이 바뀌지 않는 지역 변수는 선언(INIT) 이력 하나뿐 — 흐름도·호출 트리에 선언 코드(boolean data = false)를 보이기 위함.
  * <ul>
  *   <li>대상 변경: 대입(=), 복합 대입(+= -= …), ++/--. 필드(this.x, 선언 없는 이름)는 대상이 아니다</li>
  *   <li>for 헤더 변수(int i …; i++)와 향상된 for 변수는 반복 제어라 제외</li>
@@ -76,10 +77,11 @@ public final class VariableStateCollector {
                 changes.computeIfAbsent(name, k -> new ArrayList<>()).add((Expression) n);
             }
         });
+        java.util.Set<VariableDeclarator> covered = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         for (var e : changes.entrySet()) {
             String name = e.getKey();
             VariableDeclarator decl = md.findAll(VariableDeclarator.class, v -> v.getNameAsString().equals(name)).stream()
-                    .findFirst().orElse(null);
+                    .filter(v -> ownLocal(v, md)).findFirst().orElse(null);
             Parameter param = md.getParameterByName(name).orElse(null);
             if (decl == null && param == null) {
                 continue; // 필드 등 — 메서드 지역 상태가 아님
@@ -88,30 +90,10 @@ public final class VariableStateCollector {
                     || decl.getParentNode().flatMap(Node::getParentNode).orElse(null) instanceof ForEachStmt)) {
                 continue; // for (int i …) / for (X x : xs)
             }
-            VariableInfo v = new VariableInfo();
-            v.id = r.nextId("V");
-            v.methodId = m.id;
-            v.name = name;
-            v.kind = decl != null ? "LOCAL" : "PARAMETER";
-            v.type = decl != null ? decl.getTypeAsString() : param.getTypeAsString();
-            Node declNode = decl != null ? decl : param;
-            v.location = SourceLocation.of(declNode, m.location.file());
-            r.index(v.id, v);
-            r.variables.add(v);
-
-            VariableChange first = base(v, m, declNode);
             if (decl != null) {
-                first.op = "INIT";
-                first.expression = decl.getParentNode().map(ConditionText::text).orElse(ConditionText.text(decl));
-                decl.getInitializer().ifPresent(init -> value(first, init, name, m));
-            } else {
-                first.op = "PARAM";
-                first.expression = ConditionText.text(param);
+                covered.add(decl);
             }
-            if (decl != null) {
-                calls(first, m);
-            }
-            add(v, first);
+            VariableInfo v = variable(m, name, decl, param);
             List<Expression> list = new ArrayList<>(e.getValue());
             list.sort(Comparator.comparingInt((Expression x) -> x.getBegin().map(p -> p.line).orElse(0))
                     .thenComparingInt(x -> x.getBegin().map(p -> p.column).orElse(0)));
@@ -133,6 +115,61 @@ public final class VariableStateCollector {
                 add(v, c);
             }
         }
+        // 값이 바뀌지 않는 지역 변수도 선언(초기값)은 흐름에 보여야 한다 — boolean data = false, String label; …
+        for (VariableDeclarator d : md.getBody().get().findAll(VariableDeclarator.class)) {
+            if (!covered.contains(d) && ownLocal(d, md)) {
+                variable(m, d.getNameAsString(), d, null);
+            }
+        }
+    }
+
+    /**
+     * 변수 정보 + 첫 이력(선언 INIT 또는 파라미터 PARAM). 선언 코드는 "타입 이름 = 값" (int a = 0, b = 1 이면 각각)
+     */
+    private VariableInfo variable(MethodInfo m, String name, VariableDeclarator decl, Parameter param) {
+        VariableInfo v = new VariableInfo();
+        v.id = r.nextId("V");
+        v.methodId = m.id;
+        v.name = name;
+        v.kind = decl != null ? "LOCAL" : "PARAMETER";
+        v.type = decl != null ? decl.getTypeAsString() : param.getTypeAsString();
+        Node declNode = decl != null ? decl : param;
+        v.location = SourceLocation.of(declNode, m.location.file());
+        r.index(v.id, v);
+        r.variables.add(v);
+
+        VariableChange first = base(v, m, declNode);
+        if (decl != null) {
+            first.op = "INIT";
+            first.expression = v.type + " " + ConditionText.text(decl);
+            decl.getInitializer().ifPresent(init -> value(first, init, name, m));
+            calls(first, m);
+        } else {
+            first.op = "PARAM";
+            first.expression = ConditionText.text(param);
+        }
+        add(v, first);
+        return v;
+    }
+
+    /**
+     * 이 메서드 자신의 지역 변수 선언인지: for 헤더·향상된 for 변수, 람다·익명/로컬 클래스 안 선언은 제외
+     * (람다 본문은 나중에 실행되고, 익명 클래스 본문은 분석하지 않는다).
+     */
+    private static boolean ownLocal(VariableDeclarator v, MethodDeclaration md) {
+        Node gp = v.getParentNode().flatMap(Node::getParentNode).orElse(null);
+        if (gp instanceof ForStmt || gp instanceof ForEachStmt) {
+            return false;
+        }
+        for (Node cur = v.getParentNode().orElse(null); cur != null && cur != md; cur = cur.getParentNode().orElse(null)) {
+            if (cur instanceof com.github.javaparser.ast.expr.LambdaExpr
+                    || cur instanceof com.github.javaparser.ast.body.TypeDeclaration<?>
+                    || cur instanceof com.github.javaparser.ast.expr.ObjectCreationExpr o && o.getAnonymousClassBody().isPresent()
+                    || cur instanceof com.github.javaparser.ast.body.FieldDeclaration) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** 식 안에서 일어나는 호출 */

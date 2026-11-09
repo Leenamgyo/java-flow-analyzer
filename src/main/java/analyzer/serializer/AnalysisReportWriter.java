@@ -225,7 +225,8 @@ public final class AnalysisReportWriter {
                 Set<String> validation = new LinkedHashSet<>();
                 for (String pid : e.parameterIds) {
                     RequestParameterInfo p = r.parameter(pid);
-                    src.add(p.extraction + " · " + r.method(p.sourceMethodId).name + ":" + p.location.beginLine() + " (" + p.id + ")");
+                    src.add(p.extraction + " · " + r.method(p.sourceMethodId).name + ":" + p.location.beginLine() + " (" + p.id + ")"
+                            + (p.readerLogic == null ? "" : " — 읽기 함수에 로직 있음: " + p.readerLogic));
                     validation.addAll(validations(r, p));
                 }
                 List<String> bound = e.bindingIds.stream().map(id -> {

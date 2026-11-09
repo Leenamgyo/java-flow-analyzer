@@ -59,9 +59,13 @@ public final class CallTreeWriter {
         renderItems(m, items, prefix);
     }
 
-    /** 변수 값 변경(≔)을 평가 순서 위치에 끼운다: 식 안의 호출이 끝난 뒤 */
+    /** 변수 값 변경·호출 없는 선언(≔)을 평가 순서 위치에 끼운다: 식 안의 호출이 끝난 뒤 */
     private List<Object> withChanges(MethodInfo m, String container, List<Object> items) {
-        List<VariableChange> cs = r.changesIn(m.id, container);
+        // 값 변경 + 호출 없는 선언(boolean data = false) — 선언 코드도 흐름에 보이게
+        List<VariableChange> cs = new ArrayList<>(r.changesIn(m.id, container));
+        cs.addAll(r.declarationsIn(m.id, container));
+        cs.sort(java.util.Comparator.comparingInt((VariableChange c) -> c.location.beginLine())
+                .thenComparingInt(c -> c.location.beginColumn()));
         if (cs.isEmpty()) {
             return items;
         }

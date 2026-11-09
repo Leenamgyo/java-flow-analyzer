@@ -255,4 +255,25 @@ public class EdgeAction {
         NoticeVO vo = new NoticeVO();
         vo.setTitle(request.getParameter("title"));
     }
+
+    // ---- 초기값만 있는 선언 (호출 없음): 흐름도에 선언 코드가 보여야
+    public String initialValues(HttpServletRequest request, List<String> rows) {
+        boolean data = false;
+        int count = 0;
+        String mode = "LIST";
+        String label;
+        long limit = MAX_ROWS * 2L;
+        List<String> names = new ArrayList<>();
+        if (rows.isEmpty()) {
+            data = true;
+        }
+        for (String row : rows) {
+            count++;
+            names.add(row);
+        }
+        String result = mode + count + data + limit;
+        return result;
+    }
+
+    private static final int MAX_ROWS = 100;
 }

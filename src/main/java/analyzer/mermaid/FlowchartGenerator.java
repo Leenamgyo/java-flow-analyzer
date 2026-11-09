@@ -690,6 +690,19 @@ public final class FlowchartGenerator {
                                 + c.location.shortText() + ", block " + c.controlBlockId + ")");
                     }
                 });
+        // 호출 없는 변수 선언: 그리는 메서드·블록 안이면 바인딩 블록 줄로 매핑되어야 함
+        // (단계 보기의 진입 메서드는 단계 요약으로 그리므로 제외)
+        r.variableChanges.stream().filter(c -> r.isPlainDeclaration(c) && r.method(c.methodId).analyzed && !skip.contains(c.methodId)
+                        && !(rules.omitHandlers() && c.methodId.equals(r.entryMethodId))
+                        && (c.controlBlockId == null || !(rules.omitHandlers() && inHandler(r, c.controlBlockId))
+                        && !rules.suppressedBlocks().contains(c.controlBlockId))
+                        && !rules.suppressedCalls().contains(c.id))
+                .forEach(c -> {
+                    if (!graph.has(c.id)) {
+                        e.add("변수 선언 노드 누락: " + c.id + " `" + c.expression + "` (" + r.method(c.methodId).name + " · "
+                                + c.location.shortText() + ", block " + c.controlBlockId + ")");
+                    }
+                });
         // ==> 는 모델의 호출 대상과 일치해야 함 (상태 변화 블록처럼 여러 호출을 합친 노드는 그 중 하나)
         for (var ed : graph.edges()) {
             if (ed.style() == EdgeStyle.CALL) {
@@ -1124,6 +1137,14 @@ public final class FlowchartGenerator {
             return cur;
         }
 
+        /** 호출 없는 변수 선언 한 줄: boolean data = false / String label */
+        List<End> declare(VariableChange c, List<End> cur) {
+            cur = start("bind", cur, "VAR_" + c.id);
+            lines.add(new Line(Labels.declarationLine(r, c), null, null));
+            members.add(c.id);
+            return cur;
+        }
+
         List<End> change(VariableChange c, List<End> cur) {
             cur = start("state", cur, "VAR_" + c.id);
             lines.add(new Line(Labels.changeLine(r, c), null, null));
@@ -1335,15 +1356,16 @@ public final class FlowchartGenerator {
                 .filter(VariableChange::isChange) // 선언(타입 있는 초기화)은 값 변경이 아니다
                 .filter(c -> assignedBy.values().stream().noneMatch(l -> l.contains(c)))
                 .filter(c -> !supCalls.contains(c.id)).toList());
+        // 호출 없는 변수 선언(boolean data = false, String label;) — 선언 코드 그대로 바인딩 블록 한 줄 (위치 순)
+        List<VariableChange> decls = new ArrayList<>(r.declarationsIn(m.id, container).stream()
+                .filter(c -> !supCalls.contains(c.id)).toList());
         java.util.Set<String> done = new java.util.HashSet<>(); // 문장 줄로 이미 그린 호출
         for (Object o : elems) {
             if (o instanceof CallSiteInfo cs && (done.contains(cs.id) || inLeaf.contains(cs.id))) {
                 continue;
             }
             SourceLocation at = o instanceof CallSiteInfo s ? s.location : ((ControlBlock) o).location;
-            while (!orphans.isEmpty() && before(orphans.get(0).location, at)) {
-                cur = p.orphan(orphans.remove(0), cur);
-            }
+            cur = preItems(p, decls, orphans, at, cur);
             while (!changes.isEmpty() && endsBefore(changes.get(0).location, at)) {
                 cur = p.change(changes.remove(0), cur);
             }
@@ -1388,13 +1410,31 @@ public final class FlowchartGenerator {
                 cur = block(sg, m, (ControlBlock) o, cur);
             }
         }
-        for (Binding b : orphans) {
-            cur = p.orphan(b, cur);
-        }
+        cur = preItems(p, decls, orphans, null, cur);
         for (VariableChange c : changes) {
             cur = p.change(c, cur);
         }
         return p.flush(cur);
+    }
+
+    /**
+     * at(없으면 끝) 앞에서 시작하는 호출 없는 선언과 호출 없는 바인딩을 위치 순으로 쌓는다.
+     * 같은 자리면 선언이 먼저 — OrderVO vo = new OrderVO("A", 1) 의 선언 줄 뒤에 생성자 바인딩 줄.
+     */
+    private List<End> preItems(Pending p, List<VariableChange> decls, List<Binding> orphans, SourceLocation at, List<End> cur) {
+        while (true) {
+            VariableChange d = decls.isEmpty() ? null : decls.get(0);
+            Binding b = orphans.isEmpty() ? null : orphans.get(0);
+            boolean dOk = d != null && (at == null || before(d.location, at));
+            boolean bOk = b != null && (at == null || before(b.location, at));
+            if (dOk && (!bOk || !before(b.location, d.location))) {
+                cur = p.declare(decls.remove(0), cur);
+            } else if (bOk) {
+                cur = p.orphan(orphans.remove(0), cur);
+            } else {
+                return cur;
+            }
+        }
     }
 
     /** int size = XxxUtil.getInt(request, …) 처럼 선언 값이 요청 읽기 호출 그 자체 → 요청 파라미터 노드에 "· V1 1/n" 으로 표시됨 */

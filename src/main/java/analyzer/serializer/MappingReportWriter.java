@@ -52,14 +52,16 @@ public final class MappingReportWriter {
      */
     private void variables(AnalysisResult r, StringBuilder sb) {
         sb.append("## 변수 상태 변화\n\n");
-        if (r.variables.isEmpty()) {
+        // 값이 바뀌지 않는 지역 변수(선언만 — 흐름도·트리에 선언 코드를 보이려고 모델에 있음)는 표에서 뺀다
+        List<VariableInfo> changed = r.variables.stream().filter(v -> Labels.changeCount(r, v) > 0).toList();
+        if (changed.isEmpty()) {
             sb.append("선언 뒤 값이 바뀌는 변수 없음.\n");
             return;
         }
         sb.append("> 원본 데이터: `analysis.yaml` 의 `variables`. 선언(또는 파라미터) 뒤에 `=`·`+=`·`++` 등으로 값이 바뀌는 지역 변수만 대상입니다 ")
                 .append("(필드·for 헤더 변수 제외). 이 변수가 VO 에 들어가면 바인딩 표에 `⟳` 로 표시됩니다.\n\n");
         sb.append("| Variable | 메서드 | 타입 | 변경 횟수 | 바인딩에 사용 |\n|---|---|---|---|---|\n");
-        for (VariableInfo v : r.variables) {
+        for (VariableInfo v : changed) {
             List<String> used = r.bindings.stream().filter(b -> b.methodId.equals(v.methodId) && v.name.equals(b.valueExpression))
                     .map(b -> b.id + " " + r.object(b.objectId).className + "." + b.field).toList();
             sb.append("| ").append(v.id).append(" `").append(v.name).append("` | ").append(method(r, v.methodId)).append(" | `")
@@ -67,7 +69,7 @@ public final class MappingReportWriter {
                     .append(used.isEmpty() ? "-" : String.join(", ", used)).append(" |\n");
         }
         sb.append('\n');
-        for (VariableInfo v : r.variables) {
+        for (VariableInfo v : changed) {
             sb.append("### ").append(v.id).append(" `").append(v.name).append("` — ").append(method(r, v.methodId)).append("\n\n");
             sb.append("| # | 변경 | 코드 | 출처 | 조건 | 위치 |\n|---|---|---|---|---|---|\n");
             for (String cid : v.changeIds) {

@@ -14,4 +14,9 @@ public final class StringUtil {
     public static String getParam(HttpServletRequest req, String name) {
         return req.getParameter(name);
     }
+
+    public static String getParameter(HttpServletRequest req, String name, String def) {
+        String v = req.getParameter(name);
+        return v == null ? def : v;
+    }
 }

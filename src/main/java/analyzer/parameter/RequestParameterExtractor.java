@@ -122,10 +122,53 @@ public final class RequestParameterExtractor {
         if (rule.defaultArgIndex() != null && call.getArguments().size() > rule.defaultArgIndex()) {
             p.defaultValue = call.getArgument(rule.defaultArgIndex()).toString();
         }
+        p.readerLogic = target == null ? null : readerLogic(target.sourceDeclaration());
         assignedVariable(call, p);
         List<RequestParameterInfo> out = List.of(register(p));
         produced.put(call, out);
         return out;
+    }
+
+    /** 요청 읽기로 보는 호출 (단순 읽기 메서드 본문에 있어도 로직이 아님) */
+    private static final Set<String> READ_CALLS = Set.of("getParameter", "getParameterValues", "getParameterMap",
+            "getHeader", "getHeaders", "getAttribute");
+    /** 값 그대로 기본값만 고르는 데 쓰는 호출 (null·빈 값 확인, 공백 제거) — 로직으로 보지 않는다 */
+    private static final Set<String> TRIVIAL_CALLS = Set.of("isEmpty", "isBlank", "isNotEmpty", "isNotBlank", "hasText",
+            "hasLength", "trim", "strip", "length", "equals", "equalsIgnoreCase", "toString", "valueOf",
+            "defaultString", "defaultIfEmpty", "defaultIfBlank");
+
+    /**
+     * 읽기 메서드 본문에 요청 읽기·기본값 고르기 말고 로직이 있으면 근거 문자열, 없으면(단순 래퍼) null.
+     * 본문을 모르면(라이브러리·추상) null — 추측하지 않는다. 로직: 반복문·try·throw·switch·객체 생성·필드 대입,
+     * READ_CALLS·TRIVIAL_CALLS 가 아닌 호출. 지역 변수 선언·대입·if·삼항·return 은 값 고르기로 본다.
+     */
+    static String readerLogic(MethodDeclaration md) {
+        if (md == null || md.getBody().isEmpty()) {
+            return null;
+        }
+        java.util.LinkedHashSet<String> why = new java.util.LinkedHashSet<>();
+        md.getBody().get().walk(n -> {
+            if (n instanceof com.github.javaparser.ast.stmt.ForStmt || n instanceof com.github.javaparser.ast.stmt.ForEachStmt
+                    || n instanceof com.github.javaparser.ast.stmt.WhileStmt || n instanceof com.github.javaparser.ast.stmt.DoStmt) {
+                why.add("반복문");
+            } else if (n instanceof com.github.javaparser.ast.stmt.TryStmt) {
+                why.add("try");
+            } else if (n instanceof com.github.javaparser.ast.stmt.ThrowStmt) {
+                why.add("throw");
+            } else if (n instanceof com.github.javaparser.ast.stmt.SwitchStmt || n instanceof com.github.javaparser.ast.expr.SwitchExpr) {
+                why.add("switch");
+            } else if (n instanceof com.github.javaparser.ast.expr.ObjectCreationExpr o) {
+                why.add("new " + o.getType().getNameAsString());
+            } else if (n instanceof AssignExpr a && !(a.getTarget() instanceof NameExpr t
+                    && md.findAll(VariableDeclarator.class, v -> v.getNameAsString().equals(t.getNameAsString())).size()
+                    + md.getParameters().stream().filter(x -> x.getNameAsString().equals(t.getNameAsString())).count() > 0)) {
+                why.add("필드 대입 " + a.getTarget());
+            } else if (n instanceof MethodCallExpr c && !READ_CALLS.contains(c.getNameAsString())
+                    && !TRIVIAL_CALLS.contains(c.getNameAsString())) {
+                why.add("호출 " + c.getScope().map(x -> x + ".").orElse("") + c.getNameAsString());
+            }
+        });
+        return why.isEmpty() ? null : String.join(" · ", why);
     }
 
     /**

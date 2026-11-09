@@ -127,6 +127,20 @@ public final class AnalysisResult {
                 && java.util.Objects.equals(c.controlBlockId, blockId)).toList();
     }
 
+    /** 호출 없는 지역 변수 선언 (선언 식 안에 모델 호출이 없음 — 호출이 있으면 호출 노드·문장 줄이 선언 코드를 보인다) */
+    public boolean isPlainDeclaration(VariableChange c) {
+        return "INIT".equals(c.op) && c.callSiteIds.isEmpty();
+    }
+
+    /** 메서드(또는 블록 직속)의 호출 없는 변수 선언, 소스 순서 */
+    public List<VariableChange> declarationsIn(String methodId, String blockId) {
+        return variableChanges.stream().filter(c -> isPlainDeclaration(c) && c.methodId.equals(methodId)
+                        && java.util.Objects.equals(c.controlBlockId, blockId))
+                .sorted(java.util.Comparator.comparingInt((VariableChange c) -> c.location.beginLine())
+                        .thenComparingInt(c -> c.location.beginColumn()))
+                .toList();
+    }
+
     public List<ControlBlock> blocksOf(String methodId) {
         return blocks.stream().filter(b -> b.methodId.equals(methodId)).toList();
     }

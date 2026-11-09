@@ -288,10 +288,118 @@ public final class MermaidGraph {
     /**
      * 요청 값 표기(request.이름 ?: 기본값, request[식], request.(전체))만 글자색 — 줄 전체를 칠하면
      * 같은 문장의 다른 코드(Integer.parseInt(…), + 연산 …)도 요청 항목처럼 보인다 (사용자 지적).
+     * 기본값은 문자열 리터럴 또는 식(이름·호출 체인, 괄호 짝 맞춤) — 정규식으로 이름까지만 잡으면
+     * {@code request.scVersion ?: VasUtil.getExceptionScVersion(appId)} 가 "(appId)" 앞에서 색이 끊겼다 (사용자 지적).
      */
-    static final java.util.regex.Pattern REQUEST_VALUE = java.util.regex.Pattern.compile(
-            "request(?:\\[(?:[^\\[\\]]|\\[[^\\[\\]]*\\])*\\]|\\.(?:\\([^)]*\\)|[\\w$.\\-]++(?!\\()))"
-                    + "(?: \\?: (?:\"[^\"]*\"|[\\w$.\\-]+))?");
+    public static List<int[]> requestRanges(String s) {
+        List<int[]> out = new ArrayList<>();
+        int i = 0;
+        while (i < s.length()) {
+            char ch = s.charAt(i);
+            if (ch == '"' || ch == '\'') {
+                i = skipLiteral(s, i);
+                continue;
+            }
+            if (s.startsWith("request", i) && (i == 0 || !Character.isJavaIdentifierPart(s.charAt(i - 1)))) {
+                int end = requestValueEnd(s, i + "request".length());
+                if (end > 0) {
+                    out.add(new int[]{i, end});
+                    i = end;
+                    continue;
+                }
+            }
+            i++;
+        }
+        return out;
+    }
+
+    /** request 뒤 표기의 끝 (아니면 -1): [식] / .(…) / .이름 (호출이 아니어야) + 선택 " ?: 기본값" */
+    private static int requestValueEnd(String s, int j) {
+        int end;
+        if (j < s.length() && s.charAt(j) == '[') {
+            end = closing(s, j);
+        } else if (j + 1 < s.length() && s.charAt(j) == '.' && s.charAt(j + 1) == '(') {
+            end = closing(s, j + 1);
+        } else if (j + 1 < s.length() && s.charAt(j) == '.' && nameChar(s.charAt(j + 1))) {
+            end = j + 1;
+            while (end < s.length() && nameChar(s.charAt(end))) {
+                end++;
+            }
+            if (end < s.length() && s.charAt(end) == '(') {
+                return -1; // request.getRequestURI() — 요청 객체의 다른 메서드 호출
+            }
+        } else {
+            return -1;
+        }
+        if (end < 0) {
+            return -1;
+        }
+        String sep = " ?: ";
+        if (s.startsWith(sep, end) && end + sep.length() < s.length()) {
+            int d = end + sep.length();
+            char c = s.charAt(d);
+            if (c == '"' || c == '\'') {
+                return skipLiteral(s, d);
+            }
+            int e = d;
+            while (e < s.length()) {   // 이름·호출 체인: VasUtil.getX(appId).trim(), Consts.DEF, -1, arr[0]
+                if (nameChar(s.charAt(e))) {
+                    e++;
+                } else if (s.charAt(e) == '(' || s.charAt(e) == '[') {
+                    int close = closing(s, e);
+                    if (close < 0) {
+                        break;
+                    }
+                    e = close;
+                } else {
+                    break;
+                }
+            }
+            if (e > d) {
+                return e;
+            }
+        }
+        return end;
+    }
+
+    private static boolean nameChar(char c) {
+        return Character.isJavaIdentifierPart(c) || c == '.' || c == '-';
+    }
+
+    /** open 의 짝 괄호 다음 위치 (리터럴·중첩 고려, 없으면 -1) */
+    private static int closing(String s, int open) {
+        int depth = 0;
+        for (int i = open; i < s.length(); ) {
+            char c = s.charAt(i);
+            if (c == '"' || c == '\'') {
+                i = skipLiteral(s, i);
+                continue;
+            }
+            if (c == '(' || c == '[') {
+                depth++;
+            } else if (c == ')' || c == ']') {
+                depth--;
+                if (depth == 0) {
+                    return i + 1;
+                }
+            }
+            i++;
+        }
+        return -1;
+    }
+
+    /** 문자열·문자 리터럴 다음 위치 (닫히지 않으면 끝) */
+    private static int skipLiteral(String s, int at) {
+        char q = s.charAt(at);
+        for (int i = at + 1; i < s.length(); i++) {
+            if (s.charAt(i) == '\\') {
+                i++;
+            } else if (s.charAt(i) == q) {
+                return i + 1;
+            }
+        }
+        return s.length();
+    }
 
     /** 글자색 시작 태그 (TEXT_COLORS 주석 참고) */
     public static String fontOpen(String color) {
@@ -299,15 +407,46 @@ public final class MermaidGraph {
     }
 
     public static String requestSpans(String piece, String color) {
-        java.util.regex.Matcher m = REQUEST_VALUE.matcher(piece);
+        return colored(piece, 0, requestRanges(piece), color);
+    }
+
+    /** text(원래 줄의 offset 위치부터)에서 ranges(원래 줄 기준)에 든 부분만 글자색, 나머지는 이스케이프만 */
+    private static String colored(String text, int offset, List<int[]> ranges, String color) {
         StringBuilder out = new StringBuilder();
         int at = 0;
-        while (m.find()) {
-            out.append(esc(piece.substring(at, m.start())))
-                    .append(fontOpen(color)).append(esc(m.group())).append("</font>");
-            at = m.end();
+        for (int[] rg : ranges) {
+            int a = Math.max(rg[0] - offset, at);
+            int b = Math.min(rg[1] - offset, text.length());
+            if (b <= a) {
+                continue;
+            }
+            out.append(esc(text.substring(at, a))).append(fontOpen(color)).append(esc(text.substring(a, b))).append("</font>");
+            at = b;
         }
-        return out.append(esc(piece.substring(at))).toString();
+        return out.append(esc(text.substring(at))).toString();
+    }
+
+    /**
+     * 요청 값 줄을 끊은 조각들 — 색 범위는 끊기 전 줄 전체에서 계산해, 요청 값 표기가 두 줄에 걸쳐도
+     * 이어지는 줄까지 칠한다.
+     */
+    private static List<String> requestPieces(String line, List<String> pieces, String color) {
+        List<int[]> ranges = requestRanges(line);
+        List<String> out = new ArrayList<>();
+        int cursor = 0;
+        for (int k = 0; k < pieces.size(); k++) {
+            String piece = pieces.get(k);
+            String prefix = k > 0 && piece.startsWith("> ") ? "> " : "";
+            String content = piece.substring(prefix.length());
+            int start = line.indexOf(content, cursor);
+            if (start < 0) {
+                out.add(requestSpans(piece, color));
+                continue;
+            }
+            out.add(esc(prefix) + colored(content, start, ranges, color));
+            cursor = start + content.length();
+        }
+        return out;
     }
 
     private void renderItem(StringBuilder sb, Object o, String indent) {
@@ -322,11 +461,14 @@ public final class MermaidGraph {
             List<String> parts = new ArrayList<>();
             for (String l : n.lines()) {
                 String tc = textClass(l);
-                for (String piece : wrap(plain(l), maxLineLength)) {
-                    String color = tc == null ? null : ("dark".equals(theme) ? TEXT_COLORS_DARK : TEXT_COLORS).get(tc);
-                    parts.add(tc == null ? esc(piece)
-                            : "req".equals(tc) ? requestSpans(piece, color)
-                            : fontOpen(color) + esc(piece) + "</font>");
+                String color = tc == null ? null : ("dark".equals(theme) ? TEXT_COLORS_DARK : TEXT_COLORS).get(tc);
+                List<String> pieces = wrap(plain(l), maxLineLength);
+                if ("req".equals(tc)) {
+                    parts.addAll(requestPieces(plain(l), pieces, color));
+                    continue;
+                }
+                for (String piece : pieces) {
+                    parts.add(tc == null ? esc(piece) : fontOpen(color) + esc(piece) + "</font>");
                 }
             }
             String label = String.join("<br/>", parts);

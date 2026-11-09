@@ -264,6 +264,7 @@ public final class AnalysisYamlWriter {
                     .put2("type", p.type)
                     .put2("defaultValue", p.defaultValue)
                     .put2("required", p.required)
+                    .put2("readerLogic", p.readerLogic)
                     .put2("methodId", p.sourceMethodId)
                     .put2("callSiteId", p.callSiteId)
                     .put2("location", Y.loc(p.location)));

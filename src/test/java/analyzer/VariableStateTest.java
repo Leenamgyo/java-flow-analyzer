@@ -62,9 +62,15 @@ class VariableStateTest {
         assertNull(history(r, label).get(0).valueExpression); // 선언만
         assertEquals(1, assign.callSiteIds.size());
 
-        // 제외: for 헤더 변수, 향상된 for 변수, 필드, 변경 없는 변수
-        for (String name : List.of("i", "item", "counter", "once", "vo")) {
+        // 제외: for 헤더 변수, 향상된 for 변수, 필드
+        for (String name : List.of("i", "item", "counter")) {
             assertNull(var(r, "variableState", name), name);
+        }
+        // 변경 없는 지역 변수는 선언(INIT) 하나뿐 — 상태 변화 0회 (흐름도·트리에 선언 코드를 보이려고 모델에 있음)
+        for (String name : List.of("once", "vo")) {
+            VariableInfo v = var(r, "variableState", name);
+            assertEquals(List.of("INIT"), history(r, v).stream().map(c -> c.op).toList(), name);
+            assertEquals(0, analyzer.serializer.Labels.changeCount(r, v), name);
         }
     }
 
