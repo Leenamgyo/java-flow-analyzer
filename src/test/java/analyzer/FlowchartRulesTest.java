@@ -182,7 +182,7 @@ class FlowchartRulesTest {
         assertTrue(light.contains("classDef codeline " + FlowchartGenerator.CLASS_DEFS.get("codeline")), light);
         assertTrue(light.contains(analyzer.mermaid.MermaidGraph.fontOpen(MermaidGraph.TEXT_COLORS.get("req"))), light);
         // 분할 출력도 같은 테마
-        new FlowchartGenerator().theme("dark").renderSplit(r, "TD", "dagre").forEach(p -> assertTrue(p.mermaid().contains("\"theme\": \"dark\""), p.file()));
+        new FlowchartGenerator().theme("dark").renderSectioned(r, "TD", "dagre", 60).sections().forEach(p -> assertTrue(p.mermaid().contains("\"theme\": \"dark\""), p.file()));
         // 설정 키 output.color-theme, 잘못된 값은 오류
         assertEquals("light", new AnalyzerConfig().output.colorTheme);
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> new FlowchartGenerator().theme("blue"));

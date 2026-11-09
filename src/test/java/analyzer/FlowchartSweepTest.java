@@ -87,7 +87,9 @@ class FlowchartSweepTest {
         MermaidGraph g = new FlowchartGenerator().build(r);
         assertEquals(List.of(), g.validate());
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
-        List<FlowchartGenerator.Part> parts = new FlowchartGenerator().renderSplit(r, "TD", "dagre");
+        FlowchartGenerator.Sectioned sec = new FlowchartGenerator().renderSectioned(r, "TD", "dagre", 20);
+        List<FlowchartGenerator.Part> parts = new java.util.ArrayList<>(sec.skeletons());
+        parts.addAll(sec.sections());
         String phase = new FlowchartGenerator(PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases())).render(r, "TD");
         dump(variant, clazz + "." + method, mmd, parts, phase);
 
@@ -106,7 +108,7 @@ class FlowchartSweepTest {
         AnalysisResult r = Fixtures.analyze(clazz, method);
         List<String> patterns = List.of("LOG.*", "*.release", "CaseAction.compute", "EdgeAction.touch", "*Util.*");
         String mmd = new FlowchartGenerator().exclude(patterns).render(r, "TD");
-        List<FlowchartGenerator.Part> parts = new FlowchartGenerator().exclude(patterns).renderSplit(r, "TD", "dagre");
+        List<FlowchartGenerator.Part> parts = new FlowchartGenerator().exclude(patterns).renderSectioned(r, "TD", "dagre", 20).sections();
         dump("exclude", clazz + "." + method, mmd, parts, null);
         String flat = normalize(mmd);
         for (CallSiteInfo s : r.callSites) {

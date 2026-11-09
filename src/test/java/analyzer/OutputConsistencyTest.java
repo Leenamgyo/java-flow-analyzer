@@ -47,8 +47,10 @@ class OutputConsistencyTest {
         // flowchart-svg: mmdc 가 없으면 만들지 않고 분석서에 생략 사유
         assertFalse(Files.exists(dir.resolve("flowchart-svg")));
         assertTrue(Files.readString(dir.resolve("analysis.md")).contains("flowchart-svg 생략"));
-        // 긴 메서드 보기: 기존 출력과 별도로 구간 분할·골격
-        assertTrue(Files.exists(dir.resolve("flowchart.mmd")) && Files.isDirectory(dir.resolve("flowchart")));
+        // 메서드별 보기: 구간 분할·골격 (예전 flowchart/·flowchart.md 는 없음)
+        assertTrue(Files.exists(dir.resolve("flowchart.mmd")));
+        assertFalse(Files.exists(dir.resolve("flowchart")) || Files.exists(dir.resolve("flowchart.md")));
+        assertTrue(Files.exists(dir.resolve("flowchart-skeleton").resolve("00-overview.mmd")));
         for (String sub : List.of("flowchart-sections", "flowchart-skeleton")) {
             try (var fs = Files.list(dir.resolve(sub))) {
                 assertTrue(fs.anyMatch(f -> f.toString().endsWith(".mmd")), sub);
@@ -204,10 +206,12 @@ class OutputConsistencyTest {
         CallSiteInfo parse = r.callSites.stream().filter(c -> c.expression.equals("Long.parseLong(versionCode)")).findFirst().orElseThrow();
         assertTrue(g.idsUnder("sg_" + t.id).contains(g.nodeOf(parse.id)), mmd);
         assertTrue(g.edges().stream().anyMatch(e -> e.to().equals(g.nodeOf(parse.id))), mmd);
-        // return errorView("1002") — errorView() 본문을 그리므로 호출 노드 ==> 메서드, 그 뒤 return 노드
+        // return errorView("1002") — 호출 노드를 따로 만들지 않고 return 노드에 합침, ==> 메서드는 return 노드에서
         CallSiteInfo ev = r.callSites.stream().filter(c -> c.expression.equals("errorView(\"1002\")")).findFirst().orElseThrow();
-        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(ev.id) && e.style() == MermaidGraph.EdgeStyle.CALL), mmd);
-        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(ev.id) && e.to().startsWith("RET")), mmd);
+        String retNode = g.nodeOf(ev.id);
+        assertTrue(retNode.startsWith("RET"), retNode);
+        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(retNode) && e.to().equals(ev.targetMethodId)
+                && e.style() == MermaidGraph.EdgeStyle.CALL), mmd);
         // catch 본문(return errorView("1001"))도 그린다
         ControlBlock c = r.blocks.stream().filter(b -> b.type == analyzer.model.BlockType.CATCH).findFirst().orElseThrow();
         assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(c.id)), mmd);

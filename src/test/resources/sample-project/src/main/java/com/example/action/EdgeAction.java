@@ -186,6 +186,19 @@ public class EdgeAction {
         return extraInfo;
     }
 
+    // ---- return 식 자체가 세부 메서드 호출: 호출 노드를 따로 만들지 않고 return 노드에서 ==> (중복 노드·간선 없음)
+    public String returnsDetailCall(String code) {
+        if (code == null) {
+            return errorView("empty", code);
+        }
+        return code;
+    }
+
+    private String errorView(String key, String code) {
+        String msg = key + ":" + code;
+        return msg;
+    }
+
     // ---- Map 키가 리터럴·상수가 아니면(식) 이름 미확정 — 흐름도는 ?(…) 대신 코드 그대로 [식]
     public Map<String, Object> mapDynamicKey(HttpServletRequest request, SearchVO keyVO) {
         Map<String, Object> m = new HashMap<>();

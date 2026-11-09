@@ -206,17 +206,20 @@ class PhaseTest {
     @Test
     void flowchartSplitsPerMethodWithOverviewAndCombinedMarkdown() throws Exception {
         AnalysisResult r = Main.analyze(example("OrderRegisterAction"));
-        List<FlowchartGenerator.Part> parts = new FlowchartGenerator().renderSplit(r, "TD", "dagre");
-        // 00-overview + 그리는 메서드마다 1개 (진입 + Service·Biz·DAO 세부)
-        assertEquals("00-overview.mmd", parts.get(0).file());
-        assertTrue(parts.get(1).file().startsWith("01-M1-OrderRegisterAction.execute"), parts.get(1).file());
+        FlowchartGenerator.Sectioned sec = new FlowchartGenerator().renderSectioned(r, "TD", "dagre", 10_000);
+        List<FlowchartGenerator.Part> parts = sec.sections(); // 큰 size = 메서드당 1 구간
+        List<FlowchartGenerator.Part> sks = sec.skeletons();
+        // 골격: 00-overview + 그리는 메서드마다 1개 (진입 + Service·Biz·DAO 세부)
+        assertEquals("00-overview.mmd", sks.get(0).file());
+        assertTrue(parts.get(0).file().startsWith("01-M1-OrderRegisterAction.execute"), parts.get(0).file());
         MermaidGraph full = new FlowchartGenerator().build(r);
         long methodBoxes = r.methods().stream().filter(m -> full.has("sg_" + m.id)).count();
-        assertEquals(methodBoxes + 1, parts.size());
+        assertEquals(methodBoxes, parts.size());
+        assertEquals(methodBoxes + 1, sks.size());
         // overview: 메서드 노드 + 호출 관계만
-        assertTrue(parts.get(0).mermaid().contains("M1 ==>"), parts.get(0).mermaid());
+        assertTrue(sks.get(0).mermaid().contains("M1 ==>"), sks.get(0).mermaid());
         // 진입 파일: Service 로 넘어가는 호출은 ▶ 안내 노드에서 끝, 다른 메서드 상세는 없음
-        String entry = parts.get(1).mermaid();
+        String entry = parts.get(0).mermaid();
         String register = parts.stream().filter(p -> p.file().contains("OrderServiceImpl.registerOrder")).findFirst().orElseThrow().file();
         assertTrue(entry.contains("▶ OrderServiceImpl.registerOrder(") && entry.contains(register), entry);
         assertFalse(entry.contains("subgraph sg_M27"), entry);

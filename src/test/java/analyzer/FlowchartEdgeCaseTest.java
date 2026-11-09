@@ -133,6 +133,22 @@ class FlowchartEdgeCaseTest {
     }
 
     @Test
+    void returnOfDetailCallIsOneNode() {
+        // return errorView(…): 예전엔 #n errorView(…) 노드 + return 노드 두 개, 간선도 하나 더
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "returnsDetailCall");
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        CallSiteInfo ev = call(r, "errorView(\"empty\", code)");
+        ControlBlock ret = r.blocks.stream().filter(b -> b.type == BlockType.RETURN && ev.controlBlockId.equals(b.id)).findFirst().orElseThrow();
+        assertEquals(ret.id, g.nodeOf(ev.id)); // 호출은 return 노드에 합쳐짐
+        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(ret.id) && e.to().equals(ev.targetMethodId)
+                && e.style() == MermaidGraph.EdgeStyle.CALL)); // ==> 는 return 노드에서
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertEquals(1, mmd.split("errorView\\(#quot;empty#quot;, code\\)", -1).length - 1, mmd);
+    }
+
+    @Test
     void dynamicMapKeyAndRequestNameShownAsCode() {
         // m.put(keyVO.getKeyword(), …) / request.getParameter(keyVO.getKeyword()): 이름이 식 — ?(…) 대신 코드 그대로 [식]
         AnalysisResult r = Fixtures.analyze("EdgeAction", "mapDynamicKey");

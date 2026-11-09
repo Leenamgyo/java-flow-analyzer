@@ -96,9 +96,7 @@ public class AnalyzerConfig {
         public String mermaidCli = "";
         /** 흐름도 노드 한 줄 최대 길이 — 넘으면 쉼표·연산자·체인 앞에서 끊고 다음 줄은 "> " 로 시작. 0 = 끊지 않음 */
         public int maxLineLength = 100;
-        /** flowchart.mmd 와 함께 메서드별 파일(flowchart/) + 전체 구조 + 합본(flowchart.md) 출력 */
-        public boolean splitFlowchart = true;
-        /** 긴 메서드 구간 분할(flowchart-sections/) + 골격(flowchart-skeleton/) 출력 */
+        /** 메서드별 보기: 구간 분할(flowchart-sections/) + 골격·전체 구조(flowchart-skeleton/) 출력 */
         public boolean flowchartSections = true;
         /** 구간 하나의 크기 — 노드 라벨 줄 수 기준 (블록이 이보다 크면 안에서 나눈다) */
         public int sectionSize = 60;

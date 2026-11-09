@@ -23,7 +23,7 @@ class FlowchartSectionsTest {
         List<String> out = new java.util.ArrayList<>();
         Matcher m = NODE_DEF.matcher(mmd);
         while (m.find()) {
-            if (!m.group(1).startsWith("go_") && !m.group(1).startsWith("from_")) {
+            if (!m.group(1).startsWith("go_") && !m.group(1).startsWith("from_") && !m.group(1).startsWith("nav_")) {
                 out.add(m.group(1));
             }
         }
@@ -59,8 +59,9 @@ class FlowchartSectionsTest {
         AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute");
         MermaidGraph full = new FlowchartGenerator().build(r);
         FlowchartGenerator.Sectioned sec = new FlowchartGenerator().renderSectioned(r, "TD", "dagre", 20);
-        String sk = sec.skeletons().get(0).mermaid();
-        assertTrue(sec.skeletons().get(0).file().endsWith("-skeleton.mmd"));
+        assertEquals("00-overview.mmd", sec.skeletons().get(0).file());
+        String sk = sec.skeletons().get(1).mermaid();
+        assertTrue(sec.skeletons().get(1).file().endsWith("-skeleton.mmd"));
         // 분기·세부 호출(==>) 은 남는다
         for (String id : full.idsUnder("sg_" + r.entryMethodId)) {
             MermaidGraph.Node n = full.nodeById(id);
@@ -75,5 +76,23 @@ class FlowchartSectionsTest {
         assertTrue(sk.contains("⋯ 코드 "), sk);
         assertTrue(sk.contains("상세 구간 1"), sk);
         assertTrue(defs(sk).size() < full.idsUnder("sg_" + r.entryMethodId).size());
+    }
+
+    @Test
+    void svgNodesLinkSkeletonSectionsAndOverview() {
+        AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute");
+        FlowchartGenerator.Sectioned sec = new FlowchartGenerator().renderSectioned(r, "TD", "dagre", 20);
+        String s1 = sec.sections().get(0).mermaid();
+        String s2 = sec.sections().get(1).mermaid();
+        String base = sec.sections().get(0).file().replace("-s1.mmd", "");
+        // 구간: ▶ 다음 구간, ◀ 이전 구간, ⌂ 골격
+        assertTrue(s1.contains(".svg\" ") && s1.contains("href \"" + base + "-s2.svg\""), s1);
+        assertTrue(s2.contains("href \"" + base + "-s1.svg\""), s2);
+        assertTrue(s1.contains("click nav_skeleton href \"../skeleton/" + base + "-skeleton.svg\""), s1);
+        // 골격: 접은 노드 → 상세 구간, ⌂ 전체 구조 / overview: 메서드 → 골격
+        String sk = sec.skeletons().get(1).mermaid();
+        assertTrue(sk.contains("href \"../sections/" + base + "-s1.svg\""), sk);
+        assertTrue(sk.contains("click nav_overview href \"00-overview.svg\""), sk);
+        assertTrue(sec.skeletons().get(0).mermaid().contains("click M1 href \"" + base + "-skeleton.svg\""));
     }
 }

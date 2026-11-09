@@ -45,30 +45,21 @@ public final class OutputWriter {
             if (!cfg.output.flowchartSvg) { // SVG 를 만들면 그 렌더링이 검증을 겸한다
                 mermaidStatus = MermaidCli.validate(mmd);
             }
-            if (cfg.output.splitFlowchart) {
-                // 큰 흐름도: 메서드별 파일 + 전체 구조 + 합본 flowchart.md
-                FlowchartGenerator gen = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
-                        .maxLineLength(cfg.output.maxLineLength).exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme);
-                List<FlowchartGenerator.Part> parts = gen.renderSplit(r, cfg.output.direction, cfg.output.layout);
-                Path sub = dir.resolve("flowchart");
-                if (Files.isDirectory(sub)) { // 이전 실행의 분할 파일 정리 (.mmd 만)
-                    try (var old = Files.list(sub)) {
-                        for (Path f : old.filter(f -> f.toString().endsWith(".mmd")).toList()) {
-                            Files.delete(f);
-                        }
+            // 예전 메서드별 분할 출력(flowchart/, flowchart.md)은 구간 분할·골격으로 대체 — 이전 실행이 남긴 파일 정리
+            Path legacy = dir.resolve("flowchart");
+            if (Files.isDirectory(legacy)) {
+                try (var old = Files.list(legacy)) {
+                    for (Path f : old.filter(f -> f.toString().endsWith(".mmd")).toList()) {
+                        Files.delete(f);
                     }
                 }
-                Files.createDirectories(sub);
-                for (FlowchartGenerator.Part p : parts) {
-                    Files.writeString(sub.resolve(p.file()), p.mermaid());
-                    charts.add(sub.resolve(p.file()));
+                try (var rest = Files.list(legacy)) {
+                    if (rest.findAny().isEmpty()) {
+                        Files.delete(legacy);
+                    }
                 }
-                written.add(sub);
-                var entry = r.method(r.entryMethodId);
-                Path md = dir.resolve("flowchart.md");
-                Files.writeString(md, FlowchartGenerator.combinedMarkdown(r.classOf(entry).name + "." + entry.name + "()", parts));
-                written.add(md);
             }
+            Files.deleteIfExists(dir.resolve("flowchart.md"));
             if (cfg.output.flowchartSections) {
                 // 긴 메서드 보기: 구간 분할 + 골격 (기존 출력과 별도)
                 FlowchartGenerator.Sectioned sec = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
@@ -77,11 +68,9 @@ public final class OutputWriter {
                 var entry = r.method(r.entryMethodId);
                 String title = r.classOf(entry).name + "." + entry.name + "()";
                 writeParts(dir, "flowchart-sections", sec.sections(), charts, written);
-                Files.writeString(dir.resolve("flowchart-sections.md"), FlowchartGenerator.combinedMarkdown(title + " — 구간 분할", sec.sections())
-                        .replace("`flowchart/", "`flowchart-sections/"));
+                Files.writeString(dir.resolve("flowchart-sections.md"), FlowchartGenerator.combinedMarkdown(title + " — 구간 분할", "flowchart-sections", sec.sections()));
                 writeParts(dir, "flowchart-skeleton", sec.skeletons(), charts, written);
-                Files.writeString(dir.resolve("flowchart-skeleton.md"), FlowchartGenerator.combinedMarkdown(title + " — 골격", sec.skeletons())
-                        .replace("`flowchart/", "`flowchart-skeleton/"));
+                Files.writeString(dir.resolve("flowchart-skeleton.md"), FlowchartGenerator.combinedMarkdown(title + " — 골격", "flowchart-skeleton", sec.skeletons()));
                 written.add(dir.resolve("flowchart-sections.md"));
                 written.add(dir.resolve("flowchart-skeleton.md"));
             }

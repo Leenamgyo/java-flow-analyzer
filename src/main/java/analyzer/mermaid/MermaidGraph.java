@@ -178,6 +178,21 @@ public final class MermaidGraph {
         return n;
     }
 
+    /** 노드 클릭 링크 (SVG 를 브라우저로 열면 그 파일로 이동): id → [href, 툴팁] */
+    private final Map<String, String[]> links = new LinkedHashMap<>();
+
+    public void link(String id, String href, String tooltip) {
+        if (!(ids.get(id) instanceof Node)) {
+            errors.add("링크 대상 노드 없음: " + id);
+            return;
+        }
+        if (href.contains("\"") || tooltip.contains("\"")) {
+            errors.add("링크에 따옴표: " + href);
+            return;
+        }
+        links.put(id, new String[]{href, tooltip});
+    }
+
     public boolean has(String id) {
         return ids.containsKey(id) || aliases.containsKey(id);
     }
@@ -266,6 +281,7 @@ public final class MermaidGraph {
             }
         });
         byClass.forEach((css, list) -> sb.append("    class ").append(String.join(",", list)).append(' ').append(css).append('\n'));
+        links.forEach((id, l) -> sb.append("    click ").append(id).append(" href \"").append(l[0]).append("\" \"").append(l[1]).append("\"\n"));
         return sb.toString();
     }
 

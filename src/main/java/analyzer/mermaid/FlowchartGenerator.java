@@ -366,57 +366,25 @@ public final class FlowchartGenerator {
     public record Part(String file, String title, String mermaid) {
     }
 
-    /**
-     * 흐름도를 파일별로 나눈다: 00-overview(메서드 박스 + 호출 관계) + 그리는 메서드마다 1개.
-     * 다른 메서드로 넘어가는 호출은 "▶ M27 Class.method() — 파일명" 안내 노드로 끝난다. 모두 같은 모델·같은 ID.
-     */
-    public List<Part> renderSplit(AnalysisResult result, String direction, String layout) {
-        MermaidGraph full = build(result);
-        List<String> errors = new ArrayList<>(full.validate());
-        errors.addAll(check(result, full, rules));
-        if (!errors.isEmpty()) {
-            throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
-        }
-        Map<String, String> classDefs = classDefs();
-        List<MethodInfo> drawn = r.methods().stream().filter(m -> drawnMethods.contains(m.id) && full.has("sg_" + m.id)).toList();
-        Map<String, String> fileOf = new LinkedHashMap<>();
-        int i = 1;
-        for (MethodInfo m : drawn) {
-            fileOf.put(m.id, String.format("%02d-%s-%s.%s.mmd", i++, m.id, r.classOf(m).name, m.name));
-        }
-        // 노드 → 소속 메서드 (호출 관계 집계용)
-        Map<String, String> owner = new HashMap<>();
-        for (MethodInfo m : drawn) {
-            full.idsUnder("sg_" + m.id).forEach(id -> owner.putIfAbsent(id, m.id));
-        }
-        List<Part> parts = new ArrayList<>();
-        // 00-overview
+    /** 00-overview: 메서드 노드 + 메서드 간 호출(==>) 집계. 노드를 누르면 그 메서드 골격 SVG 로 */
+    private MermaidGraph overview(MermaidGraph full, List<MethodInfo> drawn, Map<String, String> owner, Map<String, String> base) {
         MermaidGraph ov = new MermaidGraph().maxLineLength(maxLineLength);
         for (MethodInfo m : drawn) {
             ov.node(ov.root(), m.id, List.of(m.id + " " + r.classOf(m).name + "." + m.name + "()",
-                    "«" + r.classOf(m).role.label() + "» · " + fileOf.get(m.id)), Shape.STADIUM,
+                    "«" + r.classOf(m).role.label() + "» · " + base.get(m.id) + "-skeleton"), Shape.STADIUM,
                     m.id.equals(r.entryMethodId) ? "entry" : "method");
+            ov.link(m.id, base.get(m.id) + "-skeleton.svg", "골격");
         }
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (var e : full.edges()) {
-            if (e.style() == EdgeStyle.CALL && owner.containsKey(e.from()) && fileOf.containsKey(e.to())) {
+            if (e.style() == EdgeStyle.CALL && owner.containsKey(e.from()) && base.containsKey(e.to())) {
                 String from = owner.get(e.from());
                 if (!from.equals(e.to()) && seen.add(from + ">" + e.to())) {
                     ov.edge(from, e.to(), e.label(), EdgeStyle.CALL);
                 }
             }
         }
-        parts.add(new Part("00-overview.mmd", "전체 구조 (메서드 호출 관계)", ov.theme(theme).render(direction, layout, classDefs)));
-        for (MethodInfo m : drawn) {
-            MermaidGraph one = full.extract("sg_" + m.id, to -> {
-                String target = owner.get(to);
-                String where = target == null ? "" : " — " + fileOf.get(target);
-                return List.of("▶ " + full.labelOf(to), (target == null ? to : target) + where);
-            });
-            parts.add(new Part(fileOf.get(m.id), m.id + " " + r.classOf(m).name + "." + m.name + "()",
-                    one.theme(theme).render(direction, layout, classDefs)));
-        }
-        return parts;
+        return ov;
     }
 
     /** 긴 메서드 보기: 구간 분할(A)과 골격(B). 둘 다 일반 흐름도와 같은 그래프에서 떼어 낸다 */
@@ -468,13 +436,21 @@ public final class FlowchartGenerator {
         for (MethodInfo m : drawn) {
             base.put(m.id, String.format("%02d-%s-%s.%s", i++, m.id, r.classOf(m).name, m.name));
         }
+        // 노드가 든 구간 파일 이름 (확장자 없음) — 링크·안내 공용
+        java.util.function.Function<String, String> sectionFile = id -> {
+            String m = owner.get(id);
+            if (m == null) {
+                return null;
+            }
+            return base.get(m) + (sectionsOf.get(m).size() > 1 ? "-s" + sectionNo.getOrDefault(id, 1) : "");
+        };
         java.util.function.Function<String, String> where = id -> {
             String m = owner.get(id);
             if (m == null) {
                 return id;
             }
             int n = sectionsOf.get(m).size();
-            return m + (n > 1 ? " 구간 " + sectionNo.get(id) + "/" + n : "") + " — " + base.get(m) + (n > 1 ? "-s" + sectionNo.get(id) : "") + ".mmd";
+            return m + (n > 1 ? " 구간 " + sectionNo.getOrDefault(id, 1) + "/" + n : "") + " — " + sectionFile.apply(id) + ".mmd";
         };
         List<Part> sections = new ArrayList<>();
         for (MethodInfo m : drawn) {
@@ -484,22 +460,49 @@ public final class FlowchartGenerator {
                 MermaidGraph part = full.extractNodes(secs.get(k),
                         to -> List.of("▶ " + full.labelOf(to), where.apply(to)),
                         from -> m.id.equals(owner.get(from)) ? List.of("◀ 구간 " + sectionNo.get(from) + " 에서", full.labelOf(from)) : null);
+                // 클릭 이동 (SVG): ▶/◀ 안내 → 그 구간 파일, ⌂ → 이 메서드 골격
+                for (String id : part.nodeIds()) {
+                    String target = id.startsWith("go_") ? id.substring(3) : id.startsWith("from_") ? id.substring(5) : null;
+                    String f = target == null ? null : sectionFile.apply(target);
+                    if (f != null) {
+                        part.link(id, f + ".svg", f);
+                    }
+                }
+                part.node(part.root(), "nav_skeleton", List.of("⌂ 골격 · " + m.id + " " + r.classOf(m).name + "." + m.name + "()"
+                        + (secs.size() > 1 ? " · 구간 " + no + "/" + secs.size() : "")), Shape.SUBROUTINE, "golink");
+                part.link("nav_skeleton", "../skeleton/" + base.get(m.id) + "-skeleton.svg", "골격");
                 String file = base.get(m.id) + (secs.size() > 1 ? "-s" + no : "") + ".mmd";
                 String title = m.id + " " + r.classOf(m).name + "." + m.name + "()" + (secs.size() > 1 ? " — 구간 " + no + "/" + secs.size() : "");
                 sections.add(new Part(file, title, part.theme(theme).render(direction, layout, classDefs)));
             }
         }
         List<Part> skeletons = new ArrayList<>();
+        skeletons.add(new Part("00-overview.mmd", "전체 구조 (메서드 호출 관계)",
+                overview(full, drawn, owner, base).theme(theme).render(direction, layout, classDefs)));
         for (MethodInfo m : drawn) {
             MermaidGraph one = full.extract("sg_" + m.id, to -> List.of("▶ " + full.labelOf(to), where.apply(to)));
             Set<String> calls = new java.util.HashSet<>();
             one.edges().stream().filter(e -> e.style() == EdgeStyle.CALL).forEach(e -> calls.add(e.from()));
             int n = sectionsOf.get(m.id).size();
+            Set<String> folded = new java.util.HashSet<>();
             MermaidGraph sk = one.collapse(
                     node -> node.shape() != Shape.RECT || calls.contains(node.id())
                             || List.of("ret", "throw", "fin", "exc").contains(node.cssClass()),
-                    chain -> skeletonLabel(chain, n > 1 ? sectionNo.get(chain.get(0).id()) : 0),
+                    chain -> {
+                        folded.add(chain.get(0).id());
+                        return skeletonLabel(chain, n > 1 ? sectionNo.get(chain.get(0).id()) : 0);
+                    },
                     "codeline", 2);
+            // 클릭 이동 (SVG): 접은 노드 → 상세 구간, ▶ 다른 메서드 → 그 메서드 골격, ⌂ → 전체 구조
+            for (String id : sk.nodeIds()) {
+                if (folded.contains(id)) {
+                    sk.link(id, "../sections/" + sectionFile.apply(id) + ".svg", "상세");
+                } else if (id.startsWith("go_") && owner.get(id.substring(3)) != null) {
+                    sk.link(id, base.get(owner.get(id.substring(3))) + "-skeleton.svg", "골격");
+                }
+            }
+            sk.node(sk.root(), "nav_overview", List.of("⌂ 전체 구조 (메서드 호출 관계)"), Shape.SUBROUTINE, "golink");
+            sk.link("nav_overview", "00-overview.svg", "전체 구조");
             skeletons.add(new Part(base.get(m.id) + "-skeleton.mmd", m.id + " " + r.classOf(m).name + "." + m.name + "() — 골격",
                     sk.theme(theme).render(direction, layout, classDefs)));
         }
@@ -519,7 +522,7 @@ public final class FlowchartGenerator {
             out.add(!first.startsWith("#") && n.lines().size() > 1 ? first + " · " + MermaidGraph.plain(n.lines().get(1)) : first);
         }
         out.add("⋯ 코드 " + lines + "줄" + (chain.size() > 3 ? " (노드 " + chain.size() + "개)" : "")
-                + (section > 0 ? " · 상세 구간 " + section : " · 상세 메서드 흐름도"));
+                + (section > 0 ? " · 상세 구간 " + section : " · 상세"));
         return out;
     }
 
@@ -579,13 +582,18 @@ public final class FlowchartGenerator {
 
     /** 분할 파일을 한 문서로: 목차 + 파트마다 ```mermaid 블록 */
     public static String combinedMarkdown(String title, List<Part> parts) {
+        return combinedMarkdown(title, "flowchart-sections", parts);
+    }
+
+    /** folder: 파트 파일이 있는 폴더 (본문의 파일 경로 표시) */
+    public static String combinedMarkdown(String title, String folder, List<Part> parts) {
         StringBuilder sb = new StringBuilder("# 흐름도: ").append(title).append("\n\n");
-        sb.append("> `flowchart/` 의 파일을 순서대로 합친 문서입니다. 다른 메서드로 넘어가는 호출은 ▶ 노드로 끝나고, 그 메서드는 아래 해당 절에 있습니다.\n\n");
+        sb.append("> `").append(folder).append("/` 의 파일을 순서대로 합친 문서입니다. 다른 구간·메서드로 넘어가는 흐름은 ▶ 노드로 끝나고, 그 내용은 아래 해당 절에 있습니다.\n\n");
         for (Part p : parts) {
             sb.append("- [").append(p.title()).append("](#").append(anchor(p.title())).append(")\n");
         }
         for (Part p : parts) {
-            sb.append("\n## ").append(p.title()).append("\n\n`flowchart/").append(p.file()).append("`\n\n```mermaid\n")
+            sb.append("\n## ").append(p.title()).append("\n\n`").append(folder).append("/").append(p.file()).append("`\n\n```mermaid\n")
                     .append(p.mermaid()).append("```\n");
         }
         return sb.toString();
@@ -1567,17 +1575,26 @@ public final class FlowchartGenerator {
                 return in;
             }
             case RETURN, THROW -> {
-                // return/throw 식 안의 호출은 리프 노드에 이미 보이므로 따로 그리지 않는다 (세부 박스로 가는 호출만 남김)
+                // return/throw 식 안의 호출은 리프 노드에 이미 보이므로 따로 그리지 않는다. 세부 박스로 가는 호출
+                // (return errorView(…))도 노드를 따로 만들지 않고 리프 노드에서 ==> — 같은 코드가 두 번, 간선이 하나 더
+                // 생기던 문제 (사용자 지적)
                 List<String> folded = new ArrayList<>();
+                List<CallSiteInfo> detail = new ArrayList<>();
                 for (Object o : Labels.elements(r, m.id, b.id, false)) {
-                    if (o instanceof CallSiteInfo c && !leadsToDetail(c)) {
+                    if (o instanceof CallSiteInfo c) {
                         folded.add(c.id);
+                        if (leadsToDetail(c) && !excludedCall(r, rules.excludes(), c)) {
+                            detail.add(c);
+                        }
                     }
                 }
                 inLeaf.addAll(folded);
                 List<End> p = emit(sg, m, b, in);
                 leaf(sg, m, b);
                 folded.forEach(id -> g.alias(id, b.id));
+                for (CallSiteInfo c : detail) {
+                    g.edge(b.id, c.expansionTargetId(), callEdgeLabel(c), EdgeStyle.CALL);
+                }
                 link(p, b.id);
                 return List.of();
             }
@@ -1819,13 +1836,16 @@ public final class FlowchartGenerator {
         if (s.targetMethodId != null && drawnMethods.contains(s.expansionTargetId())
                 && (s.expansion == Expansion.EXPANDED || s.expansion == Expansion.SHARED
                 || s.expansion == Expansion.CYCLE)) {
-            String label = switch (s.expansion) {
-                case SHARED -> "shared";
-                case CYCLE -> "cycle";
-                default -> s.implementationMethodId != null ? "impl 후보" : null;
-            };
-            g.edge(s.id, s.expansionTargetId(), label, EdgeStyle.CALL);
+            g.edge(s.id, s.expansionTargetId(), callEdgeLabel(s), EdgeStyle.CALL);
         }
+    }
+
+    private static String callEdgeLabel(CallSiteInfo s) {
+        return switch (s.expansion) {
+            case SHARED -> "shared";
+            case CYCLE -> "cycle";
+            default -> s.implementationMethodId != null ? "impl 후보" : null;
+        };
     }
 
     private List<ControlBlock> branches(ControlBlock b) {

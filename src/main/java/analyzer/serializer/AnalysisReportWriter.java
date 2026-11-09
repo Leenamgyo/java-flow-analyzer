@@ -40,11 +40,10 @@ public final class AnalysisReportWriter {
         sb.append("## 3. 실행 흐름도\n\n");
         // 흐름도는 커서 분석서에 넣지 않는다 (사용자 요구) — 파일을 직접 열어 확인
         sb.append("흐름도는 크기가 커서 분석서에 넣지 않습니다. 아래 파일을 직접 열어 확인하세요.\n\n")
-                .append("- `flowchart.md` — 메서드별 흐름도 합본(목차 포함), 낱개 파일은 `flowchart/` (`00-overview.mmd` = 메서드 호출 관계)\n")
                 .append("- `flowchart.mmd` — 전체 흐름도 한 파일\n")
-                .append("- `flowchart-skeleton.md` / `flowchart-skeleton/` — 긴 메서드 골격 (분기·return/throw·세부 호출만, 사이 코드는 접어 \"상세 구간 k\")\n")
+                .append("- `flowchart-skeleton.md` / `flowchart-skeleton/` — 먼저 보기: `00-overview` (메서드 호출 관계) + 메서드별 골격 (분기·return/throw·세부 호출만, 사이 코드는 접어 \"상세 구간 k\")\n")
                 .append("- `flowchart-sections.md` / `flowchart-sections/` — 긴 메서드를 구간으로 나눈 상세 (▶ 다음 구간 / ◀ 이전 구간)\n")
-                .append("- `flowchart-svg/` — 위 흐름도들의 SVG (구간·골격은 sections/·skeleton/, 브라우저로 바로 열기, Mermaid CLI 가 있을 때)\n")
+                .append("- `flowchart-svg/` — 위 흐름도들의 SVG (구간·골격은 sections/·skeleton/ — 브라우저로 열면 노드를 클릭해 골격 ↔ 구간 ↔ 다른 메서드로 이동, Mermaid CLI 가 있을 때)\n")
                 .append("- `phase-flowchart.mmd` · `phase-summary.md` — 단계 보기(바인딩 › 체크 › 로직 › 후처리) 요약\n\n");
         bindings(r, sb);
         exceptions(r, sb);
