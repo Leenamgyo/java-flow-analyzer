@@ -71,10 +71,15 @@ public final class MapperXmlIndex {
     private void read(Path f) {
         String text;
         try {
-            text = Files.readString(f);
+            text = decode(Files.readAllBytes(f));
         } catch (IOException e) {
             errors.add(f + ": " + e.getMessage());
             return;
+        }
+        // BOM·선두 공백이 있으면 파서가 "Content is not allowed in prolog" (1:1) 로 실패한다 — 첫 '<' 앞을 버린다
+        int lt = text.indexOf('<');
+        if (lt > 0 && text.substring(0, lt).chars().allMatch(c -> c == '\uFEFF' || Character.isWhitespace(c))) {
+            text = text.substring(lt);
         }
         if (!text.contains("<mapper") && !text.contains("<sqlMap")) {
             return; // 매퍼 XML 이 아님 (설정·빌드 파일 등)
@@ -118,7 +123,36 @@ public final class MapperXmlIndex {
         f.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
         f.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         f.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        return f.newDocumentBuilder();
+        DocumentBuilder b = f.newDocumentBuilder();
+        // 기본 오류 처리기는 "[Fatal Error] :1:1: …" 를 화면(stderr)에 찍는다 — 찍지 않고 예외로만 (read 가 errors 에 기록)
+        b.setErrorHandler(new org.xml.sax.ErrorHandler() {
+            @Override
+            public void warning(org.xml.sax.SAXParseException e) {
+            }
+
+            @Override
+            public void error(org.xml.sax.SAXParseException e) throws org.xml.sax.SAXException {
+                throw e;
+            }
+
+            @Override
+            public void fatalError(org.xml.sax.SAXParseException e) throws org.xml.sax.SAXException {
+                throw e;
+            }
+        });
+        return b;
+    }
+
+    /** UTF-8 로 읽고, UTF-8 이 아니면 MS949(EUC-KR 포함) — 한글 주석이 있는 옛 매퍼 XML */
+    static String decode(byte[] bytes) {
+        try {
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                    .decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+        } catch (java.nio.charset.CharacterCodingException e) {
+            return new String(bytes, java.nio.charset.Charset.forName("MS949"));
+        }
     }
 
     /**

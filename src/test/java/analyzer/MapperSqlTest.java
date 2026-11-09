@@ -24,6 +24,42 @@ class MapperSqlTest {
         return r.callSites.stream().filter(c -> c.expression.equals(expression)).findFirst().orElseThrow().sql;
     }
 
+    /**
+     * "[Fatal Error] :1:1: Content is not allowed in prolog" 방지: BOM·선두 공백이 있는 매퍼 XML 도 읽고, MS949 인코딩도 읽고,
+     * 깨진 XML 은 화면에 찍지 않고 errors 에만 남긴다.
+     */
+    @Test
+    void bomEncodingAndBrokenXmlAreHandledQuietly(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        String mapper = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<mapper namespace=\"a.B\">"
+                + "<select id=\"%s\">SELECT * FROM %s</select></mapper>";
+        byte[] bom = {(byte) 0xEF, (byte) 0xBB, (byte) 0xBF};
+        java.nio.file.Files.write(dir.resolve("bom.xml"), concat(bom, ("\n  " + mapper.formatted("withBom", "T_BOM"))
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        java.nio.file.Files.write(dir.resolve("ms949.xml"), ("<?xml version=\"1.0\" encoding=\"MS949\"?>\n<mapper namespace=\"a.C\">"
+                + "<!-- 한글 주석 --><select id=\"korean\">SELECT * FROM T_KO</select></mapper>").getBytes("MS949"));
+        java.nio.file.Files.writeString(dir.resolve("broken.xml"), "junk <mapper namespace=\"x\"><select id=\"a\">");
+        java.io.PrintStream err = System.err;
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        System.setErr(new java.io.PrintStream(captured, true, java.nio.charset.StandardCharsets.UTF_8));
+        MapperXmlIndex idx;
+        try {
+            idx = MapperXmlIndex.scan(List.of(dir));
+        } finally {
+            System.setErr(err);
+        }
+        assertEquals("", captured.toString(java.nio.charset.StandardCharsets.UTF_8)); // 화면에 [Fatal Error] 없음
+        assertEquals(1, idx.find("a.B.withBom").size());
+        assertEquals(1, idx.find("a.C.korean").size());
+        assertEquals(1, idx.errors().size(), idx.errors().toString()); // 깨진 파일은 errors(분석서 비고)에만
+        assertTrue(idx.errors().get(0).contains("broken.xml"), idx.errors().toString());
+    }
+
+    private static byte[] concat(byte[] a, byte[] b) {
+        byte[] out = java.util.Arrays.copyOf(a, a.length + b.length);
+        System.arraycopy(b, 0, out, a.length, b.length);
+        return out;
+    }
+
     @Test
     void tablesFromSql() {
         assertEquals(List.of("A", "B"), MapperXmlIndex.tables("select * from A a, B b where a.x = b.x"));
