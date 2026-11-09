@@ -63,6 +63,33 @@ class RequestRuleTest {
                 + "#35;6 String isAutoUpdate = " + req + "request.isAutoUpdate ?: #quot;0#quot;</font>"), mmd); // 안쪽 getParam(#5)은 따로 없음
     }
 
+    /** super.getSystemId(request) / this.… — 상위 클래스 읽기 메서드: class 생략 규칙도, class: 상위클래스 규칙도 매칭 */
+    @Test
+    void superAndThisCallsMatchRules(@TempDir Path tmp) throws Exception {
+        for (String head : List.of("  - methods:", "  - class: VasBaseAction\n    methods:")) {
+            Path f = tmp.resolve("super.yml");
+            Files.writeString(f, """
+                    target:
+                      source-root: %s
+                      class: SuperReadAction
+                    analysis:
+                      expand-same-class-methods: false
+                    request-parameter-rules:
+                    %s
+                          - { name: getSystemId, parameter: X-System-Id, type: String }
+                          - { name: getDeviceAbiType, parameter: abiType, type: String }
+                          - { name: getVasDeviceIdParameter, name-arg-index: 1, type: String }
+                    """.formatted(Path.of(Fixtures.SOURCE_ROOT).toAbsolutePath(), head));
+            AnalyzerConfig cfg = ConfigLoader.load(f);
+            ConfigLoader.validate(cfg);
+            AnalysisResult r = Main.analyze(cfg);
+            assertEquals(List.of("X-System-Id", "abiType", "deviceId"), r.parameters.stream().map(p -> p.name).toList(), head);
+            String mmd = new FlowchartGenerator().render(r, "TD");
+            assertTrue(mmd.contains("String systemId = " + analyzer.mermaid.MermaidGraph.fontOpen(
+                    analyzer.mermaid.MermaidGraph.TEXT_COLORS.get("req")) + "request.X-System-Id</font>"), mmd);
+        }
+    }
+
     @Test
     void wrapsWithNameArgIndexIsAnError(@TempDir Path tmp) throws Exception {
         Path f = tmp.resolve("bad2.yml");
