@@ -110,7 +110,7 @@ class PhaseTest {
         // 레이어: Service 구현은 Service·Biz 레이어, calculateTotal(Service·DAO 호출 없음)은 호출 노드만
         CallSiteInfo calc = (CallSiteInfo) step(pm, "calculateTotal(items)").element;
         assertFalse(g.has("sg_" + calc.targetMethodId));
-        assertTrue(mmd.contains(calc.id + "[\"#35;21 long total = calculateTotal(items) · V1\"]"), mmd); // 내부 함수 = 코드 한 줄, 선언은 V1 만
+        assertTrue(mmd.contains(calc.id + "[\"#35;21 long total = calculateTotal(items)\"]"), mmd); // 내부 함수 = 코드 한 줄, 선언은 꼬리표 없음
         assertTrue(mmd.contains("subgraph sg_LAYER_DAO") || !mmd.contains("«DAO»"));
         assertTrue(mmd.indexOf("subgraph sg_LAYER_SERVICE") < mmd.indexOf("subgraph sg_M27["), mmd); // registerOrder 구현
         assertTrue(mmd.contains("요청 파라미터 (19)<br/>mode<br/>orderNo<br/>agreeTerms<br/>channel<br/>"), mmd);
@@ -146,7 +146,7 @@ class PhaseTest {
         // VO 값 설정: 변수명·타입 없이 "프로퍼티 = 값" (클래스는 노드 제목)
         assertTrue(mmd.contains("[\"VO 값 설정 · OrderVO<br/>#35;6 memberId = member.getMemberId()<br/>#35;7 orderType = mode<br/>"
                 + "#35;9 channel = request.channel<br/>#35;12 memo = StringUtil.trimToEmpty(request.memo)\"]"), mmd);
-        assertTrue(mmd.contains("#35;27 totalAmount = total  ⟳V1"), mmd); // 값이 바뀌는 변수
+        assertTrue(mmd.contains("#35;27 totalAmount = total  ⟳ 변경 2회"), mmd); // 값이 바뀌는 변수
         // 조건식: && / || 는 줄 맨 앞, for-each 는 ':' 앞뒤 두 줄, 꼬리표(depth-limit 등) 없음
         assertTrue(mmd.contains("{\"if (couponCode != null<br/>&& !couponCode.isEmpty())\"}"), mmd);
         assertTrue(mmd.contains("{\"for (OrderItemVO item<br/>: items)\"}"), mmd);
@@ -161,8 +161,8 @@ class PhaseTest {
         // 생성자 바인딩(호출 없음)도 위치 순으로 포함, 바인딩 메서드 내부 바인딩은 호출 위치에
         assertTrue(mmd.contains("[\"VO 값 설정 · NotifyCommand<br/>memberId = member.getMemberId()<br/>phone = request.smsPhone\"]"), mmd);
         // 변수 이력: 선언(호출 결과) → 쿠폰 차감 → 포인트 차감
-        assertTrue(mmd.contains("#35;21 long total = calculateTotal(items) · V1\""), mmd);   // 선언: 값 변경 아님
-        assertTrue(mmd.contains("[\"값 변경<br/>total -= usePoint · V1 2/2\"]"), mmd);     // 변경만 센 순번
+        assertTrue(mmd.contains("#35;21 long total = calculateTotal(items)\""), mmd);   // 선언: 값 변경 아님 (꼬리표 없음)
+        assertTrue(mmd.contains("[\"값 변경<br/>total -= usePoint · total v3\"]"), mmd);     // 선언 = v1, 변경마다 +1
         assertTrue(mmd.startsWith(MermaidGraph.INIT + "\nflowchart TD\n"));
     }
 

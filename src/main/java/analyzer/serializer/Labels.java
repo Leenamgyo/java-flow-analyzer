@@ -100,7 +100,7 @@ public final class Labels {
     /**
      * 흐름도 VO 값 설정 1줄 — "프로퍼티 = 값" (타입 없음): #6 memberId = member.getMemberId(),
      * ["status"] = status (Map), memo = StringUtil.trimToEmpty(request.memo).
-     * 값 식 안의 요청 읽기 호출은 request.이름 으로 줄이고, 값이 상태가 바뀌는 변수면 끝에 ⟳V1.
+     * 값 식 안의 요청 읽기 호출은 request.이름 으로 줄이고, 값이 상태가 바뀌는 변수면 끝에 ⟳ 변경 n회.
      * numbered: 같은 메서드의 호출 번호(#n)를 붙인다 (바인딩 메서드 안의 바인딩이면 false).
      */
     public static String bindingLine(AnalysisResult r, Binding b, boolean numbered) {
@@ -111,7 +111,7 @@ public final class Labels {
         if (b.valueExpression != null && b.valueExpression.matches("[A-Za-z_$][\\w$]*")) {
             VariableInfo v = r.variableNamed(b.methodId, b.valueExpression);
             if (v != null) {
-                value += "  ⟳" + v.id;
+                value += "  ⟳ 변경 " + changeCount(r, v) + "회";
             }
         }
         CallSiteInfo s = b.callSiteId == null || !numbered ? null : r.callSite(b.callSiteId);
@@ -138,7 +138,7 @@ public final class Labels {
         return "request." + parameterName(p) + (p.defaultValue == null ? "" : " ?: " + p.defaultValue);
     }
 
-    /** 요청 파라미터 노드 1줄 — 코드 형식: #2 String mode = request.mode ?: "NEW" (값이 바뀌는 변수면 · V1 1/2) */
+    /** 요청 파라미터 노드 1줄 — 코드 형식: #2 String mode = request.mode ?: "NEW" (대입이면 · mode v2) */
     public static String requestLine(AnalysisResult r, CallSiteInfo s, RequestParameterInfo p) {
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
         String type = p.variableType != null ? p.variableType : p.type;
@@ -153,7 +153,13 @@ public final class Labels {
         }
         VariableInfo v = var == null ? null : r.variableNamed(s.callerMethodId, var);
         if (v != null) {
-            line += " · " + v.id; // 선언 — 값 변경 아님 (추적 변수 표시만)
+            // 선언(String x = request…)은 상태 변화가 아니라 꼬리표 없음, 대입(x = request…)이면 버전
+            for (String id : v.changeIds) {
+                VariableChange c = r.variableChange(id);
+                if (contains(c.location, s.location)) {
+                    line += historySuffix(r, c);
+                }
+            }
         }
         return truncate(line, 80);
     }
@@ -173,12 +179,36 @@ public final class Labels {
      * 변수 이력 표시: 선언·파라미터 → "V1" (값 변경 아님), 실제 변경 → "V1 2/3" (변경만 센 순번/전체 변경 수)
      */
     public static String historyTag(AnalysisResult r, VariableChange c) {
-        VariableInfo v = r.variable(c.variableId);
         if (!c.isChange()) {
-            return v.id;
+            return null; // 선언·파라미터는 상태 변화가 아니다 — 꼬리표 없음
         }
-        List<VariableChange> changes = v.changeIds.stream().map(r::variableChange).filter(VariableChange::isChange).toList();
-        return v.id + " " + (changes.indexOf(c) + 1) + "/" + changes.size();
+        VariableInfo v = r.variable(c.variableId);
+        return v.name + " v" + version(r, c);
+    }
+
+    /**
+     * 변수 이름 기준 버전 (타입 무관): 선언 값·파라미터 = v1, 실제 변경마다 +1.
+     * 값 없이 선언(String x;)하면 첫 대입이 v1.
+     */
+    public static int version(AnalysisResult r, VariableChange c) {
+        VariableInfo v = r.variable(c.variableId);
+        int ver = 0;
+        for (String id : v.changeIds) {
+            VariableChange x = r.variableChange(id);
+            if (x.isChange() || "PARAM".equals(x.op) || x.valueExpression != null) {
+                ver++;
+            }
+            if (x == c) {
+                return ver;
+            }
+        }
+        return ver;
+    }
+
+    /** " · total v2" (선언·파라미터면 빈 문자열) */
+    public static String historySuffix(AnalysisResult r, VariableChange c) {
+        String t = historyTag(r, c);
+        return t == null ? "" : " · " + t;
     }
 
     /** 실제 상태 변화 횟수 (선언·파라미터 제외) */
@@ -186,10 +216,10 @@ public final class Labels {
         return v.changeIds.stream().map(r::variableChange).filter(VariableChange::isChange).count();
     }
 
-    /** 값 변경 1줄 — 코드 그대로 + 변경 순번: total -= usePoint · V1 2/2 (선언은 세지 않음) */
+    /** 값 변경 1줄 — 코드 그대로 + 변수 버전: total -= usePoint · total v3 (선언 = v1) */
     public static String changeLine(AnalysisResult r, VariableChange c) {
         VariableInfo v = r.variable(c.variableId);
-        return codeValue(r, c.methodId, c.location, c.expression) + " · " + historyTag(r, c);
+        return codeValue(r, c.methodId, c.location, c.expression) + historySuffix(r, c);
     }
 
     /**

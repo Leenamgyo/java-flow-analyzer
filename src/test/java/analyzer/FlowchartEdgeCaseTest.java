@@ -33,7 +33,7 @@ class FlowchartEdgeCaseTest {
         MermaidGraph g = new FlowchartGenerator().build(r);
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         String mmd = new FlowchartGenerator().render(r, "TD");
-        assertTrue(mmd.contains("[\"상태 변화<br/>n = n - 1 · V1 1/1\"]"), mmd);
+        assertTrue(mmd.contains("[\"상태 변화<br/>n = n - 1 · n v2\"]"), mmd);
         assertTrue(mmd.contains("CALL4[\"#35;4 touch()\"]"), mmd);
         assertFalse(mmd.contains(" · this v"), mmd); // 수신 객체 버전 표시 없음
     }
@@ -130,6 +130,18 @@ class FlowchartEdgeCaseTest {
         assertTrue(mmd.contains("extraInfo.add(#quot;DELTA#quot;)"), mmd);
         // JDK 호출뿐인 삼항 문장도 사라지지 않는다
         assertTrue(mmd.contains("extraInfo.isEmpty() ? null : extraInfo.get(0)"), mmd);
+    }
+
+    @Test
+    void partiallyResolvedExternalCallIsNotUnresolvedColor() {
+        // String uri = request.getRequestURI(): 대상 타입은 확정(시그니처만 모름) → 주황 점선(unresolved)이 아니라 external
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "externalRequestCall",
+                c -> c.analysis.includeExternalLibraryCalls = true);
+        CallSiteInfo uri = call(r, "request.getRequestURI()");
+        assertEquals(analyzer.model.ResolutionStatus.PARTIALLY_RESOLVED, uri.resolution);
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.lines().anyMatch(l -> l.trim().matches("class (.*,)?" + uri.id + "(,.*)? external")), mmd);
+        assertFalse(mmd.lines().anyMatch(l -> l.trim().matches("class (.*,)?" + uri.id + "(,.*)? unresolved")), mmd);
     }
 
     @Test

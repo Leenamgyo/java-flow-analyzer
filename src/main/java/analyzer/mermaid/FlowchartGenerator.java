@@ -927,7 +927,7 @@ public final class FlowchartGenerator {
                     .append(stripSemi(Labels.codeValue(r, first.callerMethodId, first.statementLocation, first.statement)));
             for (VariableChange c : r.variableChanges) {
                 if (c.methodId.equals(first.callerMethodId) && contains(first.statementLocation, c.location)) {
-                    line.append(" · ").append(Labels.historyTag(r, c));
+                    line.append(Labels.historySuffix(r, c));
                     changes.remove(c);
                     members.add(c.id);
                 }
@@ -1115,7 +1115,9 @@ public final class FlowchartGenerator {
         }
         for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) {
             VariableInfo v = r.variable(c.variableId);
-            code.append(v.name.equals(var) ? "" : " → " + v.name).append(" · ").append(Labels.historyTag(r, c));
+            if (c.isChange() || !v.name.equals(var)) {
+                code.append(v.name.equals(var) ? "" : " → " + v.name).append(Labels.historySuffix(r, c));
+            }
         }
         return code.toString();
     }
@@ -1276,7 +1278,7 @@ public final class FlowchartGenerator {
         // 이 문장이 추적 변수의 선언/변경이면 이력 표시, 값 변경 노드는 따로 만들지 않음
         for (VariableChange c : r.variableChanges) {
             if (c.methodId.equals(first.callerMethodId) && contains(first.statementLocation, c.location)) {
-                line.append(" · ").append(Labels.historyTag(r, c));
+                line.append(Labels.historySuffix(r, c));
                 changes.remove(c);
                 g.alias(c.id, first.id);
             }
@@ -1617,7 +1619,9 @@ public final class FlowchartGenerator {
             case NOT_APPLICABLE -> "unresolved";
             case CYCLE -> "cycle";
             case DEPTH_LIMIT -> req ? "req" : "depth";
-            case EXTERNAL, NO_BODY -> req ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "external" : "unresolved";
+            // 소스 밖 타입(HttpServletRequest 등)은 시그니처를 몰라 PARTIALLY_RESOLVED 지만 대상 타입은 확정 → 외부 호출 색
+            case EXTERNAL, NO_BODY -> req ? "req" : s.resolution == ResolutionStatus.RESOLVED
+                    || s.resolution == ResolutionStatus.PARTIALLY_RESOLVED ? "external" : "unresolved";
             default -> req ? "req" : s.resolution == ResolutionStatus.RESOLVED ? "codeline" : "unresolved";
         };
     }

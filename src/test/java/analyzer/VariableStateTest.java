@@ -77,23 +77,23 @@ class VariableStateTest {
         String mmd = new FlowchartGenerator().render(r, "TD");
         VariableInfo size = var(r, "variableState", "size");
         VariableChange clamp = history(r, size).get(1);
-        // 상태 변화 노드: 조건 분기 안, 변경만 센 순번
-        assertTrue(mmd.contains("VAR_" + clamp.id + "[\"상태 변화<br/>size = 100 · " + size.id + " 1/1\"]"), mmd);
+        // 상태 변화 노드: 조건 분기 안, 변수 이름 기준 버전 (선언 값 = v1, 변경마다 +1)
+        assertTrue(mmd.contains("VAR_" + clamp.id + "[\"상태 변화<br/>size = 100 · size v2\"]"), mmd);
         // x = call(): 별도 노드 없이 호출 노드에 "→ x"
         VariableInfo label = var(r, "variableState", "label");
         VariableChange assign = history(r, label).get(1);
         String callId = assign.callSiteIds.get(0);
         assertEquals(callId, g.nodeOf(assign.id));
         // 타입 없는 대입 = 값 변경 (자바 코드 그대로 타입을 붙이지 않음)
-        assertTrue(mmd.contains("[\"#35;4 label = format(once) · " + label.id + " 1/1\"]"), mmd);
+        assertTrue(mmd.contains("[\"#35;4 label = format(once) · label v1\"]"), mmd);
         // 선언(타입 있는 초기화)은 값 변경 노드로 그리지 않는다
         assertFalse(mmd.contains("값 변경<br/>int size"), mmd);
         assertFalse(mmd.contains("값 변경<br/>long total = 0"), mmd);
         // 값이 바뀌는 변수가 VO 로 → ⟳
-        assertTrue(mmd.contains("page = size  ⟳" + size.id), mmd);
+        assertTrue(mmd.contains("page = size  ⟳ 변경 1회"), mmd);
 
         String tree = new CallTreeWriter(true).render(r);
-        assertTrue(tree.contains("≔ size = 100 · " + size.id + " 1/1  (" + clamp.id + ")"), tree);
+        assertTrue(tree.contains("≔ size = 100 · size v2  (" + clamp.id + ")"), tree);
         String mapping = new MappingReportWriter().render(r);
         assertTrue(mapping.contains("## 변수 상태 변화"));
         assertTrue(mapping.contains("| " + clamp.id + " | 대입 = | `size = 100` | literal:100 | `size > 100` |"), mapping);
@@ -113,7 +113,7 @@ class VariableStateTest {
                 assertTrue(g.has(c.id), c.id + " " + c.expression);
             }
         }
-        assertTrue(mmd.contains("count = count + noticeBiz.list(#quot;a#quot;).size() · " + count.id + " 1/2"), mmd);
+        assertTrue(mmd.contains("count = count + noticeBiz.list(#quot;a#quot;).size() · count v2"), mmd);
         // 일반 흐름도도 동일
         new FlowchartGenerator().render(r, "TD");
     }
@@ -124,7 +124,7 @@ class VariableStateTest {
         PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());
         String mmd = new FlowchartGenerator(pm).render(r, "TD"); // 기존: "변수 변경 노드 누락"
         VariableInfo retry = var(r, "stateInTry", "retry");
-        assertTrue(mmd.contains("retry++ · " + retry.id + " 1/1"), mmd);
+        assertTrue(mmd.contains("retry++ · retry v2"), mmd);
         new FlowchartGenerator().render(r, "TD");
     }
 

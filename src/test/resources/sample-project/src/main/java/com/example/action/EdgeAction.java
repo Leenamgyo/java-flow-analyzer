@@ -184,6 +184,12 @@ public class EdgeAction {
         return extraInfo;
     }
 
+    // ---- 소스 밖 타입(HttpServletRequest)의 호출: 시그니처를 몰라 PARTIALLY_RESOLVED 지만 미해결 색이 아니라 외부 호출 색
+    public String externalRequestCall(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        return uri;
+    }
+
     // ---- 이어지는 일반 호출은 노드 1개 (기본 블록처럼), 상태 변화가 끼면 나뉜다
     public String plainCallRun(List<String> extraInfo, String v) {
         extraInfo.add("A");
