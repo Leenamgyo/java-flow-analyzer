@@ -60,8 +60,8 @@ class RequestSetupTest {
 
                 | 파라미터 | 타입 | 필수 | 기본값 | 설명 |
                 |---|---|---|---|---|
-                | appId | String | 확인 불가 | - |  |
-                | lang | String | 확인 불가 | - | 조건 l != null · .trim() |
+                | appId | String | N | - |  |
+                | lang | String | N | - | 조건 l != null · .trim() |
                 """, new SpecWriter().render(r));
     }
 

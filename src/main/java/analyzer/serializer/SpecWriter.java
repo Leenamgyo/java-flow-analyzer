@@ -38,7 +38,8 @@ public final class SpecWriter {
             for (RequestSpecEntry e : r.requestSpec) {
                 sb.append("| ").append(e.name).append(" | ")
                         .append(e.types.isEmpty() ? "-" : md(String.join(", ", e.types))).append(" | ")
-                        .append(e.required.isEmpty() ? "확인 불가"
+                        // 사용자 요구: 필수 여부는 소스로 알 수 없어(StringUtil.is… 검사 등) 어노테이션에 적힌 경우 말고는 N
+                        .append(e.required.isEmpty() ? "N"
                                 : String.join(", ", e.required.stream().map(b -> b ? "Y" : "N").toList())).append(" | ")
                         .append(e.defaultValues.isEmpty() ? "-" : md(String.join(", ", e.defaultValues))).append(" | ")
                         .append(md(description(r, e))).append(" |\n");
