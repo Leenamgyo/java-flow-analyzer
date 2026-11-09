@@ -43,34 +43,6 @@ public final class SqlCalls {
     }
 
     /**
-     * 문자열 검색: 호출 인자 중 문자열(리터럴·상수·그 + 연결·지역 변수 선언 값)이 매퍼 XML statement id 와 일치하면 SqlRef.
-     * 메서드 이름·수신 타입과 무관 (사용자: grep 으로 id 찾으면 됨 — DAO 의 SQL 은 반드시 XML 에 1:1 로 있다).
-     * 점 없는 id(iBatis 단독 id)는 bareAllowed(DAO·Mapper·Repository 클래스 안)일 때만 — "delete" 같은 흔한 단어 오탐 방지.
-     */
-    public static SqlRef byXml(MethodCallExpr call, Function<Expression, Optional<String>> strings, MapperXmlIndex idx,
-                               boolean bareAllowed) {
-        if (idx == null) {
-            return null;
-        }
-        for (int i = 0; i < call.getArguments().size(); i++) {
-            Expression arg = call.getArgument(i);
-            boolean[] constant = {false};
-            Optional<String> v = eval(arg, strings, constant);
-            if (v.isEmpty() || !v.get().matches("[A-Za-z_$][\\w$.\\-]*") || !v.get().contains(".") && !bareAllowed
-                    || idx.find(v.get()).isEmpty()) {
-                continue;
-            }
-            SqlRef ref = new SqlRef();
-            ref.statementId = v.get();
-            ref.basis = constant[0] ? "CONSTANT" : "LITERAL";
-            ref.notes.add("문자열 검색: " + (i + 1) + "번째 인자가 매퍼 XML id 와 일치 (" + call.getScope().map(x -> x + ".").orElse("")
-                    + call.getNameAsString() + ")");
-            return ref;
-        }
-        return null;
-    }
-
-    /**
      * Mapper 역할이 아닌 source 인터페이스(예: MyBatis 매퍼를 *DAO 로 이름 붙인 경우)의 본문 없는 메서드 →
      * FQN.메서드명. 인터페이스에 @Mapper 가 있으면 그대로, 없으면 XML 에 그 statement 가 있을 때만 (requiresXmlMatch).
      */
@@ -130,11 +102,6 @@ public final class SqlCalls {
             ref.basis = "UNRESOLVED";
         }
         return ref;
-    }
-
-    /** 문자열 리터럴·상수의 + 연결 값 (못 정하면 empty) */
-    public static Optional<String> evalString(Expression e, Function<Expression, Optional<String>> strings) {
-        return eval(e, strings, new boolean[]{false});
     }
 
     /** "ns." + "selectX" / NAMESPACE + "selectX" 처럼 문자열 리터럴·상수의 + 연결만 계산 */

@@ -41,46 +41,16 @@ class MapperSqlTest {
         assertEquals(List.of("T"), MapperXmlIndex.tables("select seq.nextval from dual; insert into T (a) values (1)"));
     }
 
-    /**
-     * DAO 의 흔한 SQL 호출 방식 — SqlSession 타입이 아니어도 첫 인자가 매퍼 XML statement 와 맞으면 SQL 호출:
-     * 상속 메서드(selectList("ns.id") / super.insert), 라이브러리 상위 클래스(EgovAbstractDAO.list), 공통 DAO 빈,
-     * *DAO 이름의 MyBatis 인터페이스(XML namespace = FQN). XML 에 없으면 SQL 로 보지 않는다 (추측 금지).
-     */
+    /** *DAO 이름의 MyBatis 매퍼 인터페이스: XML namespace = 인터페이스 FQN 이면 SQL 호출, XML 에 없는 메서드는 아님 */
     @Test
-    void daoPatternsAreSqlCallsOnlyWhenXmlHasTheStatement() {
-        AnalysisResult r = Fixtures.analyze("DaoPatternAction", "execute", c -> c.analysis.expandRoles = List.of("DAO"));
-        for (String[] e : new String[][]{
-                {"selectList(\"notice.selectNotices\", vo)", "notice.selectNotices", "TB_NOTICE"},
-                {"super.insert(\"notice.insertNotice\", vo)", "notice.insertNotice", "TB_NOTICE"},
-                {"list(\"article.selectArticles\", vo)", "article.selectArticles", "TB_ARTICLE"},
-                {"commonDao.selectList(\"notice.countNotices\", vo)", "notice.countNotices", "TB_NOTICE"},
-                {"memberDAO.selectMember(memberId)", "com.example.dao.MemberDAO.selectMember", "TB_MEMBER"},
-                // 문자열 검색: 메서드 이름 무관 · 지역 변수 선언 값(상수 연결) · DAO 안 namespace 없는 id
-                {"commonQuery(\"notice.countNotices\", vo)", "notice.countNotices", "TB_NOTICE"},
-                {"selectList(id, vo)", "notice.selectNotices", "TB_NOTICE"},
-                {"insert(\"insertNotice\", vo)", "insertNotice", "TB_NOTICE"}}) {
-            SqlRef ref = sql(r, e[0]);
-            assertNotNull(ref, e[0]);
-            assertEquals("FOUND", ref.xmlStatus, e[0]);
-            assertEquals(e[1], ref.statementId, e[0]);
-            assertTrue(ref.tables.contains(e[2]), e[0] + " " + ref.tables);
-        }
-        // XML 에 없는 id·메서드는 SQL 호출이 아니다
-        assertNull(sql(r, "selectList(\"notInXml\", null)"));
+    void daoNamedMapperInterface() {
+        AnalysisResult r = Fixtures.analyze("DaoPatternAction", "execute");
+        SqlRef ref = sql(r, "memberDAO.selectMember(memberId)");
+        assertNotNull(ref);
+        assertEquals("FOUND", ref.xmlStatus);
+        assertEquals("com.example.dao.MemberDAO.selectMember", ref.statementId);
+        assertEquals(List.of("TB_MEMBER"), ref.tables);
         assertNull(sql(r, "memberDAO.notInXml(memberId)"));
-        // 공통 DAO 안의 sqlSession.selectList(statementId, …) 는 id 미확정 + 호출하는 쪽 안내
-        SqlRef inner = r.callSites.stream().filter(c -> c.expression.equals("sqlSession.selectList(statementId, param)")
-                && r.method(c.callerMethodId).name.equals("selectList") && r.classOf(r.method(c.callerMethodId)).name.equals("CommonDAO"))
-                .findFirst().orElseThrow().sql;
-        assertEquals("SKIPPED", inner.xmlStatus);
-        assertTrue(inner.notes.stream().anyMatch(n -> n.contains("notice.countNotices")), inner.notes.toString());
-        // 분석서 2.3: XML id 를 못 찾은 DAO 메서드만 (공통 메서드·위임 메서드는 제외)
-        String md = new analyzer.serializer.AnalysisReportWriter().render(r, "SKIPPED");
-        String missing = md.substring(md.indexOf("### 2.3"), md.indexOf("## 3."));
-        assertTrue(missing.contains("`NoticeDAO.notSql`"), missing);
-        for (String ok : List.of("findNotices", "delegate", "BaseDAO.selectList", "CommonDAO.selectList", "count`", "byVariable", "bare")) {
-            assertFalse(missing.contains(ok), ok + "\n" + missing);
-        }
     }
 
     @Test

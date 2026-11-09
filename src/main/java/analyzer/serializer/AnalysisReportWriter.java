@@ -109,8 +109,7 @@ public final class AnalysisReportWriter {
         sb.append("## 2. Mapper SQL (XML id · 테이블)\n\n");
         List<CallSiteInfo> calls = r.callSites.stream().filter(s -> s.sql != null).toList();
         if (calls.isEmpty()) {
-            sb.append("매퍼 SQL 호출이 없습니다 (매퍼 XML id 와 일치하는 문자열 인자·Mapper 인터페이스 메서드 호출 없음).\n\n");
-            missingSql(r, sb);
+            sb.append("매퍼 SQL 호출이 없습니다 (SqlSession.select…(\"id\") 호출·매퍼 인터페이스 메서드 호출 없음).\n\n");
             return;
         }
         sb.append("> 쿼리 본문은 넣지 않습니다 — XML 파일과 statement id 로 찾아 옮기세요. 테이블은 SQL 의 FROM·JOIN·INTO·UPDATE·MERGE USING ")
@@ -157,43 +156,6 @@ public final class AnalysisReportWriter {
                     .append(q.tables.isEmpty() ? "-" : String.join(", ", q.tables)).append(" | ")
                     .append(notes.isEmpty() ? "" : cell(String.join("; ", notes))).append(" |\n");
         }
-        sb.append('\n');
-        missingSql(r, sb);
-    }
-
-    /**
-     * 2.3 SQL id 를 못 찾은 DAO 메서드 — DAO·Mapper·Repository 의 분석한 메서드인데 그 안 호출에 SQL 이 하나도 없으면.
-     * DAO 의 SQL 은 반드시 매퍼 XML 에 1:1 로 있어야 하므로 조용히 넘기지 않고 드러낸다 (사용자 요구).
-     */
-    /** 메서드 안 호출에 id 가 정해진 SQL 이 있는지 */
-    private static boolean hasSql(AnalysisResult r, String methodId) {
-        return r.callSitesOf(methodId).stream().anyMatch(c -> c.sql != null && !"UNRESOLVED".equals(c.sql.basis));
-    }
-
-    /** id 를 파라미터로 받아 SqlSession 에 넘기는 공통 메서드 (BaseDAO.selectList(statementId, …)) — 못 찾음 대상 아님 */
-    private static boolean idHelper(AnalysisResult r, MethodInfo m) {
-        return r.callSitesOf(m.id).stream().anyMatch(c -> c.sql != null && "UNRESOLVED".equals(c.sql.basis)
-                && m.parameters.stream().anyMatch(p -> p.name().equals(c.sql.statementId)));
-    }
-
-    private static void missingSql(AnalysisResult r, StringBuilder sb) {
-        List<MethodInfo> missing = r.methods().stream().filter(m -> m.analyzed && m.hasBody)
-                .filter(m -> {
-                    var role = r.classOf(m).role;
-                    return role == analyzer.model.ClassRole.DAO || role == analyzer.model.ClassRole.MAPPER
-                            || role == analyzer.model.ClassRole.REPOSITORY;
-                })
-                .filter(m -> !hasSql(r, m.id) && !idHelper(r, m)
-                        && r.callSitesOf(m.id).stream().noneMatch(c -> c.targetMethodId != null && hasSql(r, c.expansionTargetId())))
-                .toList();
-        if (missing.isEmpty()) {
-            return;
-        }
-        sb.append("### 2.3 ⚠ SQL id 못 찾음 (DAO 메서드)\n\n")
-                .append("> DAO·Mapper·Repository 메서드인데 매퍼 XML id 와 일치하는 문자열이 없습니다. XML 위치(`analysis.mapper-xml-roots`)나 ")
-                .append("실행 시에만 정해지는 id(변수·메서드 결과)인지 확인하세요.\n\n| 메서드 | 위치 |\n|---|---|\n");
-        missing.forEach(m -> sb.append("| `").append(r.classOf(m).name).append('.').append(m.name).append("` | ")
-                .append(m.location == null ? "-" : m.location.shortText()).append(" |\n"));
         sb.append('\n');
     }
 

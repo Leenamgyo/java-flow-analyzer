@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<sqlMap namespace="article">
-    <select id="selectArticles">SELECT A.ID FROM TB_ARTICLE A JOIN TB_BOARD B ON A.BOARD_ID = B.ID</select>
-</sqlMap>

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<sqlMap namespace="notice">
-    <select id="selectNotices">SELECT N.ID, N.TITLE FROM TB_NOTICE N WHERE N.USE_YN = 'Y'</select>
-    <insert id="insertNotice">INSERT INTO TB_NOTICE (ID, TITLE) VALUES (#id#, #title#)</insert>
-    <select id="countNotices">SELECT COUNT(*) FROM TB_NOTICE</select>
-</sqlMap>
