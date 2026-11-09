@@ -112,6 +112,26 @@ class InitialValueAndReaderTest {
         assertNull(page.defaultValue);
     }
 
+    /**
+     * 기본값 함수가 세부 상자로 가면(max-depth 2) 그 호출 노드는 호출만 — 문장 전체를 다시 쓰면
+     * "String scVersion = …" 줄이 두 번 그려졌다 (사용자 지적).
+     */
+    @Test
+    void nestedDefaultCallIsNotDrawnAsWholeStatementAgain(@TempDir Path tmp) throws Exception {
+        AnalyzerConfig cfg = config(tmp);
+        cfg.analysis.maxDepth = 2;
+        AnalysisResult r = Main.analyze(cfg);
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        String stmt = "String scVersion = request.scVersion ?: VasUtil.getExceptionScVersion(appId)";
+        assertEquals(1, mmd.split(java.util.regex.Pattern.quote(stmt), -1).length - 1, mmd);
+        var inner = r.callSites.stream().filter(c -> c.expression.equals("VasUtil.getExceptionScVersion(appId)")).findFirst().orElseThrow();
+        assertTrue(mmd.contains(inner.id + "[\"#35;" + inner.order + " VasUtil.getExceptionScVersion(appId)\"]"), mmd);
+        assertTrue(mmd.contains(inner.id + " ==> "), mmd); // 세부 상자로는 그대로 이어짐
+    }
+
     @Test
     void requestColorSurvivesLineWrap() {
         MermaidGraph g = new MermaidGraph().maxLineLength(40);

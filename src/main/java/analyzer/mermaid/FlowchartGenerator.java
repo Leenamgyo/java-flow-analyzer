@@ -1297,7 +1297,12 @@ public final class FlowchartGenerator {
     private String callCode(CallSiteInfo s) {
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
         StringBuilder code = new StringBuilder("#" + s.order + " ");
-        if (var == null && s.statement != null && s.statementLocation != null) {
+        // 인자 안의 호출(세부 상자로 가서 따로 그리는 기본값 함수 등)은 호출만 — 문장 전체는 바깥 호출 노드가 보인다.
+        // 문장 전체를 쓰면 getParameter(req, "x", VasUtil.f(id)) 의 문장이 두 번 그려졌다 (사용자 지적).
+        // 바깥 호출이 모델에 없으면(라이브러리 제외 등) 문장 전체를 써야 코드가 사라지지 않는다.
+        boolean nested = s.inArgument && r.callSitesOf(s.callerMethodId).stream()
+                .anyMatch(o -> o != s && contains(o.location, s.location));
+        if (var == null && !nested && s.statement != null && s.statementLocation != null) {
             code.append(stripSemi(Labels.codeValue(r, s.callerMethodId, s.statementLocation, s.statement).trim()));
         } else {
             if (var != null) {
