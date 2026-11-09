@@ -51,16 +51,18 @@ class RequestSetupTest {
     }
 
     @Test
-    void specHasRequestParamDefinition() {
+    void specIsOneConciseTable() {
         AnalysisResult r = analyze(List.of("*Action.ParamMgr", "CountryUtil"));
-        String md = new SpecWriter().render(r);
-        assertTrue(md.startsWith("# 명세: AppDetailAction.execute()"), md);
-        assertTrue(md.contains("## 1. Request Param 정의"), md);
-        assertTrue(md.contains("| 1 | **`appId`** | String | 확인 불가 | - | - | `ParamMgr.appId` | ParamMgr.setup:31 (P1) |"), md);
-        assertTrue(md.contains("`ParamMgr.lang` (조건부)"), md);
-        assertTrue(md.contains("`CountryUtil.resolveCountry(pm.mcc, pm.lang)` (CALL2 :18)"), md); // 사용처
-        // 요청 객체를 넘겼지만 본문을 보지 않은 호출 = 수동 확인
-        assertTrue(md.contains("`StringUtil.getParameter(request, \"page\", \"1\")` — ParamMgr.setup:32"), md);
+        assertEquals("""
+                # 명세: AppDetailAction.execute()
+
+                ## 1. Request Param 정의
+
+                | 파라미터 | 타입 | 필수 | 기본값 | 설명 |
+                |---|---|---|---|---|
+                | appId | String | 확인 불가 | - |  |
+                | lang | String | 확인 불가 | - | 조건 l != null · .trim() |
+                """, new SpecWriter().render(r));
     }
 
     @Test

@@ -2,7 +2,7 @@
 
 지정한 Action/Controller **하나**의 진입 메서드에서 시작해 Java 소스를 정적 분석하고,
 **하나의 공통 모델**로 실행 흐름 + **데이터 바인딩 명세**(어떤 값이 어느 객체 필드로 가는지)를 만드는 마이그레이션 분석 도구.
-출력: `analysis.yaml`(Source of Truth) · `spec.md`(명세, 현재 1. Request Param 정의) · `flowchart.mmd`(+ `flowchart-sections/`·`flowchart-skeleton/`·`flowchart-svg/`) · `mapping.md` · `analysis.md` · `call-tree.txt` · `phase-flowchart.mmd` · `phase-summary.md`.
+출력: `analysis.yaml`(Source of Truth) · `spec.md`(간결한 명세, 현재 1. Request Param 정의) · `flowchart.mmd`(+ `flowchart-sections/`·`flowchart-skeleton/`·`flowchart-svg/`) · `mapping.md` · `analysis.md` · `call-tree.txt` · `phase-flowchart.mmd` · `phase-summary.md`.
 요구사항: [docs/SPEC-v2.md](docs/SPEC-v2.md)(현행, 바인딩·YAML·비교) ⊃ [docs/SPEC.md](docs/SPEC.md)(v1 흐름 분석). 애매하면 v2 → v1 순으로 기준.
 
 ## 절대 규칙 (SPEC §1–2)
@@ -145,7 +145,7 @@ analyzer/
 - `analysis.yaml` 단일 문서, camelCase, `schemaVersion: "1.0"`. 쓰고 다시 읽어 `AnalysisSchema` 로 필수 키·타입·열거값·ID 형식·참조 검증 → 실패 시 예외. 숫자처럼 보이는 문자열은 따옴표 강제(`ALWAYS_QUOTE_NUMBERS_AS_STRINGS`).
 - 바인딩은 표시용 `source`/`transform`/`condition` 문자열과 구조화된 `sources`/`transforms`/`conditions` 를 함께 기록.
 - `comparison.md`(SPEC-v2 §7)는 신규 프로젝트 데이터가 없으면 만들지 않는다(미구현).
-- `spec.md`(`SpecWriter`, 사용자 요구: 분석이 끝난 것을 명세 파일 하나에 장 단위로 정리 — 파일을 따로 만들지 말 것): `## 1. Request Param 정의` = 1.1 개요 · 1.2 파라미터 목록(타입·필수(어노테이션만, 아니면 `확인 불가`)·기본값·검증 조건(`AnalysisReportWriter.validations`)·저장 위치(바인딩 객체.필드)·읽는 곳) · 1.3 파라미터 상세(읽기 코드·받는 변수·저장·사용 = 받는 변수/`객체변수.필드` 가 인자에 나오는 호출) · 1.4 요청 값을 담는 객체(필드 값 설정 전체, 요청 값 굵게, 미할당) · 1.5 수동 확인(이름 미확정·전체 조회·**요청 객체를 넘겼지만 본문을 분석하지 않은 호출**). 다음 장은 이 파일에 이어 붙인다.
+- `spec.md`(`SpecWriter`, 사용자 요구: 분석이 끝난 것을 명세 파일 하나에 장 단위로, **간결하게** — 분석 근거는 넣지 않음): `## 1. Request Param 정의` = 일반 API 명세 Request 표 하나 `파라미터 | 타입 | 필수 | 기본값 | 설명`(필수는 어노테이션만 Y/N, 아니면 `확인 불가`; 설명 = 검증 조건·값 변환만, 없으면 빈칸). 이름 미확정·전체 조회는 건수 한 줄로 analysis.md 안내. 다음 장은 이 파일에 이어 붙인다.
 - analysis.md 순서(사용자 요구): 1 Request Parameter → 2 Mapper SQL(XML id·테이블) → 3 분석 개요(관련 클래스 표: 역할별 `#### 역할 (n)` 표 — `CLASS_GROUPS` 순서 Action·Controller·Service·Biz·DAO / Mapper / Repository(한 묶음)·VO·Validator·Util·Other (Service·Biz 는 따로 — 사용자 요구), 역할 안에서 인터페이스 먼저·그다음 클래스, `종류`·`사용 위치` 열 — 호출자 → 메서드 · CALL ID :줄, 구현 후보 연결, VO 객체) → 4 실행 흐름도(다이어그램은 너무 커서 넣지 않고 flowchart-skeleton·flowchart-sections·flowchart.mmd·phase-flowchart.mmd 를 직접 열라는 안내만) → 5 바인딩 → 6 예외 → 7 비교 → 8 부록.
 - analysis.md 에는 메서드 호출 관계·메서드 목록·Unresolved 목록·호출 트리를 넣지 않는다(사용자 요구: 분석서에 중요하지 않음). 각각 `analysis.yaml`(methods, calls 의 resolution)·`call-tree.txt` 에 있고, 분석서 머리말에 위치를 안내.
 - 호출 트리 제외 `output.call-tree-exclude`(사용자 관리, 기본 없음): `flowchart-exclude` 와 같은 패턴·매처(`serializer.Excludes`, 흐름도와 공용). 맞는 호출은 줄도 그 아래 전개도 없고, 트리 끝에 `※ call-tree-exclude (… N개)` 를 남긴다. 표시에서만 빼며 모델·YAML·mapping.md 는 그대로.
