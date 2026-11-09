@@ -85,7 +85,7 @@ public final class OutputWriter {
         }
         Files.writeString(dir.resolve("mapping.md"), new MappingReportWriter().render(r));
         written.add(dir.resolve("mapping.md"));
-        Files.writeString(dir.resolve("analysis.md"), new AnalysisReportWriter().render(r, mermaid, mermaidStatus));
+        Files.writeString(dir.resolve("analysis.md"), new AnalysisReportWriter().render(r, mermaidStatus));
         written.add(dir.resolve("analysis.md"));
         return written;
     }

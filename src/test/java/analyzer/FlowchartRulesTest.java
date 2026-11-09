@@ -33,7 +33,8 @@ class FlowchartRulesTest {
     }
 
     @Test
-    void consecutiveVoidCallsAreOneVersionedStateBlock() {
+    void voidCallsAreNotStateChanges() {
+        // void 라고 상태를 바꾼다는 보장이 없다 — release(); publish(vo); release(); 는 각자 호출 노드 (==> 메서드)
         AnalysisResult r = Fixtures.analyze("CaseAction", "flowRules");
         MermaidGraph g = new FlowchartGenerator().build(r);
         assertEquals(List.of(), g.validate());
@@ -41,26 +42,12 @@ class FlowchartRulesTest {
         String mmd = new FlowchartGenerator().render(r, "TD");
         CallSiteInfo first = call(r, "release()");
         CallSiteInfo publish = call(r, "publish(vo)");
-        // release(); publish(vo); release(); → 상태 변화 블록 1개, 같은 대상(this)의 버전 v1 → v3
-        assertEquals(first.id, g.nodeOf(publish.id));
-        assertTrue(mmd.contains(first.id + "[\"상태 변화<br/>#35;5 release() · this v1<br/>#35;6 publish(vo) · this v2<br/>"
-                + "#35;7 release() · this v3\"]"), mmd);
-        // 합친 블록에서도 본문을 그리는 메서드로 ==> (호출마다 1개, #순번 라벨)
-        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(first.id) && e.to().equals(publish.targetMethodId)
-                && e.style() == MermaidGraph.EdgeStyle.CALL && "#6".equals(e.label())), g.edges().toString());
-        assertTrue(mmd.contains("classDef state "), mmd);
-    }
-
-    @Test
-    void stateVersionFollowsTheFlowNotSourceOrder() {
-        // if / else-if / else 갈래마다 같은 버전, finally 는 빠져나가는 경로들 중 큰 버전 다음
-        AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute");
-        String mmd = new FlowchartGenerator().render(r, "TD");
-        assertTrue(mmd.contains("validateParameters(request) · this v1"), mmd);
-        for (String c : List.of("logEmpty(userId) · this v2", "trim(apps, 100) · this v2", "audit(userId, apps.size()) · this v2",
-                "handleValidationError(e) · this v2", "handleError(e) · this v2", "cleanup() · this v3")) {
-            assertTrue(mmd.contains(c), c + "\n" + mmd);
-        }
+        assertFalse(first.id.equals(g.nodeOf(publish.id)));
+        assertTrue(mmd.contains(first.id + "[\"#35;5 release()\"]"), mmd);
+        assertTrue(mmd.contains(publish.id + "[\"#35;6 publish(vo)\"]"), mmd);
+        assertFalse(mmd.contains("상태 변화<br/>"), mmd); // 이 메서드에는 변수 값 변경이 없다
+        assertTrue(g.edges().stream().anyMatch(e -> e.from().equals(publish.id) && e.to().equals(publish.targetMethodId)
+                && e.style() == MermaidGraph.EdgeStyle.CALL), g.edges().toString());
     }
 
     @Test
@@ -142,7 +129,7 @@ class FlowchartRulesTest {
         assertFalse(mmd.contains("로그<br/>"), mmd);
         assertFalse(mmd.contains("publish(vo)"), mmd);
         assertFalse(mmd.contains("sg_" + publish.targetMethodId), mmd);
-        assertTrue(mmd.contains("#35;5 release() · this v1<br/>#35;7 release() · this v2"), mmd);
+        assertTrue(mmd.contains("[\"#35;5 release()\"]") && mmd.contains("[\"#35;7 release()\"]"), mmd);
         // 설정 키: output.flowchart-exclude
         Path f = Files.createTempFile("cfg", ".yml");
         Files.writeString(f, "target: { source-root: x, class: A }\noutput:\n  flowchart-exclude: [\"*Util.*\", \"LOG.debug\"]\n");

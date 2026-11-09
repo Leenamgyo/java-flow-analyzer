@@ -26,7 +26,7 @@ import static analyzer.serializer.MappingReportWriter.method;
 /** analysis.md — 전체 소스 분석서 (공통 모델에서만 생성). */
 public final class AnalysisReportWriter {
 
-    public String render(AnalysisResult r, String mermaidText, String mermaidStatus) {
+    public String render(AnalysisResult r, String mermaidStatus) {
         StringBuilder sb = new StringBuilder();
         ClassInfo target = r.clazz(r.targetClassId);
         MethodInfo entry = r.method(r.entryMethodId);
@@ -38,8 +38,11 @@ public final class AnalysisReportWriter {
         requestParameters(r, sb);
         overview(r, target, entry, sb);
         sb.append("## 3. 실행 흐름도\n\n");
-        sb.append("조건문·try/catch·주요 메서드 호출 중심이며, 객체 바인딩은 객체당 요약 노드 1개로 표시합니다(`flowchart.mmd`).\n\n");
-        sb.append("```mermaid\n").append(mermaidText == null ? "" : mermaidText).append("```\n\n");
+        // 흐름도는 커서 분석서에 넣지 않는다 (사용자 요구) — 파일을 직접 열어 확인
+        sb.append("흐름도는 크기가 커서 분석서에 넣지 않습니다. 아래 파일을 직접 열어 확인하세요.\n\n")
+                .append("- `flowchart.md` — 메서드별 흐름도 합본(목차 포함), 낱개 파일은 `flowchart/` (`00-overview.mmd` = 메서드 호출 관계)\n")
+                .append("- `flowchart.mmd` — 전체 흐름도 한 파일\n")
+                .append("- `phase-flowchart.mmd` · `phase-summary.md` — 단계 보기(바인딩 › 체크 › 로직 › 후처리) 요약\n\n");
         bindings(r, sb);
         exceptions(r, sb);
         appendix(r, mermaidStatus, sb);

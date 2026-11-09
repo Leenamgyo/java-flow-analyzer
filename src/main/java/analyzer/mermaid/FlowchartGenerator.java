@@ -259,7 +259,6 @@ public final class FlowchartGenerator {
                         .findFirst().ifPresent(s -> assignedBy.computeIfAbsent(s.id, k -> new ArrayList<>()).add(c));
             }
         }
-        stateVersions.clear();
         // 일반 흐름도는 보조 메서드도 접지 않는다 (빠진 코드 없음) — 접기는 단계 보기에서만
         collapsed = phases == null ? Set.of() : collapsedHelpers(r, logicRoles);
         rules = phases == null ? Rules.normal(r, excludes) : Rules.phase(supCalls, supBlocks, collapsed, excludes);
@@ -320,19 +319,6 @@ public final class FlowchartGenerator {
     private Rules rules;
     /** 바인딩 블록 안에 중첩해서 보이는 바인딩 함수 (일반 흐름도) */
     private Set<String> bindingFns = Set.of();
-    /**
-     * 상태 변화 버전: 노드 → (대상 수신 객체 → 그 노드까지 흐름을 따라 바뀐 횟수). 간선을 따라 전해지고
-     * 갈래가 합쳐지는 곳은 큰 값. 그래서 if/else 의 서로 다른 갈래는 같은 버전을 가질 수 있다.
-     */
-    private final Map<String, Map<String, Integer>> stateVersions = new HashMap<>();
-
-    private Map<String, Integer> versionsOf(List<End> ends) {
-        Map<String, Integer> out = new HashMap<>();
-        for (End e : ends) {
-            stateVersions.getOrDefault(e.node(), Map.of()).forEach((k, v) -> out.merge(k, v, Math::max));
-        }
-        return out;
-    }
 
     /** 흐름도에서 뺄 호출·메서드 패턴 (설정 output.flowchart-exclude, 사용자 관리) */
     public FlowchartGenerator exclude(List<String> patterns) {
@@ -793,7 +779,7 @@ public final class FlowchartGenerator {
      * <ul>
      *   <li>bind — 바인딩: 요청 파라미터(글자색 req) · VO 값 설정 · 바인딩 함수(글자색 fn, 안쪽 바인딩 함수는 │ 로 중첩) ·
      *       값 조회 · 로직 호출 없는 선언문</li>
-     *   <li>state — 상태 변화: 반환 타입이 void 인 호출(수신 객체 버전 v1, v2 …) + 변수 값 변경(V1 k/n)</li>
+     *   <li>state — 상태 변화: 소스에 있는 변수 값 변경(=, 복합 대입, ++/--; V1 k/n)만. 메서드 호출은 넣지 않는다</li>
      *   <li>log — 로그: 로깅 호출을 간략히 (배경색으로 구분)</li>
      *   <li>code:&lt;css&gt; — 일반 호출: 세부 상자로 가지 않는 호출 코드 줄 (색 구분이 같은 것끼리, 하나뿐이면 예전 호출 노드)</li>
      * </ul>
@@ -807,13 +793,9 @@ public final class FlowchartGenerator {
         String nodeId;
         final List<Line> lines = new ArrayList<>();
         final List<String> members = new ArrayList<>();
-        /** 상태 변화 블록 안의 호출 (본문을 그리는 메서드면 블록 → 메서드 ==> 간선) */
-        final List<CallSiteInfo> calls = new ArrayList<>();
         /** 일반 호출 블록의 호출들 */
         final List<CallSiteInfo> codeCalls = new ArrayList<>();
         final Set<String> seenBindings = new java.util.HashSet<>();
-        /** 상태 변화 블록을 지난 뒤의 버전 (블록에 들어올 때의 버전에서 시작) */
-        Map<String, Integer> versions;
 
         Pending(Subgraph sg, MethodInfo m, String container) {
             this.sg = sg;
@@ -926,27 +908,6 @@ public final class FlowchartGenerator {
             return cur;
         }
 
-        /** void 호출 = 상태 변화. 같은 메서드에서 그 대상(수신 객체)이 바뀐 순번이 버전 */
-        List<End> stateCall(CallSiteInfo s, List<End> cur) {
-            cur = start("state", cur, s.id);
-            if (versions == null) {
-                versions = versionsOf(cur);
-            }
-            int v = versions.merge(Labels.stateTarget(r, s), 1, Integer::sum);
-            lines.add(new Line(Labels.stateLine(r, s, v), null, null));
-            String impl = Labels.implementationTarget(r, s);
-            if (impl != null) {
-                lines.add(new Line("  impl 후보: " + impl, null, null));
-            }
-            String req = Labels.requestTag(r, s);
-            if (req != null) {
-                lines.add(new Line("  " + req, "req", null));
-            }
-            members.add(s.id);
-            calls.add(s);
-            return cur;
-        }
-
         /** 일반 호출 (세부 상자로 가지 않는 호출) — 색 구분(css)이 같으면 이어 쌓는다 */
         List<End> code(CallSiteInfo s, List<End> cur) {
             cur = start("code:" + callCss(s), cur, s.id);
@@ -964,10 +925,8 @@ public final class FlowchartGenerator {
         List<End> flush(List<End> cur) {
             String k = kind;
             String id = nodeId;
-            Map<String, Integer> after = versions;
             kind = null;
             nodeId = null;
-            versions = null;
             if (k != null && k.startsWith("code:")) {
                 List<CallSiteInfo> cs = new ArrayList<>(codeCalls);
                 codeCalls.clear();
@@ -999,7 +958,6 @@ public final class FlowchartGenerator {
             if (k == null || lines.isEmpty()) {
                 lines.clear();
                 members.clear();
-                calls.clear();
                 return cur;
             }
             List<String> out = new ArrayList<>();
@@ -1040,27 +998,9 @@ public final class FlowchartGenerator {
                     g.alias(x, id);
                 }
             }
-            for (CallSiteInfo s : calls) {
-                if (leadsToDetail(s)) {
-                    String label = switch (s.expansion) {
-                        case SHARED -> "shared";
-                        case CYCLE -> "cycle";
-                        default -> s.implementationMethodId != null ? "impl 후보" : null;
-                    };
-                    if (calls.size() > 1) {
-                        label = "#" + s.order + (label == null ? "" : " " + label);
-                    }
-                    g.edge(id, s.expansionTargetId(), label, EdgeStyle.CALL);
-                }
-            }
             lines.clear();
             members.clear();
-            calls.clear();
-            List<End> next = link(cur, id);
-            if (after != null) {
-                stateVersions.put(id, after);
-            }
-            return next;
+            return link(cur, id);
         }
     }
 
@@ -1166,11 +1106,6 @@ public final class FlowchartGenerator {
         return fnCall(r, bindingFns, s);
     }
 
-    /** 상태 변화: 반환 타입이 void 인 호출 (인자 안 호출은 제외 — void 는 값이 될 수 없다) */
-    private boolean stateChange(CallSiteInfo s) {
-        return s.targetMethodId != null && !s.inArgument && "void".equals(r.method(s.targetMethodId).returnType);
-    }
-
     private List<End> emit(Subgraph sg, MethodInfo m, ControlBlock parent, List<End> in) {
         Set<String> header = parent == null ? Set.of() : headerPositions(parent.type);
         String container = parent == null ? null : parent.id;
@@ -1229,8 +1164,6 @@ public final class FlowchartGenerator {
                     cur = p.log(s, cur);
                 } else if (fetch(s) && s.resultUsage != null && s.resultUsage.startsWith("assigned:")) {
                     cur = p.fetch(s, cur);
-                } else if (stateChange(s) && !(s.targetMethodId != null && collapsed.contains(s.expansionTargetId()))) {
-                    cur = p.stateCall(s, cur);
                 } else if (plainCall(s)) { // 일반 호출: 이어지는 것끼리 노드 1개 (기본 블록처럼)
                     cur = p.code(s, cur);
                 } else {
@@ -1429,8 +1362,6 @@ public final class FlowchartGenerator {
                 for (End e : back) {
                     g.edge(e.node(), reentry, e.label() == null ? "next" : e.label(), e.style());
                 }
-                // 본문을 한 번 이상 돌았을 수 있으므로 done 으로 나가는 버전 = 진입 버전과 본문 끝 버전 중 큰 값
-                versionsOf(back).forEach((k, v) -> stateVersions.computeIfAbsent(b.id, x -> new HashMap<>()).merge(k, v, Math::max));
                 return List.of(new End(b.id, "done", EdgeStyle.FLOW));
             }
             case TRY -> {
@@ -1490,7 +1421,6 @@ public final class FlowchartGenerator {
         for (End e : from) {
             g.edge(e.node(), to, e.label(), e.style());
         }
-        versionsOf(from).forEach((k, v) -> stateVersions.computeIfAbsent(to, x -> new HashMap<>()).merge(k, v, Math::max));
         return List.of(new End(to));
     }
 
@@ -1594,17 +1524,12 @@ public final class FlowchartGenerator {
             ControlBlock c = r.block(cid);
             g.node(sg, c.id, List.of(Labels.blockHeader(c)), Shape.SUBROUTINE, "exc");
             g.edge(ts.id(), c.id, String.join(" | ", c.exceptionTypes), EdgeStyle.EXCEPTION);
-            stateVersions.put(c.id, versionsOf(in));
             out.addAll(emit(sg, m, c, List.of(new End(c.id))));
         }
         if (t.finallyBlockId != null) {
             ControlBlock f = r.block(t.finallyBlockId);
             g.node(sg, f.id, List.of("finally"), Shape.RECT, "fin");
             List<End> into = link(out, f.id);
-            // return/throw 로 빠져나가며 지나는 경로의 상태 버전도 합친다 (그 경로는 점선 finally 간선)
-            r.blocks.stream().filter(b -> b.executesFinally.contains(f.id))
-                    .forEach(b -> stateVersions.getOrDefault(b.id, Map.of()).forEach((k, v) ->
-                            stateVersions.computeIfAbsent(f.id, x -> new HashMap<>()).merge(k, v, Math::max)));
             return emit(sg, m, f, into);
         }
         return out;

@@ -27,22 +27,15 @@ class FlowchartEdgeCaseTest {
     }
 
     @Test
-    void stateBlockMixingVariableChangeAndCallValidates() {
-        // n = n - 1; touch(); — 변수 변경 + ==> 호출이 한 블록 (기존: checkMapping 에서 ClassCastException)
+    void stateBlockHoldsOnlyVariableChanges() {
+        // n = n - 1; touch(); — 상태 변화는 소스의 값 변경(=)만, void 호출 touch() 는 일반 호출 노드(==> 메서드)
         AnalysisResult r = Fixtures.analyze("EdgeAction", "nestedLoops");
         MermaidGraph g = new FlowchartGenerator().build(r);
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         String mmd = new FlowchartGenerator().render(r, "TD");
-        assertTrue(mmd.contains("상태 변화<br/>n = n - 1 · V1 1/1<br/>#35;4 touch() · this v3"), mmd);
-    }
-
-    @Test
-    void versionAfterLoopCountsTheLoopBody() {
-        // 반복문 뒤 touch() 는 본문(최대 v3)을 지난 뒤이므로 v4 (기존: 진입 버전만 보고 v1)
-        AnalysisResult r = Fixtures.analyze("EdgeAction", "nestedLoops");
-        String mmd = new FlowchartGenerator().render(r, "TD");
-        assertTrue(mmd.contains("#35;1 touch() · this v1"), mmd); // 첫 반복 기준
-        assertTrue(mmd.contains("#35;5 touch() · this v4"), mmd);
+        assertTrue(mmd.contains("[\"상태 변화<br/>n = n - 1 · V1 1/1\"]"), mmd);
+        assertTrue(mmd.contains("CALL4[\"#35;4 touch()\"]"), mmd);
+        assertFalse(mmd.contains(" · this v"), mmd); // 수신 객체 버전 표시 없음
     }
 
     @Test
@@ -103,16 +96,6 @@ class FlowchartEdgeCaseTest {
         assertTrue(m2.contains(d.id + " -->|\"loop\"| " + cond.id), m2);
         ControlBlock wh = block(e, BlockType.WHILE);
         assertFalse(m2.contains(wh.id + " -->|\"done\"| " + d.id), m2);
-    }
-
-    @Test
-    void stateTargetsAreVersionedIndependently() {
-        AnalysisResult r = Fixtures.analyze("EdgeAction", "stateTargets");
-        String mmd = new FlowchartGenerator().render(r, "TD");
-        for (String s : List.of("touch() · this v1", "cache.clear() · cache v1", "Registry.register(key) · Registry v1",
-                "cache.clear() · cache v2", "this.touch() · this v2", "getCache().put(key, key) · getCache() v1")) {
-            assertTrue(mmd.contains(s), s + "\n" + mmd);
-        }
     }
 
     @Test

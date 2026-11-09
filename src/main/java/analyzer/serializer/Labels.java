@@ -203,24 +203,6 @@ public final class Labels {
         return "#" + s.order + " " + s.methodName + " " + truncate(String.join(", ", s.arguments), 60);
     }
 
-    /**
-     * 상태 변화 대상: 반환 타입이 void 인 호출의 수신 객체 (원문). 수신 객체가 없으면 this,
-     * 같은 클래스의 static 메서드면 클래스명.
-     */
-    public static String stateTarget(AnalysisResult r, CallSiteInfo s) {
-        if (s.scopeExpression != null && !s.scopeExpression.isBlank()) {
-            return s.scopeExpression;
-        }
-        MethodInfo t = s.targetMethodId == null ? null : r.method(s.targetMethodId);
-        return t != null && t.isStatic ? r.classOf(t).name : "this";
-    }
-
-    /** 상태 변화 1줄: #12 audit(userId, apps.size()) · this v2 (같은 메서드 안에서 그 대상이 바뀐 순번 = 버전) */
-    public static String stateLine(AnalysisResult r, CallSiteInfo s, int version) {
-        String code = "#" + s.order + " " + codeValue(r, s.callerMethodId, s.location, s.expression);
-        return code + " · " + stateTarget(r, s) + " v" + version + (s.deferred ? "  ⟨deferred⟩" : "");
-    }
-
     /** 메서드 선언부(Spring 어노테이션)에서 받은 요청 파라미터: REQ @PathVariable status, ... (없으면 null) */
     public static String methodRequestTag(AnalysisResult r, MethodInfo m) {
         List<RequestParameterInfo> ps = r.parameters.stream()
