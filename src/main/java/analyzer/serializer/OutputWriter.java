@@ -19,6 +19,12 @@ import java.util.List;
 public final class OutputWriter {
 
     public List<Path> write(AnalysisResult r, AnalyzerConfig cfg, Path dir) throws IOException {
+        return write(r, cfg, dir, null);
+    }
+
+    /** response: Response(JSP) 분석 결과 (response.jsp 를 지정했을 때만, 없으면 null) */
+    public List<Path> write(AnalysisResult r, AnalyzerConfig cfg, Path dir, analyzer.response.ResponseModel response)
+            throws IOException {
         Files.createDirectories(dir);
         List<Path> written = new ArrayList<>();
         if (cfg.output.yaml) {
@@ -101,8 +107,13 @@ public final class OutputWriter {
         written.add(dir.resolve("mapping.md"));
         Files.writeString(dir.resolve("analysis.md"), new AnalysisReportWriter().render(r, mermaidStatus));
         written.add(dir.resolve("analysis.md"));
-        Files.writeString(dir.resolve("spec.md"), new SpecWriter().render(r)); // 명세 (현재 1. Request Param 정의)
+        Files.writeString(dir.resolve("spec.md"), new SpecWriter().render(r, response)); // 명세 (1. Request Param 정의, JSP 지정 시 2. Response 정의)
         written.add(dir.resolve("spec.md"));
+        Files.deleteIfExists(dir.resolve("response.md")); // 이전 실행의 결과 (이번에 JSP 를 지정하지 않았으면 남기지 않음)
+        if (response != null) {
+            Files.writeString(dir.resolve("response.md"), new analyzer.response.ResponseReportWriter().render(r, response));
+            written.add(dir.resolve("response.md"));
+        }
         return written;
     }
 

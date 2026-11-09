@@ -143,6 +143,11 @@ public final class MapperXmlIndex {
         return b;
     }
 
+    /** decode 공개용 (JSP 읽기에도 같은 규칙) */
+    public static String decodeText(byte[] bytes) {
+        return decode(bytes);
+    }
+
     /** UTF-8 로 읽고, UTF-8 이 아니면 MS949(EUC-KR 포함) — 한글 주석이 있는 옛 매퍼 XML */
     static String decode(byte[] bytes) {
         try {

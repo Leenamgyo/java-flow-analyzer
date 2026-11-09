@@ -42,6 +42,13 @@ analysis:
 #       - { name: defVal, wraps: 0, default-arg-index: 1 }  # 기본값 래퍼: defVal(getParam(req,"x"), "0")
 request-parameter-rules: []
 
+# Response(JSP) 분석 → response.md: JSP 가 만드는 XML 태그 구조 + 각 값의 출처(Action 의 request.setAttribute 등)
+#   jsp: 사용자가 정하는 JSP 파일명 (같은 이름이 여러 곳이면 vas/appList.jsp 처럼 앞 폴더까지). 비우면 분석 안 함. CLI --jsp 로 대체
+#   web-roots: WEB-INF 가 있는 폴더(예: Vas/WebContent). 비우면 프로젝트 폴더에서 WEB-INF 를 찾아 자동으로
+response:
+  jsp: []
+  web-roots: []
+
 # 단계 보기 (phase-flowchart.mmd · phase-summary.md): 바인딩 › 체크 › 로직 › 후처리
 phases:
   enabled: true

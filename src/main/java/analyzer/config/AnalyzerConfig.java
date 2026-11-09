@@ -12,6 +12,18 @@ public class AnalyzerConfig {
     public Output output = new Output();
     public List<RequestParameterRule> requestParameterRules = new ArrayList<>();
     public Phases phases = new Phases();
+    public Response response = new Response();
+
+    /**
+     * Response(JSP) 분석 — Action 이 넘기는 JSP 가 만드는 XML 응답 명세 (response.md). JSP 는 읽기 전용.
+     * 어느 JSP 인지는 사용자가 정하고(jsp: 파일명), 파일 위치는 분석기가 찾는다.
+     */
+    public static class Response {
+        /** JSP 파일명 또는 끝부분 경로 (appList.jsp / vas/appList.jsp). 비우면 Response 분석 안 함. CLI --jsp 로 대체 */
+        public List<String> jsp = new ArrayList<>();
+        /** 웹 루트(WEB-INF 가 있는 폴더) 목록. 비우면 source root 의 프로젝트 폴더에서 WEB-INF 를 찾아 자동으로 */
+        public List<String> webRoots = new ArrayList<>();
+    }
 
     /**
      * 단계 보기(바인딩 › 체크 › 로직 › 후처리) 판정 규칙. 결과는 phase-flowchart.mmd / phase-summary.md.

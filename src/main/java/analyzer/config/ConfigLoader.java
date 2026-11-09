@@ -62,7 +62,7 @@ public final class ConfigLoader {
     }
 
     private static final java.util.Set<String> TOP_LEVEL = java.util.Set.of("target", "analysis", "output",
-            "request-parameter-rules", "phases");
+            "request-parameter-rules", "phases", "response");
 
     private static AnalyzerConfig toConfig(ObjectMapper mapper, JsonNode tree) throws IOException {
         try {
@@ -110,6 +110,11 @@ public final class ConfigLoader {
         }
         if (cfg.target.className == null || cfg.target.className.isBlank()) {
             throw new IllegalArgumentException("target.class 가 필요합니다.");
+        }
+        for (String j : cfg.response.jsp) {
+            if (j == null || j.isBlank()) {
+                throw new IllegalArgumentException("response.jsp 항목이 비어 있습니다 (JSP 파일명, 예: appList.jsp).");
+            }
         }
         if (cfg.analysis.maxDepth < 1) {
             throw new IllegalArgumentException("analysis.max-depth 는 1 이상이어야 합니다.");

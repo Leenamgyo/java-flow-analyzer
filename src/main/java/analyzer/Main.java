@@ -40,6 +40,7 @@ public final class Main {
         Path configPath = null;
         List<String> sourceRoots = new java.util.ArrayList<>();
         String clazz = null, method = null, output = null;
+        List<String> jsp = new java.util.ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String v = i + 1 < args.length ? args[i + 1] : null;
             switch (args[i]) {
@@ -48,6 +49,7 @@ public final class Main {
                 case "--class" -> { clazz = require(v, "--class"); i++; }
                 case "--method" -> { method = require(v, "--method"); i++; }
                 case "--output" -> { output = require(v, "--output"); i++; }
+                case "--jsp" -> { jsp.add(require(v, "--jsp")); i++; }
                 default -> throw new IllegalArgumentException("알 수 없는 옵션: " + args[i]);
             }
         }
@@ -64,12 +66,15 @@ public final class Main {
         if (clazz != null) cfg.target.className = clazz;
         if (method != null) cfg.target.entryMethod = method;
         if (output != null) cfg.output.directory = output;
+        if (!jsp.isEmpty()) cfg.response.jsp = jsp;   // Action 마다 JSP 가 다르므로 실행 단위로 지정
         ConfigLoader.validate(cfg);
 
         AnalysisResult result = analyze(cfg);
         ClassInfo target = result.clazz(result.targetClassId);
         Path outDir = outputDir(cfg, target.name);
-        List<Path> files = new OutputWriter().write(result, cfg, outDir);
+        analyzer.response.ResponseModel response = cfg.response.jsp.isEmpty() ? null
+                : analyzer.response.ResponseAnalyzer.analyze(cfg, result);
+        List<Path> files = new OutputWriter().write(result, cfg, outDir, response);
 
         System.out.println("분석 완료: " + target.qualifiedName + " → " + outDir);
         System.out.printf("  classes=%d methods=%d calls=%d blocks=%d parameters=%d objects=%d bindings=%d unresolved-calls=%d%n",

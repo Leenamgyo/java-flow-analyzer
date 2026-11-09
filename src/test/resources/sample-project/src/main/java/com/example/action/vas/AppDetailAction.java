@@ -4,6 +4,8 @@ import com.example.util.CountryUtil;
 import com.example.util.StringUtil;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 요청 값을 Action 안 ParamMgr(중첩 클래스)에 모아 두는 패턴:
@@ -16,7 +18,11 @@ public class AppDetailAction {
         AppDetailAction.ParamMgr pm = new AppDetailAction.ParamMgr();
         pm.setup(request);
         String country = CountryUtil.resolveCountry(pm.mcc, pm.lang);
-        return pm.appId + pm.page + country;
+        List<String> apps = new ArrayList<>();
+        apps.add(pm.appId);
+        request.setAttribute("country", country);
+        request.setAttribute("appList", apps);
+        return "appDetail"; // → /WEB-INF/jsp/vas/appDetail.jsp (XML 응답)
     }
 
     /** 요청 셋업: 요청 값 → 필드 */

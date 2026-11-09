@@ -21,11 +21,19 @@ import static analyzer.serializer.MappingReportWriter.md;
 public final class SpecWriter {
 
     public String render(AnalysisResult r) {
+        return render(r, null);
+    }
+
+    /** response: Response(JSP) 분석 결과 (response.jsp 를 지정했을 때만, 없으면 2장 없음) */
+    public String render(AnalysisResult r, analyzer.response.ResponseModel response) {
         StringBuilder sb = new StringBuilder();
         ClassInfo target = r.clazz(r.targetClassId);
         MethodInfo entry = r.method(r.entryMethodId);
         sb.append("# 명세: ").append(target.name).append('.').append(entry.name).append("()\n\n");
         requestParams(r, sb);
+        if (response != null) {
+            responseDef(response, sb);
+        }
         return sb.toString();
     }
 
@@ -67,5 +75,65 @@ public final class SpecWriter {
             }
         }
         return String.join(" · ", List.copyOf(parts));
+    }
+
+    /**
+     * 2. Response 정의: JSP 가 만드는 XML 의 값 항목마다 한 줄 — 항목(XML 경로) · 필수(조건 안이면 N) · 반복(forEach 안이면 Y) · 값
+     * (고정 값 / request.이름 / Action attribute 이름 / 반복 원소 attr[] / 순번). 출처 사슬·위치는 response.md.
+     */
+    private void responseDef(analyzer.response.ResponseModel m, StringBuilder sb) {
+        sb.append("\n## 2. Response 정의\n\n");
+        for (analyzer.response.ResponseModel.Jsp j : m.jsps) {
+            if (m.jsps.size() > 1) {
+                sb.append("### ").append(j.requested).append("\n\n");
+            }
+            if (!"FOUND".equals(j.status)) {
+                sb.append("> ").append(j.requested).append(" — ").append(j.status)
+                        .append(j.candidates.isEmpty() ? "" : " (후보 " + j.candidates.size() + "개, 앞 폴더까지 지정)").append("\n\n");
+                continue;
+            }
+            sb.append("JSP: `").append(j.file).append("`\n\n");
+            sb.append("| 항목 | 필수 | 반복 | 값 |\n|---|---|---|---|\n");
+            for (analyzer.response.ResponseModel.Value v : j.values) {
+                boolean cond = v.context().stream().anyMatch(c -> c.startsWith("if ") || c.equals("otherwise"));
+                boolean loop = v.context().stream().anyMatch(c -> c.startsWith("loop "));
+                sb.append("| ").append(md(item(v.path()))).append(" | ").append(cond ? "N" : "Y").append(" | ")
+                        .append(loop ? "Y" : "").append(" | ").append(md(responseValue(v))).append(" |\n");
+            }
+            sb.append('\n');
+        }
+    }
+
+    /** /response/country/text() → response/country, /response/result/@code → response/result@code */
+    static String item(String path) {
+        return path.replaceFirst("^/", "").replaceFirst("/text\\(\\)$", "").replace("/@", "@");
+    }
+
+    /** 값 한 칸: 출처마다 짧게 (고정 값이면 그 값) */
+    static String responseValue(analyzer.response.ResponseModel.Value v) {
+        if (v.sources().isEmpty()) {
+            return "고정 " + v.value();
+        }
+        java.util.Set<String> out = new LinkedHashSet<>();
+        for (String src : v.sources()) {
+            String[] seg = src.split(" ← ");
+            String ref = seg[0];
+            String rest = seg.length > 1 ? seg[1] : "";
+            if (rest.startsWith("요청 파라미터 ")) {
+                out.add(rest.substring("요청 파라미터 ".length()));
+            } else if (rest.startsWith("반복 상태")) {
+                out.add("순번 (" + ref + ")");
+            } else if (rest.startsWith("요청 헤더 ")) {
+                out.add("header " + rest.substring("요청 헤더 ".length()));
+            } else if (rest.contains("[]")) {
+                out.add(rest); // 반복 원소: appList[] / appList[].appId
+            } else if (rest.matches("(request |session |application |page )?attribute .*")) {
+                String name = rest.replaceFirst("^(\\w+ )?attribute ", "").split(" ", 2)[0];
+                out.add(name + (rest.contains("넣는 곳 없음") ? " (Action 에서 넣는 곳 없음)" : ""));
+            } else {
+                out.add(ref);
+            }
+        }
+        return String.join(", ", out);
     }
 }
