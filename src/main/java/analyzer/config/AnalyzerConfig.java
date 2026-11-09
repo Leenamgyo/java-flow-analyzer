@@ -66,6 +66,11 @@ public class AnalyzerConfig {
         /** max-depth 를 넘어도 본문을 분석할 클래스 역할 (예: Service, Biz, DAO, Mapper). 비어 있으면 미적용 */
         public List<String> expandRoles = new ArrayList<>();
         /**
+         * max-depth 를 넘어도 본문을 분석할 클래스 (* 패턴, 단순명·FQN·바깥 클래스 포함 이름 "XxxAction.ParamMgr").
+         * 예: ["*Action.ParamMgr", "CountryUtil"] — 요청 셋업 중첩 클래스·로직이 많은 Util
+         */
+        public List<String> expandClasses = new ArrayList<>();
+        /**
          * 본문 없는 인터페이스/추상 메서드 호출에서, source-root 내 구현 클래스가 정확히 1개면
          * 그 구현 메서드를 '구현 후보'로 연결한다(런타임 DI 구현체 확정이 아님).
          */

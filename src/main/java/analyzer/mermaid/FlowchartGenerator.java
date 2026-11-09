@@ -410,7 +410,7 @@ public final class FlowchartGenerator {
      *     try·Loop 블록이 size 이하면 통째로 한 구간에, 넘으면 그 안에서 나눈다(블록 상자는 구간마다 유지).
      *     다음 구간으로 넘어가는 간선은 "▶ 구간 k" 안내 노드, 이전 구간에서 들어오는 간선은 "◀ 구간 k" 안내 노드.
      * (B) 골격: 메서드마다 1장 — 분기(◇)·return/throw·catch/finally·세부 메서드로 가는 호출(==>)만 남기고
-     *     그 사이 코드 노드 사슬은 "⋯ 코드 n줄 · 구간 k" 노드 하나로 접는다(상세는 A 의 그 구간 파일).
+     *     그 사이 코드 노드 사슬은 코드 줄을 모두 담은 노드 하나로 합친다(줄을 생략하지 않음, 클릭 → A 의 그 구간 파일).
      * 내용을 빼지 않는다 — 구간 파일들을 합치면 메서드 흐름도와 같은 노드·간선이다.
      */
     public Sectioned renderSectioned(AnalysisResult result, String direction, String layout, int size) {
@@ -523,20 +523,15 @@ public final class FlowchartGenerator {
         return new Sectioned(sections, skeletons);
     }
 
-    /** 골격의 접은 노드 라벨: 첫 줄들(노드마다 첫 줄, 3개까지) + "⋯ 코드 n줄 · 구간 k" */
+    /**
+     * 골격의 합친 노드 라벨: 사슬의 코드 줄 전부 (생략 없음 — 사용자 요구: "⋯ 코드 n줄" 처럼 코드를 숨기지 않는다).
+     * 분기·return/throw·세부 호출 사이의 코드 노드 여러 개를 노드 하나로 합칠 뿐이다. 클릭하면 상세 구간으로 간다.
+     */
     private static List<String> skeletonLabel(List<MermaidGraph.Node> chain, int section) {
         List<String> out = new ArrayList<>();
-        int lines = 0;
         for (MermaidGraph.Node n : chain) {
-            lines += n.lines().size();
+            out.addAll(n.lines());
         }
-        for (MermaidGraph.Node n : chain.subList(0, Math.min(3, chain.size()))) {
-            String first = MermaidGraph.plain(n.lines().get(0));
-            // 제목 줄(바인딩 · …, 로그, 상태 변화)이면 첫 코드 줄을 붙인다
-            out.add(!first.startsWith("#") && n.lines().size() > 1 ? first + " · " + MermaidGraph.plain(n.lines().get(1)) : first);
-        }
-        out.add("⋯ 코드 " + lines + "줄" + (chain.size() > 3 ? " (노드 " + chain.size() + "개)" : "")
-                + (section > 0 ? " · 상세 구간 " + section : " · 상세"));
         return out;
     }
 

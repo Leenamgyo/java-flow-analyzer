@@ -14,6 +14,9 @@ analysis:
   include-external-library-calls: false
   # max-depth 를 넘어도 본문을 분석할 역할 (Util 등은 제외 → depth-limit)
   expand-roles: [Service, Biz, DAO, Repository, Mapper, Validator]
+  # max-depth 를 넘어도 본문을 분석할 클래스 (* 패턴: 단순명·FQN·바깥 클래스 포함 "XxxAction.ParamMgr")
+  #   *Action.ParamMgr = Action 안 요청 셋업 클래스(요청 값 → 필드), CountryUtil = 로직이 많은 Util
+  expand-classes: ["*Action.ParamMgr", "CountryUtil"]
   # 인터페이스 호출: source-root 내 구현 클래스가 정확히 1개면 구현 후보로 연결 (런타임 DI 확정 아님)
   link-single-implementation: true
   # VO/DTO/Command/Map 바인딩 수집 + 값 출처·변환·조건 추적
@@ -66,8 +69,8 @@ output:
   max-line-length: 100
   # 메서드별 보기 (flowchart.mmd = 전체 한 장은 따로 항상): flowchart-sections/ = 메서드를 구간(section-size 줄 남짓)으로 나눈 상세,
   #   flowchart-skeleton/ = 00-overview(메서드 호출 관계) + 메서드마다 골격 1장(분기·return/throw·catch·세부 호출만,
-  #   사이 코드는 "⋯ 코드 n줄 · 상세 구간 k"). 합본 flowchart-sections.md · flowchart-skeleton.md.
-  #   SVG(flowchart-svg/sections·skeleton)는 노드를 클릭하면 이동: 골격 ⋯ → 상세 구간, ▶/◀ → 다음·이전 구간·다른 메서드, ⌂ → 골격·전체 구조
+  #   사이 코드 노드들은 코드 줄을 모두 담은 노드 하나로 합침 — 줄 생략 없음). 합본 flowchart-sections.md · flowchart-skeleton.md.
+  #   SVG(flowchart-svg/sections·skeleton)는 노드를 클릭하면 이동: 골격의 합친 코드 노드 → 상세 구간, ▶/◀ → 다음·이전 구간·다른 메서드, ⌂ → 골격·전체 구조
   flowchart-sections: true
   section-size: 60
   # 흐름도에서 뺄 호출·메서드 (사용자 관리, 기본 없음 = 분석한 코드를 빠짐없이 그림). * 와일드카드

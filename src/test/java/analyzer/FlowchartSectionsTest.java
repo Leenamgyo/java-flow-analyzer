@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 긴 메서드 보기: 구간 분할(A)·골격(B) — 기존 흐름도에서 떼어 낸 것이고 노드를 빠뜨리지 않는다 */
@@ -72,10 +73,20 @@ class FlowchartSectionsTest {
         long calls = full.edges().stream().filter(e -> e.style() == MermaidGraph.EdgeStyle.CALL
                 && full.idsUnder("sg_" + r.entryMethodId).contains(e.from())).count();
         assertEquals(calls, sk.lines().filter(l -> l.contains(" ==> ")).count());
-        // 코드 사슬은 접힌다
-        assertTrue(sk.contains("⋯ 코드 "), sk);
-        assertTrue(sk.contains("상세 구간 1"), sk);
+        // 코드 사슬은 노드 하나로 합치되 코드 줄은 생략하지 않는다 ("⋯ 코드 n줄" 없음)
+        assertFalse(sk.contains("⋯ 코드 "), sk);
         assertTrue(defs(sk).size() < full.idsUnder("sg_" + r.entryMethodId).size());
+        for (String id : full.idsUnder("sg_" + r.entryMethodId)) {
+            MermaidGraph.Node n = full.nodeById(id);
+            if (n != null) {
+                for (String line : n.lines()) {
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile("^#(\\d+) ").matcher(MermaidGraph.plain(line));
+                    if (m.find()) { // 호출 코드 줄 #n — 골격에도 그대로 (렌더링에서 # = #35;)
+                        assertTrue(sk.contains("#35;" + m.group(1) + " "), "골격에 빠진 줄: " + line);
+                    }
+                }
+            }
+        }
     }
 
     @Test

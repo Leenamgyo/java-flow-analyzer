@@ -232,6 +232,7 @@ public final class FlowAnalyzer {
         s.put("include-request-parameters", a.includeRequestParameters);
         s.put("include-external-library-calls", a.includeExternalLibraryCalls);
         s.put("expand-roles", a.expandRoles);
+        s.put("expand-classes", a.expandClasses);
         s.put("link-single-implementation", a.linkSingleImplementation);
         s.put("include-bindings", a.includeBindings);
         s.put("include-inheritance", a.includeInheritance);
@@ -310,7 +311,8 @@ public final class FlowAnalyzer {
                 boolean byDepth = site.depth < cfg.analysis.maxDepth;
                 boolean sameClass = cfg.analysis.expandSameClassMethods && target.classId.equals(caller.classId);
                 boolean byRole = expandRoles.contains(result.clazz(target.classId).role);
-                if (byDepth || sameClass || byRole) {
+                boolean byClass = expandClass(result.clazz(target.classId));
+                if (byDepth || sameClass || byRole || byClass) {
                     schedule(target, declarations.get(target.id), site.depth, site, caller);
                 }
             }
@@ -318,6 +320,22 @@ public final class FlowAnalyzer {
         new MethodBodyWalker(result, caller, file,
                 new MethodBodyWalker.Options(cfg.analysis.includeConditions, cfg.analysis.includeExceptions),
                 sink, types).walk(md);
+    }
+
+    /** analysis.expand-classes 패턴에 맞는 클래스 (단순명 · FQN · 패키지 뺀 바깥 클래스 포함 이름) */
+    private boolean expandClass(ClassInfo c) {
+        if (cfg.analysis.expandClasses.isEmpty()) {
+            return false;
+        }
+        List<String> names = new java.util.ArrayList<>(List.of(c.name));
+        if (c.qualifiedName != null) {
+            names.add(c.qualifiedName);
+            String pkg = c.packageName == null || c.packageName.isEmpty() ? "" : c.packageName + ".";
+            if (c.qualifiedName.startsWith(pkg)) {
+                names.add(c.qualifiedName.substring(pkg.length()));
+            }
+        }
+        return analyzer.serializer.Excludes.matches(cfg.analysis.expandClasses, names);
     }
 
     private CallSiteInfo toSite(CallTarget t, MethodCallExpr call) {

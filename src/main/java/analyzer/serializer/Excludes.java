@@ -45,7 +45,7 @@ public final class Excludes {
         return out;
     }
 
-    private static boolean matches(List<String> patterns, List<String> names) {
+    public static boolean matches(List<String> patterns, List<String> names) {
         for (String p : patterns) {
             Pattern re = Pattern.compile(Arrays.stream(p.trim().split("\\*", -1)).map(Pattern::quote)
                     .collect(Collectors.joining(".*")));

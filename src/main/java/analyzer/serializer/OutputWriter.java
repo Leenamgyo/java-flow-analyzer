@@ -101,6 +101,8 @@ public final class OutputWriter {
         written.add(dir.resolve("mapping.md"));
         Files.writeString(dir.resolve("analysis.md"), new AnalysisReportWriter().render(r, mermaidStatus));
         written.add(dir.resolve("analysis.md"));
+        Files.writeString(dir.resolve("spec.md"), new SpecWriter().render(r)); // 명세 (현재 1. Request Param 정의)
+        written.add(dir.resolve("spec.md"));
         return written;
     }
 

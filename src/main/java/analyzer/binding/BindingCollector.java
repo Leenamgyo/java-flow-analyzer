@@ -106,6 +106,7 @@ public final class BindingCollector {
             }
             md.getBody().get().walk(Node.TreeTraversal.PREORDER, n -> visit(n, m, md));
         }
+        flushSelfAssigns();
         objects.values().forEach(this::coverage);
         objects.values().forEach(this::fieldTypes);
     }
@@ -127,7 +128,93 @@ public final class BindingCollector {
             constructor(oc, m, md);
         } else if (n instanceof AssignExpr a && a.getTarget() instanceof FieldAccessExpr f && !(f.getScope() instanceof ThisExpr)) {
             fieldAssign(a, f, m, md);
+        } else if (n instanceof AssignExpr a) {
+            selfAssign(a, m, md);
         }
+    }
+
+    /**
+     * 요청 셋업 클래스(예: XxxAction.ParamMgr.setup(request))의 자기 필드 대입 {@code appId = request.getParameter("appId")} /
+     * {@code this.mcc = …}. VO 가 아닌 클래스에서 값의 출처에 요청 값이 있을 때만 바인딩으로 본다(VO 의 setter 본문
+     * {@code this.x = x} 는 setter 호출 쪽 바인딩과 겹치므로 제외). 객체 = 그 메서드를 부른 분석된 호출 위치가 정확히 1개이고
+     * 수신 객체가 변수면 호출자 쪽 변수(pm), 아니면 this.
+     */
+    private void selfAssign(AssignExpr a, MethodInfo m, MethodDeclaration md) {
+        TypeDeclaration<?> owner = md.findAncestor(TypeDeclaration.class).map(x -> (TypeDeclaration<?>) x).orElse(null);
+        if (owner == null || types.isVo(owner) || md.isStatic()) {
+            return;
+        }
+        // 람다·익명 클래스 안 대입은 다른 this
+        for (Node p = a.getParentNode().orElse(null); p != null && p != md; p = p.getParentNode().orElse(null)) {
+            if (p instanceof com.github.javaparser.ast.expr.LambdaExpr || p instanceof TypeDeclaration<?>
+                    || p instanceof ObjectCreationExpr oc && oc.getAnonymousClassBody().isPresent()) {
+                return;
+            }
+        }
+        String field;
+        if (a.getTarget() instanceof FieldAccessExpr f && f.getScope() instanceof ThisExpr) {
+            field = f.getNameAsString();
+        } else if (a.getTarget() instanceof NameExpr n && !localOrParam(n.getNameAsString(), md)) {
+            field = n.getNameAsString();
+        } else {
+            return;
+        }
+        if (owner.getFieldByName(field).isEmpty()) {
+            return;
+        }
+        Binding b = base("FIELD", "=", field, a, m);
+        value(b, a.getValue(), m);
+        if (a.getOperator() != AssignExpr.Operator.ASSIGN) {
+            b.transforms.add(0, a.getOperator().asString());
+        }
+        selfAssigns.computeIfAbsent(owner, x -> new ArrayList<>()).add(new SelfAssign(b, m));
+    }
+
+    private record SelfAssign(Binding binding, MethodInfo method) {
+    }
+
+    /** 자기 필드 대입 후보 (클래스별, 순서대로) — 요청 값이 하나라도 들어가는 클래스만 객체로 만든다 */
+    private final Map<TypeDeclaration<?>, List<SelfAssign>> selfAssigns = new java.util.IdentityHashMap<>();
+
+    /**
+     * 요청 셋업 클래스 확정: 자기 필드 대입 중 하나라도 값의 출처가 요청 값이면 그 클래스의 자기 필드 대입을 모두 바인딩으로
+     * (요청 값이 아닌 대입도 넣어야 필드 커버리지에서 '미할당'으로 잘못 나오지 않는다).
+     */
+    private void flushSelfAssigns() {
+        selfAssigns.forEach((owner, list) -> {
+            if (list.stream().noneMatch(x -> x.binding().sources.stream().anyMatch(v -> v.kind().equals("REQUEST")))) {
+                return;
+            }
+            for (SelfAssign x : list) {
+                add(thisObject(owner, x.method()), x.binding());
+            }
+        });
+    }
+
+    private static boolean localOrParam(String name, MethodDeclaration md) {
+        return md.getParameters().stream().anyMatch(p -> p.getNameAsString().equals(name))
+                || !md.findAll(VariableDeclarator.class, v -> v.getNameAsString().equals(name)).isEmpty();
+    }
+
+    /** this 객체: 분석된 호출 위치가 정확히 1개이고 수신 객체가 변수면 호출자 쪽 그 변수(같은 객체), 아니면 (클래스, this) */
+    private ObjectInfo thisObject(TypeDeclaration<?> owner, MethodInfo m) {
+        List<CallSiteInfo> callers = r.callSites.stream()
+                .filter(s -> m.id.equals(s.targetMethodId) || m.id.equals(s.implementationMethodId)).toList();
+        if (callers.size() == 1) {
+            CallSiteInfo s = callers.get(0);
+            MethodCallExpr call = callExprs.get(s.id);
+            MethodDeclaration callerDecl = declarations.get(s.callerMethodId);
+            if (call != null && callerDecl != null && call.getScope().orElse(null) instanceof NameExpr recv) {
+                return object(recv, owner, r.method(s.callerMethodId), callerDecl);
+            }
+        }
+        Key k = new Key("field:" + m.classId, "this");
+        return objects.computeIfAbsent(k, x -> {
+            ClassInfo c = types.register(owner);
+            ObjectInfo o = newObject("VO", c.id, c.name, x);
+            objectTypes.put(o.id, owner);
+            return o;
+        });
     }
 
     // ------------------------------------------------------------------ assignment kinds
