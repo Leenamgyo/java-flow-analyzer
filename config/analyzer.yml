@@ -24,6 +24,12 @@ request-parameter-rules:
   - class: ParameterUtil
     methods:
       - { name: getInt, name-arg-index: 1, default-arg-index: 2, type: int }
+  # 인수 없는 요청 읽기 메서드 — 이름을 직접 정한다 (parameter: 이름). class 생략 = 메서드 이름만으로 매칭
+  #   parameter 도 name-arg-index 도 없으면 메서드명에서 추론 (getSystemId → systemId)
+  # - class: VasBaseAction
+  #   methods:
+  #     - { name: getSystemId, parameter: X-System-Id, type: String }
+  #     - { name: getAbi, parameter: abiType, type: String }
 
 output:
   # 호출 트리에서 뺄 호출 (* 와일드카드, 대상 "클래스.메서드" 단순명·FQN 또는 원문 "수신객체.메서드")
