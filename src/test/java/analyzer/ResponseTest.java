@@ -55,6 +55,24 @@ class ResponseTest {
                 """), spec);
     }
 
+    /** 실전형 JSP: taglib 선언 없는 c:, c:set x = ${x}, forEach var 가 items 와 같은 이름, CDATA, EL 함수 */
+    @Test
+    void realWorldListJsp() {
+        AnalyzerConfig c = cfg("appList.jsp");
+        AnalysisResult r = Main.analyze(c);
+        String spec = new SpecWriter().render(r, ResponseAnalyzer.analyze(c, r));
+        for (String row : List.of(
+                "| result/resultCode | Y |  | resultCode (Action 에서 넣는 곳 없음) |",
+                "| result/currencyInfo/currencyUnit | Y |  | currencyExtVO.currencySignText (Action 에서 넣는 곳 없음) |",
+                "| result/appInfo/productName | Y | Y | resultVO[].contentName |",
+                "| result/appInfo/stickerImgCount | N | Y | resultVO[].stickerInfo.originalImgCount |",
+                "| result/appInfo/description | N | Y | resultVO[].contentDescription |",
+                "| result/serverType | Y |  | 함수 vf:getServerType() |")) {
+            assertTrue(spec.contains(row), row + "\n" + spec);
+        }
+        assertTrue(!spec.contains("c:forEach") && !spec.contains("c:set") && !spec.contains("c:if"), spec);
+    }
+
     @Test
     void jspByFilePath() {
         String path = "src/test/resources/sample-project/src/main/webapp/WEB-INF/jsp/vas/appDetail.jsp";

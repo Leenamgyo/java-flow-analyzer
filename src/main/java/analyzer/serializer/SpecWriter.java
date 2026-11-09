@@ -116,13 +116,16 @@ public final class SpecWriter {
                 out.add(rest.substring("요청 파라미터 ".length()));
             } else if (rest.startsWith("반복 상태")) {
                 out.add("순번 (" + ref + ")");
+            } else if (rest.startsWith("EL 함수 ")) {
+                out.add("함수 " + rest.substring("EL 함수 ".length()));
             } else if (rest.startsWith("요청 헤더 ")) {
                 out.add("header " + rest.substring("요청 헤더 ".length()));
             } else if (rest.contains("[]")) {
                 out.add(rest); // 반복 원소: appList[] / appList[].appId
             } else if (rest.matches("(request |session |application |page )?attribute .*")) {
-                String name = rest.replaceFirst("^(\\w+ )?attribute ", "").split(" ", 2)[0];
-                out.add(name + (rest.contains("넣는 곳 없음") ? " (Action 에서 넣는 곳 없음)" : ""));
+                // 프로퍼티까지: currencyExtVO.currencySignText (scope 접두사 requestScope. 는 뺌)
+                String shown = ref.replaceFirst("^(requestScope|sessionScope|applicationScope|pageScope)\\.", "");
+                out.add(shown + (rest.contains("넣는 곳 없음") ? " (Action 에서 넣는 곳 없음)" : ""));
             } else {
                 out.add(ref);
             }

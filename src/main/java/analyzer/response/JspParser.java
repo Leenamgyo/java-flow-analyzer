@@ -212,7 +212,8 @@ public final class JspParser {
         String prefix = colon > 0 ? name.substring(0, colon) : null;
         String local = colon > 0 ? name.substring(colon + 1) : name;
         Container node = null;
-        if (prefix != null && (taglibs.containsKey(prefix) || prefix.equals("jsp"))) {
+        // c: 는 taglib 선언이 없어도 JSTL core (선언이 공통 include·web.xml 에 있는 JSP 가 흔함)
+        if (prefix != null && (taglibs.containsKey(prefix) || prefix.equals("jsp") || prefix.equals("c"))) {
             boolean core = prefix.equals("c") || taglibs.getOrDefault(prefix, "").contains("jstl/core")
                     || taglibs.getOrDefault(prefix, "").contains("jsp/jstl/core");
             if (core && (local.equals("forEach") || local.equals("forTokens"))) {

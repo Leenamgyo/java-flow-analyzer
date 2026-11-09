@@ -28,6 +28,8 @@ public final class ResponseAnalyzer {
     /** EL 연산자·리터럴 (이름이 아님) */
     private static final Set<String> EL_WORDS = Set.of("empty", "not", "and", "or", "eq", "ne", "lt", "gt", "le", "ge",
             "true", "false", "null", "div", "mod", "instanceof");
+    /** EL 함수 호출 vf:getServerType( / fn:length( */
+    private static final Pattern EL_FUNCTION = Pattern.compile("\\b([A-Za-z_]\\w*:[A-Za-z_]\\w*)\\s*\\(");
     private static final Pattern EXPR = Pattern.compile("\\$\\{((?:[^}\"']|\"[^\"]*\"|'[^']*')*)}|<%=(.*?)%>", Pattern.DOTALL);
     private static final Pattern REF = Pattern.compile("(?<![\\w$.:])([A-Za-z_$][\\w$]*)((?:\\s*\\.\\s*[A-Za-z_$][\\w$]*|\\[[^\\]]*])*)(?!\\s*[:(\\w])");
 
@@ -179,6 +181,10 @@ public final class ResponseAnalyzer {
         Matcher m = EXPR.matcher(value);
         while (m.find()) {
             if (m.group(1) != null) {
+                Matcher fn = EL_FUNCTION.matcher(m.group(1).replaceAll("\"[^\"]*\"|'[^']*'", "\"\""));
+                while (fn.find()) {
+                    out.add(fn.group(1) + "() ← EL 함수 " + fn.group(1) + "()"); // 값은 함수가 만든다 (인자 출처는 아래)
+                }
                 for (String ref : refs(m.group(1))) {
                     out.add(resolve(ref, loops, sets, 0));
                 }
@@ -225,7 +231,10 @@ public final class ResponseAnalyzer {
             }
         }
         if (sets.containsKey(root)) {
-            List<String> inner = sources(sets.get(root), loops, sets);
+            // c:set x = ${x} 처럼 자기 이름을 쓰면 그 x 는 바깥(attribute) — 자기 자신을 빼고 푼다 (무한 재귀 방지)
+            Map<String, String> outer = new LinkedHashMap<>(sets);
+            outer.remove(root);
+            List<String> inner = sources(sets.get(root), loops, outer);
             return ref + " ← c:set " + root + " = " + sets.get(root) + (inner.isEmpty() ? " (고정 값)" : " ← " + String.join(", ", inner));
         }
         String tail = rest.replaceFirst("^\\.", "");
