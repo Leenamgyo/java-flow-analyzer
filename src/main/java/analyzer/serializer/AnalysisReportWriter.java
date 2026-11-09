@@ -92,10 +92,10 @@ public final class AnalysisReportWriter {
         }
     }
 
-    /** 관련 클래스 표 묶음 (순서대로). DAO 와 Mapper 는 한 묶음 — 사용자 요구, Service 와 Biz 는 따로 */
+    /** 관련 클래스 표 묶음 (순서대로). DAO·Mapper·Repository 는 한 묶음 — 사용자 요구, Service 와 Biz 는 따로 */
     private static final List<List<ClassRole>> CLASS_GROUPS = List.of(
             List.of(ClassRole.ACTION), List.of(ClassRole.CONTROLLER), List.of(ClassRole.SERVICE), List.of(ClassRole.BIZ),
-            List.of(ClassRole.DAO, ClassRole.MAPPER), List.of(ClassRole.REPOSITORY), List.of(ClassRole.VO),
+            List.of(ClassRole.DAO, ClassRole.MAPPER, ClassRole.REPOSITORY), List.of(ClassRole.VO),
             List.of(ClassRole.VALIDATOR), List.of(ClassRole.UTIL), List.of(ClassRole.OTHER));
 
     private static String kindLabel(ClassInfo c) {

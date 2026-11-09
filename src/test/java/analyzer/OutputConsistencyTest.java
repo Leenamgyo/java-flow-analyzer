@@ -306,7 +306,7 @@ class OutputConsistencyTest {
         assertTrue(md.indexOf("#### Action (") < md.indexOf("#### VO ("), md);
         String scp = new analyzer.serializer.AnalysisReportWriter().render(Fixtures.analyze("ScpAppListAction", "execute"), "SKIPPED");
         List<String> groups = java.util.Arrays.stream(scp.split("\n")).filter(l -> l.startsWith("#### ")).toList();
-        assertEquals(List.of("#### Action (2)", "#### Biz (1)", "#### DAO / Mapper (1)", "#### VO (1)", "#### Util (2)"), groups); // DAO·Mapper 한 묶음
+        assertEquals(List.of("#### Action (2)", "#### Biz (1)", "#### DAO / Mapper / Repository (1)", "#### VO (1)", "#### Util (2)"), groups); // DAO·Mapper·Repository 한 묶음
     }
 
     @Test
