@@ -98,6 +98,10 @@ public class AnalyzerConfig {
         public int maxLineLength = 100;
         /** flowchart.mmd 와 함께 메서드별 파일(flowchart/) + 전체 구조 + 합본(flowchart.md) 출력 */
         public boolean splitFlowchart = true;
+        /** 긴 메서드 구간 분할(flowchart-sections/) + 골격(flowchart-skeleton/) 출력 */
+        public boolean flowchartSections = true;
+        /** 구간 하나의 크기 — 노드 라벨 줄 수 기준 (블록이 이보다 크면 안에서 나눈다) */
+        public int sectionSize = 60;
         /**
          * 흐름도에서 뺄 호출·메서드 (사용자 관리). 기본은 비어 있고 흐름도는 분석한 코드를 빠짐없이 그린다.
          * 패턴(* 와일드카드)은 호출 대상 "클래스.메서드"(단순명·FQN), 호출 원문 "수신객체.메서드" 와 비교한다.

@@ -387,6 +387,184 @@ public final class MermaidGraph {
         return out;
     }
 
+    /** id 의 노드 (subgraph·없는 ID 면 null) */
+    public Node nodeById(String id) {
+        return ids.get(id) instanceof Node n ? n : null;
+    }
+
+    /** subgraph 바로 아래 항목 ID (노드·subgraph, 그린 순서) */
+    public List<String> childrenOf(String subgraphId) {
+        List<String> out = new ArrayList<>();
+        if (ids.get(subgraphId) instanceof Subgraph sg) {
+            for (Object o : sg.items) {
+                out.add(o instanceof Subgraph c ? c.id : ((Node) o).id());
+            }
+        }
+        return out;
+    }
+
+    public boolean isSubgraph(String id) {
+        return ids.get(id) instanceof Subgraph;
+    }
+
+    /**
+     * 노드 일부만 남긴 그래프 (긴 메서드 구간 분할). 남긴 노드를 품은 subgraph 는 그 노드들만 담아 유지한다.
+     * 안쪽끼리 간선은 그대로, 나가는 간선은 go_대상 안내 노드(outLabel), 들어오는 간선은 inLabel 이 null 이 아니면
+     * from_출발 안내 노드에서 잇는다(inLabel 이 null 을 돌려주면 그 간선은 뺀다).
+     */
+    public MermaidGraph extractNodes(Set<String> keep, java.util.function.Function<String, List<String>> outLabel,
+                                     java.util.function.Function<String, List<String>> inLabel) {
+        MermaidGraph out = new MermaidGraph();
+        out.maxLineLength = this.maxLineLength;
+        out.comments.addAll(comments);
+        copyInto(root, out.root, keep, out);
+        for (Edge e : edges) {
+            boolean from = out.ids.containsKey(e.from());
+            boolean to = out.ids.containsKey(e.to());
+            if (from && to) {
+                out.edges.add(e);
+            } else if (from) {
+                String stub = "go_" + e.to();
+                if (!out.has(stub)) {
+                    out.node(out.root, stub, outLabel.apply(e.to()), Shape.SUBROUTINE, "golink");
+                }
+                out.edges.add(new Edge(e.from(), stub, e.label(), e.style()));
+            } else if (to) {
+                List<String> label = inLabel.apply(e.from());
+                if (label == null) {
+                    continue;
+                }
+                String stub = "from_" + e.from();
+                if (!out.has(stub)) {
+                    out.node(out.root, stub, label, Shape.SUBROUTINE, "golink");
+                }
+                out.edges.add(new Edge(stub, e.to(), e.label(), e.style()));
+            }
+        }
+        return out;
+    }
+
+    private static boolean copyInto(Subgraph src, Subgraph dst, Set<String> keep, MermaidGraph out) {
+        for (Object o : src.items) {
+            if (o instanceof Subgraph s) {
+                Subgraph c = new Subgraph(s.id, s.label);
+                if (copyInto(s, c, keep, out)) {
+                    dst.items.add(c);
+                    out.ids.put(s.id, c);
+                }
+            } else if (keep.contains(((Node) o).id())) {
+                dst.items.add(o);
+                out.ids.put(((Node) o).id(), o);
+            }
+        }
+        return !dst.items.isEmpty();
+    }
+
+    /**
+     * 골격 보기: keep 이 아닌 노드가 정상 흐름(FLOW) 한 줄로 이어진 사슬(같은 subgraph, 앞 노드의 나가는 FLOW 1개·
+     * 뒤 노드의 들어오는 FLOW 1개)을 노드 하나(사슬 첫 노드 ID, 라벨 = label(사슬))로 접는다. 접은 노드의 간선은
+     * 대표 노드로 옮기고 사슬 안 간선은 뺀다. 줄 수가 minLines 이하인 노드 하나짜리 사슬은 그대로 둔다.
+     */
+    public MermaidGraph collapse(java.util.function.Predicate<Node> keep,
+                                 java.util.function.Function<List<Node>, List<String>> label, String css, int minLines) {
+        Map<String, Subgraph> parent = new LinkedHashMap<>();
+        parents(root, parent);
+        Map<String, Integer> flowOut = new java.util.HashMap<>();
+        Map<String, Integer> flowIn = new java.util.HashMap<>();
+        Map<String, String> flowNext = new java.util.HashMap<>();
+        for (Edge e : edges) {
+            if (e.style() == EdgeStyle.FLOW) {
+                flowOut.merge(e.from(), 1, Integer::sum);
+                flowIn.merge(e.to(), 1, Integer::sum);
+                flowNext.put(e.from(), e.to());
+            }
+        }
+        java.util.function.Predicate<String> foldable = id -> ids.get(id) instanceof Node n && !keep.test(n);
+        Map<String, String> next = new java.util.HashMap<>();
+        Set<String> hasPrev = new java.util.HashSet<>();
+        for (String id : ids.keySet()) {
+            if (!foldable.test(id) || flowOut.getOrDefault(id, 0) != 1) {
+                continue;
+            }
+            String to = flowNext.get(id);
+            if (foldable.test(to) && flowIn.getOrDefault(to, 0) == 1 && parent.get(id) == parent.get(to)) {
+                next.put(id, to);
+                hasPrev.add(to);
+            }
+        }
+        Map<String, String> repOf = new java.util.HashMap<>();
+        Map<String, List<Node>> chains = new LinkedHashMap<>();
+        for (String id : ids.keySet()) {
+            if (!foldable.test(id) || hasPrev.contains(id)) {
+                continue;
+            }
+            List<Node> chain = new ArrayList<>();
+            Set<String> seen = new java.util.HashSet<>();
+            for (String c = id; c != null && seen.add(c); c = next.get(c)) {
+                chain.add((Node) ids.get(c));
+                repOf.put(c, id);
+            }
+            int lines = chain.stream().mapToInt(n -> n.lines().size()).sum();
+            if (chain.size() > 1 || lines > minLines) {
+                chains.put(id, chain);
+            }
+        }
+        MermaidGraph out = new MermaidGraph();
+        out.maxLineLength = this.maxLineLength;
+        out.comments.addAll(comments);
+        collapseInto(root, out.root, chains, repOf, label, css, out);
+        Set<String> seenEdges = new java.util.HashSet<>();
+        for (Edge e : edges) {
+            String from = chains.containsKey(repOf.get(e.from())) ? repOf.get(e.from()) : e.from();
+            String to = chains.containsKey(repOf.get(e.to())) ? repOf.get(e.to()) : e.to();
+            if (from.equals(to) && chains.containsKey(from)) {
+                continue; // 사슬 안 간선
+            }
+            if (seenEdges.add(from + "|" + to + "|" + e.label() + "|" + e.style())) {
+                out.edges.add(new Edge(from, to, e.label(), e.style()));
+            }
+        }
+        return out;
+    }
+
+    private static void parents(Subgraph sg, Map<String, Subgraph> out) {
+        for (Object o : sg.items) {
+            if (o instanceof Subgraph c) {
+                out.put(c.id, sg);
+                parents(c, out);
+            } else {
+                out.put(((Node) o).id(), sg);
+            }
+        }
+    }
+
+    private static void collapseInto(Subgraph src, Subgraph dst, Map<String, List<Node>> chains, Map<String, String> repOf,
+                                     java.util.function.Function<List<Node>, List<String>> label, String css, MermaidGraph out) {
+        for (Object o : src.items) {
+            if (o instanceof Subgraph s) {
+                Subgraph c = new Subgraph(s.id, s.label);
+                collapseInto(s, c, chains, repOf, label, css, out);
+                if (!c.items.isEmpty()) {
+                    dst.items.add(c);
+                    out.ids.put(s.id, c);
+                }
+                continue;
+            }
+            Node n = (Node) o;
+            String rep = repOf.get(n.id());
+            if (rep != null && chains.containsKey(rep)) {
+                if (rep.equals(n.id())) {
+                    Node folded = new Node(n.id(), label.apply(chains.get(rep)), Shape.RECT, css);
+                    dst.items.add(folded);
+                    out.ids.put(n.id(), folded);
+                }
+                continue; // 사슬의 나머지 노드는 대표 노드에 접힘
+            }
+            dst.items.add(n);
+            out.ids.put(n.id(), n);
+        }
+    }
+
     /** 노드 한 줄 최대 길이 (넘으면 끊고 다음 줄 앞에 "> "). 0 이하면 끊지 않음 */
     private int maxLineLength = 100;
 

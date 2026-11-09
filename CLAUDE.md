@@ -2,7 +2,7 @@
 
 지정한 Action/Controller **하나**의 진입 메서드에서 시작해 Java 소스를 정적 분석하고,
 **하나의 공통 모델**로 실행 흐름 + **데이터 바인딩 명세**(어떤 값이 어느 객체 필드로 가는지)를 만드는 마이그레이션 분석 도구.
-출력: `analysis.yaml`(Source of Truth) · `flowchart.mmd` · `mapping.md` · `analysis.md` · `call-tree.txt` · `phase-flowchart.mmd` · `phase-summary.md`.
+출력: `analysis.yaml`(Source of Truth) · `flowchart.mmd`(+ `flowchart/`·`flowchart-sections/`·`flowchart-skeleton/`·`flowchart-svg/`) · `mapping.md` · `analysis.md` · `call-tree.txt` · `phase-flowchart.mmd` · `phase-summary.md`.
 요구사항: [docs/SPEC-v2.md](docs/SPEC-v2.md)(현행, 바인딩·YAML·비교) ⊃ [docs/SPEC.md](docs/SPEC.md)(v1 흐름 분석). 애매하면 v2 → v1 순으로 기준.
 
 ## 절대 규칙 (SPEC §1–2)
@@ -165,6 +165,7 @@ analyzer/
 - 긴 줄: `MermaidGraph.wrap(line, output.max-line-length=100)` — 강한 자리(쉼표 뒤·` + `/` - ` 앞·`).` 체인 앞) 우선, 없으면 `(` 뒤, 한도 안에 없으면 넘는 첫 자리, 문자열 리터럴 안 제외, 이어지는 줄 `> `. 렌더 단계에서만(모델·YAML 은 원문).
 - 분할 출력(`output.split-flowchart`, 기본 true): `FlowchartGenerator.renderSplit` — 전체 그래프를 한 번 만들어 검증한 뒤 `MermaidGraph.extract(sg_<M>)` 로 메서드별로 떼어 냄(안쪽 간선 유지, 바깥으로 나가는 간선은 `go_<대상>` ▶ 안내 노드 class golink, 들어오는 간선 제외). `00-overview.mmd` = 메서드 노드 + CALL 간선 집계. 합본 `flowchart.md` = 목차(GitHub 식 앵커) + 파트별 ```mermaid. 이전 실행의 `flowchart/*.mmd` 는 지우고 다시 씀. 전체 `flowchart.mmd` 도 그대로 출력.
 - 이름이 식인 요청 읽기·Map 키(모델 `?(식)`)는 표시에서 코드 그대로 `request[식]` / `[식] = 값`(`Labels.parameterName`·`mapKey`, 사용자 지적: `?(resultVOMap.getAppId())` 가 깨져 보임). 모델·YAML 은 그대로.
+- 긴 메서드 보기(`output.flowchart-sections`, 기본 true, 기존 출력과 별도 — 사용자: 200줄 넘으면 가독성 최악): `FlowchartGenerator.renderSectioned` 가 일반 흐름도 그래프를 한 번 만들어 검증한 뒤 떼어 냄. (A) 구간 분할 `flowchart-sections/<메서드>-s<k>.mmd` — 메서드 subgraph 의 그린 순서대로 단위(노드 / `section-size`(라벨 줄 수, 기본 60) 이하 try·Loop 블록 통째 / 넘는 블록은 안쪽)를 묶음, 블록 상자는 구간마다 유지(`MermaidGraph.extractNodes`), 나가는 간선 `go_` ▶ 안내(다른 구간·메서드 파일), 같은 메서드 이전 구간에서 들어오는 간선 `from_` ◀ 안내. 구간 파일을 합치면 메서드의 노드가 정확히 한 번씩(`FlowchartSectionsTest`). (B) 골격 `flowchart-skeleton/<메서드>-skeleton.mmd` — 분기(RECT 아닌 모양)·ret/throw/fin/exc·`==>` 호출 노드만 남기고 FLOW 1:1 로 이어진 같은 subgraph 의 나머지 노드 사슬을 `⋯ 코드 n줄 · 상세 구간 k` 노드 하나로(`MermaidGraph.collapse`). 합본 `flowchart-sections.md`·`flowchart-skeleton.md`, SVG 는 `flowchart-svg/sections/`·`skeleton/`.
 - 색 테마 `output.color-theme`(기본 light — 흰 바탕. 다크를 기본으로 했다가 SVG 색이 깨져 사용자 요구로 되돌림. dark 는 선택): `FlowchartGenerator.DARK_CLASS_DEFS`/`DARK_PHASE_CLASS_DEFS`(어두운 바탕·밝은 테두리·글자, class 이름은 라이트와 같음) + `MermaidGraph.TEXT_COLORS_DARK` + init `"theme": "dark"`. light 는 예전 색. 잘못된 값은 오류(`MermaidGraph.checkTheme`).
 - SVG `output.flowchart-svg`(기본 true): 쓴 .mmd 전부(flowchart.mmd·flowchart/*·phase-flowchart.mmd)를 `flowchart-svg/` 에 같은 이름 .svg 로 (`OutputWriter.svgs`, 이전 .svg 정리). Mermaid CLI 필요 — `output.mermaid-cli`(경로) 또는 PATH 의 mmdc, 없으면 경고 후 생략·분석서 부록에 사유. mmdc 설정 `-c` 로 maxTextSize·maxEdges 를 올림(이 둘은 Mermaid 보안 설정이라 %%{init}%% 로는 못 바꿈 — 사이트 렌더링 한계 회피). 배경 dark `#0f172a` / light white. SVG 렌더링이 flowchart.mmd 검증을 겸한다.
 - 렌더링 첫 줄은 `MermaidGraph.INIT`(`%%{init: …}%%` 노드 padding·wrappingWidth) — 여러 줄 라벨이 잘리지 않게.

@@ -419,6 +419,164 @@ public final class FlowchartGenerator {
         return parts;
     }
 
+    /** 긴 메서드 보기: 구간 분할(A)과 골격(B). 둘 다 일반 흐름도와 같은 그래프에서 떼어 낸다 */
+    public record Sectioned(List<Part> sections, List<Part> skeletons) {
+    }
+
+    /**
+     * (A) 구간 분할: 메서드마다 그린 순서대로 노드를 묶어 구간 하나가 라벨 줄 size 줄 남짓이 되게 나눈다.
+     *     try·Loop 블록이 size 이하면 통째로 한 구간에, 넘으면 그 안에서 나눈다(블록 상자는 구간마다 유지).
+     *     다음 구간으로 넘어가는 간선은 "▶ 구간 k" 안내 노드, 이전 구간에서 들어오는 간선은 "◀ 구간 k" 안내 노드.
+     * (B) 골격: 메서드마다 1장 — 분기(◇)·return/throw·catch/finally·세부 메서드로 가는 호출(==>)만 남기고
+     *     그 사이 코드 노드 사슬은 "⋯ 코드 n줄 · 구간 k" 노드 하나로 접는다(상세는 A 의 그 구간 파일).
+     * 내용을 빼지 않는다 — 구간 파일들을 합치면 메서드 흐름도와 같은 노드·간선이다.
+     */
+    public Sectioned renderSectioned(AnalysisResult result, String direction, String layout, int size) {
+        MermaidGraph full = build(result);
+        List<String> errors = new ArrayList<>(full.validate());
+        errors.addAll(check(result, full, rules));
+        if (!errors.isEmpty()) {
+            throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
+        }
+        Map<String, String> classDefs = classDefs();
+        List<MethodInfo> drawn = r.methods().stream().filter(m -> drawnMethods.contains(m.id) && full.has("sg_" + m.id)).toList();
+        Map<String, String> owner = new HashMap<>();
+        for (MethodInfo m : drawn) {
+            full.idsUnder("sg_" + m.id).forEach(id -> owner.putIfAbsent(id, m.id));
+        }
+        // 구간 나누기: 노드 → (메서드, 구간 번호)
+        Map<String, List<Set<String>>> sectionsOf = new LinkedHashMap<>();
+        Map<String, Integer> sectionNo = new HashMap<>();
+        for (MethodInfo m : drawn) {
+            List<Set<String>> secs = pack(full, units(full, "sg_" + m.id, size), size);
+            sectionsOf.put(m.id, secs);
+            for (int k = 0; k < secs.size(); k++) {
+                for (String id : secs.get(k)) {
+                    sectionNo.put(id, k + 1);
+                }
+            }
+            // 여러 구간에 걸친 블록(subgraph) ID 는 첫 노드의 구간 (블록에서 나가는 예외 간선의 안내용)
+            for (String id : full.idsUnder("sg_" + m.id)) {
+                if (!sectionNo.containsKey(id)) {
+                    full.idsUnder(id).stream().filter(sectionNo::containsKey).findFirst()
+                            .ifPresent(first -> sectionNo.put(id, sectionNo.get(first)));
+                }
+            }
+        }
+        Map<String, String> base = new LinkedHashMap<>();
+        int i = 1;
+        for (MethodInfo m : drawn) {
+            base.put(m.id, String.format("%02d-%s-%s.%s", i++, m.id, r.classOf(m).name, m.name));
+        }
+        java.util.function.Function<String, String> where = id -> {
+            String m = owner.get(id);
+            if (m == null) {
+                return id;
+            }
+            int n = sectionsOf.get(m).size();
+            return m + (n > 1 ? " 구간 " + sectionNo.get(id) + "/" + n : "") + " — " + base.get(m) + (n > 1 ? "-s" + sectionNo.get(id) : "") + ".mmd";
+        };
+        List<Part> sections = new ArrayList<>();
+        for (MethodInfo m : drawn) {
+            List<Set<String>> secs = sectionsOf.get(m.id);
+            for (int k = 0; k < secs.size(); k++) {
+                int no = k + 1;
+                MermaidGraph part = full.extractNodes(secs.get(k),
+                        to -> List.of("▶ " + full.labelOf(to), where.apply(to)),
+                        from -> m.id.equals(owner.get(from)) ? List.of("◀ 구간 " + sectionNo.get(from) + " 에서", full.labelOf(from)) : null);
+                String file = base.get(m.id) + (secs.size() > 1 ? "-s" + no : "") + ".mmd";
+                String title = m.id + " " + r.classOf(m).name + "." + m.name + "()" + (secs.size() > 1 ? " — 구간 " + no + "/" + secs.size() : "");
+                sections.add(new Part(file, title, part.theme(theme).render(direction, layout, classDefs)));
+            }
+        }
+        List<Part> skeletons = new ArrayList<>();
+        for (MethodInfo m : drawn) {
+            MermaidGraph one = full.extract("sg_" + m.id, to -> List.of("▶ " + full.labelOf(to), where.apply(to)));
+            Set<String> calls = new java.util.HashSet<>();
+            one.edges().stream().filter(e -> e.style() == EdgeStyle.CALL).forEach(e -> calls.add(e.from()));
+            int n = sectionsOf.get(m.id).size();
+            MermaidGraph sk = one.collapse(
+                    node -> node.shape() != Shape.RECT || calls.contains(node.id())
+                            || List.of("ret", "throw", "fin", "exc").contains(node.cssClass()),
+                    chain -> skeletonLabel(chain, n > 1 ? sectionNo.get(chain.get(0).id()) : 0),
+                    "codeline", 2);
+            skeletons.add(new Part(base.get(m.id) + "-skeleton.mmd", m.id + " " + r.classOf(m).name + "." + m.name + "() — 골격",
+                    sk.theme(theme).render(direction, layout, classDefs)));
+        }
+        return new Sectioned(sections, skeletons);
+    }
+
+    /** 골격의 접은 노드 라벨: 첫 줄들(노드마다 첫 줄, 3개까지) + "⋯ 코드 n줄 · 구간 k" */
+    private static List<String> skeletonLabel(List<MermaidGraph.Node> chain, int section) {
+        List<String> out = new ArrayList<>();
+        int lines = 0;
+        for (MermaidGraph.Node n : chain) {
+            lines += n.lines().size();
+        }
+        for (MermaidGraph.Node n : chain.subList(0, Math.min(3, chain.size()))) {
+            String first = MermaidGraph.plain(n.lines().get(0));
+            // 제목 줄(바인딩 · …, 로그, 상태 변화)이면 첫 코드 줄을 붙인다
+            out.add(!first.startsWith("#") && n.lines().size() > 1 ? first + " · " + MermaidGraph.plain(n.lines().get(1)) : first);
+        }
+        out.add("⋯ 코드 " + lines + "줄" + (chain.size() > 3 ? " (노드 " + chain.size() + "개)" : "")
+                + (section > 0 ? " · 상세 구간 " + section : " · 상세 메서드 흐름도"));
+        return out;
+    }
+
+    /** 노드 무게 = 라벨 줄 수 (최소 1), subgraph 는 안쪽 합 */
+    private static int weight(MermaidGraph g, String id) {
+        if (g.isSubgraph(id)) {
+            int w = 0;
+            for (String c : g.childrenOf(id)) {
+                w += weight(g, c);
+            }
+            return w;
+        }
+        MermaidGraph.Node n = g.nodeById(id);
+        return n == null ? 0 : Math.max(1, n.lines().size());
+    }
+
+    /** 구간 단위: 바로 아래 노드 하나 / size 이하 블록 통째 / 넘는 블록은 안쪽 단위로 */
+    private static List<Set<String>> units(MermaidGraph g, String sg, int size) {
+        List<Set<String>> out = new ArrayList<>();
+        for (String c : g.childrenOf(sg)) {
+            if (!g.isSubgraph(c)) {
+                out.add(Set.of(c));
+            } else if (weight(g, c) <= size) {
+                out.add(g.idsUnder(c));
+            } else {
+                out.addAll(units(g, c, size));
+            }
+        }
+        return out;
+    }
+
+    /** 앞에서부터 size 를 넘지 않게 단위를 묶는다 (단위 하나가 size 를 넘으면 그 단위만 한 구간) */
+    private static List<Set<String>> pack(MermaidGraph g, List<Set<String>> units, int size) {
+        List<Set<String>> out = new ArrayList<>();
+        Set<String> cur = new java.util.LinkedHashSet<>();
+        int w = 0;
+        for (Set<String> u : units) {
+            int uw = 0;
+            for (String id : u) {
+                if (!g.isSubgraph(id)) {
+                    uw += weight(g, id);
+                }
+            }
+            if (!cur.isEmpty() && w + uw > size) {
+                out.add(cur);
+                cur = new java.util.LinkedHashSet<>();
+                w = 0;
+            }
+            cur.addAll(u);
+            w += uw;
+        }
+        if (!cur.isEmpty()) {
+            out.add(cur);
+        }
+        return out;
+    }
+
     /** 분할 파일을 한 문서로: 목차 + 파트마다 ```mermaid 블록 */
     public static String combinedMarkdown(String title, List<Part> parts) {
         StringBuilder sb = new StringBuilder("# 흐름도: ").append(title).append("\n\n");

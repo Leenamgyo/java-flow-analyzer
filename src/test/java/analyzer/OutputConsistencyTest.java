@@ -47,6 +47,14 @@ class OutputConsistencyTest {
         // flowchart-svg: mmdc 가 없으면 만들지 않고 분석서에 생략 사유
         assertFalse(Files.exists(dir.resolve("flowchart-svg")));
         assertTrue(Files.readString(dir.resolve("analysis.md")).contains("flowchart-svg 생략"));
+        // 긴 메서드 보기: 기존 출력과 별도로 구간 분할·골격
+        assertTrue(Files.exists(dir.resolve("flowchart.mmd")) && Files.isDirectory(dir.resolve("flowchart")));
+        for (String sub : List.of("flowchart-sections", "flowchart-skeleton")) {
+            try (var fs = Files.list(dir.resolve(sub))) {
+                assertTrue(fs.anyMatch(f -> f.toString().endsWith(".mmd")), sub);
+            }
+            assertTrue(Files.readString(dir.resolve(sub + ".md")).contains("`" + sub + "/"), sub);
+        }
 
         for (String f : List.of("analysis.yaml", "call-tree.txt", "flowchart.mmd", "mapping.md", "analysis.md")) {
             assertTrue(Files.exists(dir.resolve(f)), f);
