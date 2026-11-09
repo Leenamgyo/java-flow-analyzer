@@ -86,16 +86,16 @@ class FlowchartEdgeCaseTest {
         CallSiteInfo check = call(r, "check()");
         CallSiteInfo touch = call(r, "touch()");
         assertTrue(mmd.contains(check.id + " --> " + w.id), mmd);
-        assertTrue(mmd.contains(w.id + " -->|\"loop\"| " + touch.id), mmd);
-        assertTrue(mmd.contains(touch.id + " -->|\"next\"| " + check.id), mmd);
+        assertTrue(mmd.contains(w.id + " -->|\"반복\"| " + touch.id), mmd);
+        assertTrue(mmd.contains(touch.id + " -->|\"↻ 다음 반복\"| " + check.id), mmd);
         // do {} while (check()) — 빈 본문: loop 는 check() 로, check() 를 건너뛰는 간선 없음
         AnalysisResult e = Fixtures.analyze("EdgeAction", "emptyLoops");
         String m2 = new FlowchartGenerator().render(e, "TD");
         ControlBlock d = block(e, BlockType.DO_WHILE);
         CallSiteInfo cond = e.callSites.stream().filter(c -> d.id.equals(c.controlBlockId)).findFirst().orElseThrow();
-        assertTrue(m2.contains(d.id + " -->|\"loop\"| " + cond.id), m2);
+        assertTrue(m2.contains(d.id + " -->|\"↻ 다시\"| " + cond.id), m2);
         ControlBlock wh = block(e, BlockType.WHILE);
-        assertFalse(m2.contains(wh.id + " -->|\"done\"| " + d.id), m2);
+        assertFalse(m2.contains(wh.id + " -->|\"반복 끝\"| " + d.id), m2);
     }
 
     @Test

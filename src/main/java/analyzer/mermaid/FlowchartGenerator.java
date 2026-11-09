@@ -192,6 +192,13 @@ public final class FlowchartGenerator {
     /** return/throw 리프에 포함시켜 따로 그리지 않는 호출 */
     private final Set<String> inLeaf = new java.util.HashSet<>();
 
+    /** 반복문 표시 (if 와 구분 — 조건 노드 육각형과 함께) */
+    static final String LOOP_TITLE = "↻ 반복";
+    static final String LOOP_ENTER = "반복";
+    static final String LOOP_NEXT = "↻ 다음 반복";
+    static final String LOOP_AGAIN = "↻ 다시";
+    static final String LOOP_DONE = "반복 끝";
+
     /** 세부 박스(그리는 메서드)로 이어지는 호출 — ==> 간선이 필요해 노드로 남긴다 */
     private boolean leadsToDetail(CallSiteInfo c) {
         return c.targetMethodId != null && drawnMethods.contains(c.expansionTargetId())
@@ -1548,8 +1555,15 @@ public final class FlowchartGenerator {
                 return out;
             }
             case FOR, FOREACH, WHILE, DO_WHILE -> {
-                // 반복문 = Loop 영역(subgraph) 하나: 조건 노드 + 본문, 본문 끝에서 조건으로 되돌아간다
-                Subgraph ls = g.subgraph(sg, "sg_" + b.id, "Loop");
+                // 반복문 = 반복 영역(subgraph) 하나: 조건 노드 + 본문, 본문 끝에서 조건으로 되돌아간다.
+                // if 와 구분: 조건 노드는 육각형(순서도의 반복 기호, if/switch 는 마름모), 되돌아가는 간선 "↻ 다음 반복",
+                // 빠져나가는 간선 "반복 끝", 영역 제목 "↻ 반복 (for)" (사용자: 화살표만으로는 if 와 차이가 없음)
+                Subgraph ls = g.subgraph(sg, "sg_" + b.id, LOOP_TITLE + " (" + switch (b.type) {
+                    case FOR -> "for";
+                    case FOREACH -> "for-each";
+                    case WHILE -> "while";
+                    default -> "do-while";
+                } + ")");
                 if (b.type == BlockType.DO_WHILE) {
                     // do-while: 본문을 먼저 지나고 조건 → loop 이면 본문 첫 노드로, done 이면 밖으로
                     Set<String> before = new java.util.LinkedHashSet<>(g.nodeIds());
@@ -1557,16 +1571,16 @@ public final class FlowchartGenerator {
                     String first = g.nodeIds().stream().filter(id -> !before.contains(id)).findFirst().orElse(null);
                     decision(ls, b, body);
                     // 본문이 비어 있으면 조건(조건식 안 호출 노드가 있으면 그 첫 노드)부터 다시
-                    g.edge(b.id, first == null ? loopReentry(b) : first, "loop", EdgeStyle.FLOW);
-                    return List.of(new End(b.id, "done", EdgeStyle.FLOW));
+                    g.edge(b.id, first == null ? loopReentry(b) : first, LOOP_AGAIN, EdgeStyle.FLOW);
+                    return List.of(new End(b.id, LOOP_DONE, EdgeStyle.FLOW));
                 }
                 decision(ls, b, in);
-                List<End> back = emit(ls, m, b, List.of(new End(b.id, "loop", EdgeStyle.FLOW)));
+                List<End> back = emit(ls, m, b, List.of(new End(b.id, LOOP_ENTER, EdgeStyle.FLOW)));
                 String reentry = loopReentry(b);
                 for (End e : back) {
-                    g.edge(e.node(), reentry, e.label() == null ? "next" : e.label(), e.style());
+                    g.edge(e.node(), reentry, e.label() == null ? LOOP_NEXT : e.label(), e.style());
                 }
-                return List.of(new End(b.id, "done", EdgeStyle.FLOW));
+                return List.of(new End(b.id, LOOP_DONE, EdgeStyle.FLOW));
             }
             case TRY -> {
                 return phases == null ? tryFull(sg, m, b, in) : tryBlock(sg, m, b, in);
@@ -1625,7 +1639,11 @@ public final class FlowchartGenerator {
                 }
             }
         }
-        g.node(sg, b.id, headerLines(b), Shape.DIAMOND, null);
+        boolean loop = switch (b.type) {
+            case FOR, FOREACH, WHILE, DO_WHILE -> true;
+            default -> false;
+        };
+        g.node(sg, b.id, headerLines(b), loop ? Shape.HEX : Shape.DIAMOND, null);
         inCondition.forEach(id -> g.alias(id, b.id)); // 조건 노드에 포함
         link(cur, b.id);
     }

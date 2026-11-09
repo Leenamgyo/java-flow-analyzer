@@ -114,7 +114,7 @@ class OutputConsistencyTest {
         assertTrue(g.has(Fixtures.method(r, "ScpAppListAction", "handleError(Exception)").id));
         assertTrue(g.has(Fixtures.method(r, "ScpAppListAction", "cleanup()").id));
         // 반복문은 Loop 영역
-        assertTrue(mmd.contains("subgraph sg_WHILE1[\"Loop\"]"), mmd);
+        assertTrue(mmd.contains("subgraph sg_WHILE1[\"↻ 반복 (while)\"]"), mmd);
     }
 
     @ParameterizedTest

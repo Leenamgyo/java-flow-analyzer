@@ -97,21 +97,22 @@ class FlowchartRulesTest {
         ControlBlock w = block(r, analyzer.model.BlockType.WHILE);
         ControlBlock d = block(r, analyzer.model.BlockType.DO_WHILE);
         for (ControlBlock b : List.of(w, d)) {
-            assertTrue(mmd.contains("subgraph sg_" + b.id + "[\"Loop\"]"), mmd);
+            assertTrue(mmd.contains("subgraph sg_" + b.id + "[\"↻ 반복 ("), mmd);
+            assertTrue(mmd.contains("    " + b.id + "{{\"") || mmd.contains(b.id + "{{\""), mmd); // 조건 노드 = 육각형 (if 는 마름모)
             assertTrue(g.idsUnder("sg_" + b.id).contains(b.id));
         }
         String inWhile = g.nodeOf(r.callSites.stream().filter(c -> w.id.equals(c.controlBlockId)).findFirst().orElseThrow().id);
         String inDo = g.nodeOf(r.callSites.stream().filter(c -> d.id.equals(c.controlBlockId)).findFirst().orElseThrow().id);
         assertTrue(g.idsUnder("sg_" + w.id).contains(inWhile));
         // while: 조건 → loop → 본문 → next → 조건, 조건 → done
-        assertTrue(mmd.contains(w.id + " -->|\"loop\"| " + inWhile), mmd);
+        assertTrue(mmd.contains(w.id + " -->|\"반복\"| " + inWhile), mmd);
         String whileLast = g.nodeOf(r.callSites.stream().filter(c -> w.id.equals(c.controlBlockId)).reduce((a, b) -> b).orElseThrow().id);
-        assertTrue(mmd.contains(whileLast + " -->|\"next\"| " + w.id), mmd);
-        assertTrue(mmd.contains(w.id + " -->|\"done\"| "), mmd);
+        assertTrue(mmd.contains(whileLast + " -->|\"↻ 다음 반복\"| " + w.id), mmd);
+        assertTrue(mmd.contains(w.id + " -->|\"반복 끝\"| "), mmd);
         // do-while: 본문이 먼저 → 조건 → loop 이면 본문으로
-        assertTrue(mmd.contains(w.id + " -->|\"done\"| " + inDo), mmd);
+        assertTrue(mmd.contains(w.id + " -->|\"반복 끝\"| " + inDo), mmd);
         assertTrue(mmd.contains(inDo + " --> " + d.id), mmd);
-        assertTrue(mmd.contains(d.id + " -->|\"loop\"| " + inDo), mmd);
+        assertTrue(mmd.contains(d.id + " -->|\"↻ 다시\"| " + inDo), mmd);
     }
 
     @Test
