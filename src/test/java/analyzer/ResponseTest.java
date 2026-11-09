@@ -40,37 +40,44 @@ class ResponseTest {
         assertTrue(spec.contains("""
                 ## 2. Response 정의
 
-                JSP: `src/main/webapp/WEB-INF/jsp/vas/appDetail.jsp`
+                - JSP: `src/main/webapp/WEB-INF/jsp/vas/appDetail.jsp`
+                - Content-Type: `text/xml; charset=UTF-8`
 
-                | 항목 | 필수 | 반복 | 값 |
-                |---|---|---|---|
-                | response/result@code | Y |  | resultCode (Action 에서 넣는 곳 없음) |
-                | response/result | Y |  | 고정 OK |
-                | response/country | Y |  | country |
-                | response/lang | Y |  | request.lang |
-                | response/apps/app@id | N | Y | appList[] |
-                | response/apps/app@seq | N | Y | 순번 (st.index) |
-                | response/apps/app/name | N | Y | appList[] |
-                | response/version | Y |  | 고정 1.0 |
+                ```xml
+                <response>
+                  <result code="${resultCode}">OK</result>
+                  <country>${country}</country>
+                  <lang>${param.lang}</lang>
+                  <!-- 조건: ${not empty appList} -->
+                  <apps>
+                    <!-- 반복: ${appList} (app) -->
+                    <app id="${app}" seq="${st.index}">
+                      <name>${app}</name>
+                    </app>
+                    <!-- /반복 -->
+                  </apps>
+                  <!-- /조건 -->
+                  <version>1.0</version>
+                </response>
+                ```
                 """), spec);
     }
 
-    /** 실전형 JSP: taglib 선언 없는 c:, c:set x = ${x}, forEach var 가 items 와 같은 이름, CDATA, EL 함수 */
     @Test
     void realWorldListJsp() {
         AnalyzerConfig c = cfg("appList.jsp");
         AnalysisResult r = Main.analyze(c);
         String spec = new SpecWriter().render(r, ResponseAnalyzer.analyze(c, r));
-        for (String row : List.of(
-                "| result/resultCode | Y |  | resultCode (Action 에서 넣는 곳 없음) |",
-                "| result/currencyInfo/currencyUnit | Y |  | currencyExtVO.currencySignText (Action 에서 넣는 곳 없음) |",
-                "| result/appInfo/productName | Y | Y | resultVO[].contentName |",
-                "| result/appInfo/stickerImgCount | N | Y | resultVO[].stickerInfo.originalImgCount |",
-                "| result/appInfo/description | N | Y | resultVO[].contentDescription |",
-                "| result/serverType | Y |  | 함수 vf:getServerType() |")) {
-            assertTrue(spec.contains(row), row + "\n" + spec);
+        for (String line : List.of(
+                "- Content-Type: `text/xml; charset=UTF-8`",
+                "  <currencyInfo>\n    <currencyUnit>${currencyExtVO.currencySignText}</currencyUnit>",
+                "  <!-- 반복: ${resultVO} (resultVO) -->\n  <appInfo>",
+                "    <productName><![CDATA[${resultVO.contentName}]]></productName>",
+                "    <!-- 조건: ${not empty resultVO.stickerInfo} -->\n    <stickerImgCount>",
+                "  <serverType>${vf:getServerType()}</serverType>")) {
+            assertTrue(spec.contains(line), line + "\n" + spec);
         }
-        assertTrue(!spec.contains("c:forEach") && !spec.contains("c:set") && !spec.contains("c:if"), spec);
+        assertTrue(!spec.contains("c:forEach") && !spec.contains("c:set") && !spec.contains("c:if") && !spec.contains("installInfo"), spec);
     }
 
     @Test

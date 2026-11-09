@@ -66,7 +66,7 @@ public final class JspParser {
     }
 
     /** 파싱 결과: 최상위 노드들 + 읽은 파일들(include 포함) + 알림 */
-    public record Doc(List<N> nodes, List<Path> files, List<String> notes) {
+    public record Doc(List<N> nodes, List<Path> files, List<String> notes, String contentType) {
     }
 
     private final Path webRoot;
@@ -75,6 +75,8 @@ public final class JspParser {
     private final List<Path> files = new ArrayList<>();
     private final List<String> notes = new ArrayList<>();
     private final Set<Path> active = new HashSet<>();
+    /** 첫 &lt;%@ page contentType %&gt; (include 된 파일 포함, 먼저 나온 것) */
+    private String contentType;
 
     private JspParser(Path webRoot) {
         this.webRoot = webRoot;
@@ -83,7 +85,7 @@ public final class JspParser {
     public static Doc parse(Path file, Path webRoot) {
         JspParser p = new JspParser(webRoot);
         List<N> nodes = p.parseFile(file, 0);
-        return new Doc(nodes, p.files, p.notes);
+        return new Doc(nodes, p.files, p.notes, p.contentType);
     }
 
     /** 문자열 JSP (테스트용) */
@@ -145,7 +147,7 @@ public final class JspParser {
                 i = skip(s, i, "-->");
             } else if (s.startsWith("<![CDATA[", i)) {
                 int end = skip(s, i, "]]>");
-                appendText(text, textLine, s.substring(i + 9, Math.max(i + 9, end - 3)), line);
+                appendText(text, textLine, s.substring(i, end), line); // CDATA 표시까지 원문 그대로 (명세 코드에 보임)
                 i = end;
             } else if (s.startsWith("<?", i)) {
                 i = skip(s, i, "?>");
@@ -180,7 +182,9 @@ public final class JspParser {
         String kind = b.split("\\s+", 2)[0];
         Map<String, String> a = new LinkedHashMap<>();
         attrs(b.substring(kind.length())).forEach(x -> a.put(x.name(), x.value()));
-        if (kind.equals("taglib") && a.containsKey("prefix")) {
+        if (kind.equals("page") && a.containsKey("contentType") && contentType == null) {
+            contentType = a.get("contentType").strip();
+        } else if (kind.equals("taglib") && a.containsKey("prefix")) {
             taglibs.put(a.get("prefix"), a.getOrDefault("uri", a.getOrDefault("tagdir", "")));
         } else if (kind.equals("include") && a.containsKey("file")) {
             flush(text, textLine, cur);

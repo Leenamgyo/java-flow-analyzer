@@ -23,6 +23,10 @@ public final class ResponseModel {
         public final List<String> tree = new ArrayList<>();
         /** 값 줄: XML 경로별 값·반복/조건·출처 */
         public final List<Value> values = new ArrayList<>();
+        /** &lt;%@ page contentType %&gt; (없으면 null) */
+        public String contentType;
+        /** 응답 XML 을 코드 형식으로: 태그·값 원문(${…}), 반복·조건·include 안 스크립틀릿은 주석 (spec.md 2장) */
+        public final List<String> xml = new ArrayList<>();
         /** 스크립틀릿·알 수 없는 태그 등 확인할 것 */
         public final List<String> notes = new ArrayList<>();
     }

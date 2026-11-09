@@ -137,20 +137,30 @@ response:
 - 값 출처: `${x}` = Action 의 `request.setAttribute("x", …)`, `${param.x}` = 요청 파라미터, `c:forEach` 변수 = `items` 의 원소.
   include 된 JSP 도 그 자리에 펼쳐 읽습니다.
 
-`spec.md` 예:
+`spec.md` 예 (Content-Type + 응답 XML 을 JSP 코드 그대로, 반복·조건은 주석으로 범위 표시):
 
-```markdown
+````markdown
 ## 2. Response 정의
 
-| 항목 | 필수 | 반복 | 값 |
-|---|---|---|---|
-| response/country | Y |  | country |
-| response/lang | Y |  | request.lang |
-| response/apps/app@id | N | Y | appList[] |
-| response/version | Y |  | 고정 1.0 |
-```
+- JSP: `WebContent/WEB-INF/jsp/vas/appList.jsp`
+- Content-Type: `text/xml; charset=UTF-8`
 
-필수 = `c:if`·`c:choose` 안이면 N, 반복 = `c:forEach` 안이면 Y.
+```xml
+<result>
+  <resultCode>${resultCode}</resultCode>
+  <!-- 반복: ${resultVO} (resultVO) -->
+  <appInfo>
+    <productName><![CDATA[${resultVO.contentName}]]></productName>
+    <!-- 조건: ${not empty resultVO.stickerInfo} -->
+    <stickerImgCount>${resultVO.stickerInfo.originalImgCount}</stickerImgCount>
+    <!-- /조건 -->
+  </appInfo>
+  <!-- /반복 -->
+</result>
+```
+````
+
+include 된 JSP 는 그 자리에 펼치고, `c:set` 처럼 출력이 없는 태그는 뺍니다. 값마다 Action 의 어느 attribute 에서 왔는지는 `response.md`.
 
 ## CLI 옵션
 

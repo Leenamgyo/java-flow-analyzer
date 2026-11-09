@@ -89,6 +89,8 @@ public final class ResponseAnalyzer {
         JspParser.Doc doc = JspParser.parse(found.file(), found.webRoot());
         doc.files().stream().skip(1).forEach(f -> j.includes.add(rel(f)));
         j.notes.addAll(doc.notes());
+        j.contentType = doc.contentType();
+        xml(doc.nodes(), "", j.xml);
         walk(j, doc.nodes(), "", "", new ArrayDeque<>(), new LinkedHashMap<>(), j.file);
     }
 
@@ -160,6 +162,59 @@ public final class ResponseAnalyzer {
                 j.values.add(new ResponseModel.Value(path + "/" + c.tag(), "tag", code, ctx, src, at));
                 walk(j, c.children(), path, indent + "  ", loops, sets, file);
             }
+        }
+    }
+
+    /**
+     * 응답 XML 코드 형식 (spec.md): 출력 태그·속성·값은 JSP 원문 그대로, JSTL 제어는 주석으로 범위 표시
+     * (반복 c:forEach → {@code <!-- 반복: items (var) -->} … {@code <!-- /반복 -->}, c:if/when → 조건, otherwise → 그 밖),
+     * include 는 그 자리에 펼침, c:set 은 출력이 없어 생략, 스크립틀릿·출력 태그가 아닌 taglib 태그는 주석/원문으로 남김.
+     */
+    static void xml(List<JspParser.N> nodes, String indent, List<String> out) {
+        for (JspParser.N n : nodes) {
+            if (n instanceof JspParser.Elem e) {
+                StringBuilder head = new StringBuilder("<" + e.name());
+                e.attrs().forEach(a -> head.append(' ').append(a.name()).append("=\"").append(a.value()).append('"'));
+                if (e.children().isEmpty()) {
+                    out.add(indent + head + "/>");
+                } else if (e.children().size() == 1 && e.children().get(0) instanceof JspParser.Text t) {
+                    out.add(indent + head + ">" + t.value() + "</" + e.name() + ">");
+                } else {
+                    out.add(indent + head + ">");
+                    xml(e.children(), indent + "  ", out);
+                    out.add(indent + "</" + e.name() + ">");
+                }
+            } else if (n instanceof JspParser.Text t) {
+                out.add(indent + t.value());
+            } else if (n instanceof JspParser.Loop l) {
+                out.add(indent + "<!-- 반복: " + nz(l.items()) + (l.var() == null ? "" : " (" + l.var() + ")") + " -->");
+                xml(l.children(), indent, out);
+                out.add(indent + "<!-- /반복 -->");
+            } else if (n instanceof JspParser.Choose c) {
+                xml(c.children(), indent, out);
+            } else if (n instanceof JspParser.Cond c) {
+                out.add(indent + "<!-- " + (c.test() == null ? "그 밖 (otherwise)" : "조건: " + c.test()) + " -->");
+                xml(c.children(), indent, out);
+                out.add(indent + "<!-- /" + (c.test() == null ? "그 밖" : "조건") + " -->");
+            } else if (n instanceof JspParser.Include inc) {
+                if (!inc.status().equals("FOUND")) {
+                    out.add(indent + "<!-- include " + inc.path() + " (" + inc.status() + ") -->");
+                }
+                xml(inc.children(), indent, out);
+            } else if (n instanceof JspParser.Script s) {
+                out.add(indent + "<!-- 스크립틀릿: " + s.code().replaceAll("\\s+", " ") + " -->");
+            } else if (n instanceof JspParser.Custom c) {
+                StringBuilder head = new StringBuilder("<" + c.tag());
+                c.attrs().forEach(a -> head.append(' ').append(a.name()).append("=\"").append(a.value()).append('"'));
+                if (c.children().isEmpty()) {
+                    out.add(indent + head + "/>");
+                } else {
+                    out.add(indent + head + ">");
+                    xml(c.children(), indent + "  ", out);
+                    out.add(indent + "</" + c.tag() + ">");
+                }
+            }
+            // SetVar: 출력 없음
         }
     }
 
