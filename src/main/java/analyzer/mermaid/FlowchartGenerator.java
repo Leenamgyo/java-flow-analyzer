@@ -1106,7 +1106,7 @@ public final class FlowchartGenerator {
         /** 값 조회: user = getLoginUser(request) — 본문을 분석하지 않은 source 메서드 결과를 변수에 받음 */
         List<End> fetch(CallSiteInfo s, List<End> cur) {
             cur = start("bind", cur, s.id);
-            lines.add(new Line(callCode(s), null, null));
+            lines.add(new Line(callCode(s), stateClass(s), null));
             members.add(s.id);
             assignedBy.getOrDefault(s.id, List.of()).forEach(c -> members.add(c.id));
             return cur;
@@ -1119,14 +1119,16 @@ public final class FlowchartGenerator {
             cur = start("bind", cur, first.id);
             StringBuilder line = new StringBuilder("#" + first.order + (group.size() > 1 ? "–" + last.order : "") + " ")
                     .append(stripSemi(Labels.codeValue(r, first.callerMethodId, first.statementLocation, first.statement)));
+            boolean changed = false;
             for (VariableChange c : r.variableChanges) {
                 if (c.methodId.equals(first.callerMethodId) && contains(first.statementLocation, c.location)) {
                     line.append(Labels.historySuffix(r, c));
                     changes.remove(c);
                     members.add(c.id);
+                    changed |= c.isChange();
                 }
             }
-            lines.add(new Line(line.toString(), null, null));
+            lines.add(new Line(line.toString(), changed ? "state" : null, null));
             group.forEach(c -> members.add(c.id));
             return cur;
         }
@@ -1139,7 +1141,7 @@ public final class FlowchartGenerator {
         List<End> code(CallSiteInfo s, List<End> cur) {
             cur = start("block", cur, s.id);
             codeCalls.add(s);
-            lines.add(new Line(callCode(s), null, null));
+            lines.add(new Line(callCode(s), stateClass(s), null));
             String impl = Labels.implementationTarget(r, s);
             if (impl != null) {
                 lines.add(new Line("  impl 후보: " + impl, null, null));
@@ -1471,14 +1473,16 @@ public final class FlowchartGenerator {
         StringBuilder line = new StringBuilder("#" + first.order + (group.size() > 1 ? "–" + last.order : "") + " ")
                 .append(stripSemi(Labels.codeValue(r, first.callerMethodId, first.statementLocation, first.statement)));
         // 이 문장이 추적 변수의 선언/변경이면 이력 표시, 값 변경 노드는 따로 만들지 않음
+        boolean changed = false;
         for (VariableChange c : r.variableChanges) {
             if (c.methodId.equals(first.callerMethodId) && contains(first.statementLocation, c.location)) {
                 line.append(Labels.historySuffix(r, c));
                 changes.remove(c);
                 g.alias(c.id, first.id);
+                changed |= c.isChange();
             }
         }
-        g.node(sg, first.id, List.of(line.toString()), Shape.RECT, "bind");
+        g.node(sg, first.id, List.of(changed ? MermaidGraph.styled("state", line.toString()) : line.toString()), Shape.RECT, "bind");
         group.stream().skip(1).forEach(c -> g.alias(c.id, first.id));
         return link(cur, first.id);
     }
@@ -1848,12 +1852,20 @@ public final class FlowchartGenerator {
         };
     }
 
+    /**
+     * 호출 결과를 이미 있는 변수에 대입하는 줄(x = call(), 타입 없음 = 상태 변화)이면 "state"(주황 글자), 아니면 null.
+     * 값 변경 줄만 주황이고 호출 대입은 기본 색이라 같은 상태 변화가 다르게 보였다 (사용자 지적).
+     */
+    private String stateClass(CallSiteInfo s) {
+        return assignedBy.getOrDefault(s.id, List.of()).stream().anyMatch(VariableChange::isChange) ? "state" : null;
+    }
+
     private void callNode(Subgraph sg, CallSiteInfo s) {
         List<String> lines = new ArrayList<>();
         boolean folded = s.targetMethodId != null && collapsed.contains(s.expansionTargetId());
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
         String code = callCode(s);
-        lines.add(code);
+        lines.add(stateClass(s) == null ? code : MermaidGraph.styled("state", code)); // x = call() 대입(상태 변화)이면 주황
         if (var != null && fetch(s)) {
             // 값 조회는 바인딩으로 끝: 내부로 들어가지 않고 코드 한 줄
             g.node(sg, s.id, lines, Shape.RECT, "bind");

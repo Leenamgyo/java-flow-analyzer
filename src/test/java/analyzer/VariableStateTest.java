@@ -92,7 +92,9 @@ class VariableStateTest {
         String callId = assign.callSiteIds.get(0);
         assertEquals(callId, g.nodeOf(assign.id));
         // 타입 없는 대입 = 값 변경 (자바 코드 그대로 타입을 붙이지 않음)
-        assertTrue(mmd.contains("[\"#35;4 label = format(once) · label v1\"]"), mmd);
+        // 호출 결과 대입(x = call(), 타입 없음)도 상태 변화 — 값 변경 줄과 같은 주황 글자 (사용자 지적)
+        assertTrue(mmd.contains("[\"" + analyzer.mermaid.MermaidGraph.fontOpen(analyzer.mermaid.MermaidGraph.TEXT_COLORS.get("state"))
+                + "#35;4 label = format(once) · label v1</font>\"]"), mmd);
         // 선언(타입 있는 초기화)은 값 변경 노드로 그리지 않는다
         assertFalse(mmd.contains("값 변경<br/>int size"), mmd);
         assertFalse(mmd.contains("값 변경<br/>long total = 0"), mmd);
