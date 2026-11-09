@@ -70,6 +70,11 @@ public class AnalyzerConfig {
         public boolean includeBindings = true;
         /** 선언 뒤 값이 바뀌는 지역 변수·파라미터의 변경 이력(=, +=, ++ …)을 수집한다 */
         public boolean includeVariableChanges = true;
+        /**
+         * VO 필드 커버리지(선언·미할당·초기값만·확인 불가)에 상위 클래스에서 물려받은 필드를 넣는다.
+         * false 면 VO 클래스 자신이 선언한 필드만. 상속 필드에 실제로 값을 넣는 바인딩은 어느 쪽이든 그대로 기록한다.
+         */
+        public boolean includeInheritedFields = false;
     }
 
     public static class Output {
@@ -91,6 +96,8 @@ public class AnalyzerConfig {
          * 예: "*Util.*", "LOG.debug", "com.example.common.AuditHelper.*". 맞는 메서드는 본문 상자도 그리지 않는다.
          */
         public List<String> flowchartExclude = new ArrayList<>();
+        /** call-tree.txt 에서 뺄 호출 (flowchart-exclude 와 같은 패턴). 맞는 호출은 줄도, 그 아래 전개도 없다 */
+        public List<String> callTreeExclude = new ArrayList<>();
     }
 
     /**

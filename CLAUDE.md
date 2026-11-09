@@ -80,7 +80,7 @@ analyzer/
 - 표시 문자열은 줄이지 않는다(`Labels.truncate`·`ConditionText.text` 는 원문 그대로, 목록 상한 없음) — 사용자 요구.
 
 **Request 스펙**
-- Request 읽기 호출(getParameter*·`request-parameter-rules`)은 `include-external-library-calls: false` 여도 모델에 남긴다(요청 스펙 근거). analysis.md 의 Unresolved 표에서는 건수만 표시.
+- Request 읽기 호출(getParameter*·`request-parameter-rules`)은 `include-external-library-calls: false` 여도 모델에 남긴다(요청 스펙 근거).
 - `requestSpec`(RQ*) = 이름이 확정된 P* 의 이름별 집계. UNKNOWN 이름·전체 조회·body·`@ModelAttribute`(객체 바인딩)는 `unknownNameReads` / `bulkReads` 로 (`RequestParameterInfo.named()`).
 
 **바인딩 (SPEC-v2 §3.3·§4)**
@@ -91,7 +91,7 @@ analyzer/
   변환: JDK 변환(Integer.parseInt…)·`*Util(s)` static·문자열 메서드(.trim()…)는 항상 변환+원본 추적, 그 밖의 source 메서드는 **인자가 요청 값일 때만** 변환(예: `normalizePhone(request…)`), 아니면 `call:`. 연산식은 `expr: …`, 삼항은 `조건식: …`(분기 리터럴은 출처).
   Default 는 출처가 요청 파라미터 하나일 때만 그 기본값.
 - 객체 정체성: 지역변수 = (메서드, 변수). 메서드 파라미터는 분석된 호출 위치가 **정확히 1개**이고 인자가 변수일 때만 호출자 객체로 잇는다. 반환값으로 넘어간 객체는 잇지 않는다.
-- 필드 커버리지: 선언(소스 인스턴스 필드, 상위 포함) / 할당 / 조건부로만 할당 / 초기값만 / 미할당 / 확인 불가(copyProperties 대상).
+- 필드 커버리지: 선언(소스 인스턴스 필드) / 할당 / 조건부로만 할당 / 초기값만 / 미할당 / 확인 불가(copyProperties 대상). 상위 클래스 필드는 `analysis.include-inherited-fields`(기본 false — 사용자 요구로 분석 내용에서 뺌) 일 때만 선언 목록에 넣는다. 상속 필드에 값을 넣는 바인딩(`vo.setRegId(…)`)은 설정과 무관하게 기록·할당 필드에 포함(fixture `EdgeAction.inheritedFields`, `NoticeVO extends BaseVO`).
 - Lombok 등 생성 코드는 builder/생성자 resolution 을 `PARTIALLY_RESOLVED`/`UNRESOLVED` 로 낮추고 사유 기록.
 - JavaParser `Node.equals` 는 구조 비교라 AST 키 맵은 `IdentityHashMap`.
 
@@ -133,6 +133,8 @@ analyzer/
 - `analysis.yaml` 단일 문서, camelCase, `schemaVersion: "1.0"`. 쓰고 다시 읽어 `AnalysisSchema` 로 필수 키·타입·열거값·ID 형식·참조 검증 → 실패 시 예외. 숫자처럼 보이는 문자열은 따옴표 강제(`ALWAYS_QUOTE_NUMBERS_AS_STRINGS`).
 - 바인딩은 표시용 `source`/`transform`/`condition` 문자열과 구조화된 `sources`/`transforms`/`conditions` 를 함께 기록.
 - `comparison.md`(SPEC-v2 §7)는 신규 프로젝트 데이터가 없으면 만들지 않는다(미구현).
+- analysis.md 에는 메서드 목록·Unresolved 목록·호출 트리를 넣지 않는다(사용자 요구: 분석서에 중요하지 않음). 각각 `analysis.yaml`(methods, calls 의 resolution)·`call-tree.txt` 에 있고, 분석서 머리말에 위치를 안내.
+- 호출 트리 제외 `output.call-tree-exclude`(사용자 관리, 기본 없음): `flowchart-exclude` 와 같은 패턴·매처(`serializer.Excludes`, 흐름도와 공용). 맞는 호출은 줄도 그 아래 전개도 없고, 트리 끝에 `※ call-tree-exclude (… N개)` 를 남긴다. 표시에서만 빼며 모델·YAML·mapping.md 는 그대로.
 
 **Mermaid (SPEC-v2 §5)**
 - 기본 `TD`(위→아래). subgraph 는 분석한 메서드당 1개 + 그 안의 try 블록(`sg_T*`)·Loop 영역(`sg_FOR*`/`sg_FOREACH*`/`sg_WHILE*`/`sg_DO*`). 본문 미분석 메서드는 노드를 만들지 않고 호출 노드 라벨로만 표시.

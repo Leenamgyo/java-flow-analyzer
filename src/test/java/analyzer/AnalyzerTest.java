@@ -502,6 +502,21 @@ class AnalyzerTest {
         }
 
         @Test
+        void inheritedFieldsAreExcludedFromCoverageByDefault() {
+            AnalysisResult k = analyze("EdgeAction", "inheritedFields");
+            var vo = k.objects.stream().filter(o -> o.className.equals("NoticeVO")).findFirst().orElseThrow();
+            assertEquals(List.of("title", "body"), vo.declaredFields);       // 기본: BaseVO 필드(regId, regDate) 제외
+            assertEquals(List.of("body"), vo.unassignedFields);
+            assertEquals(List.of("title", "regId"), vo.assignedFields);    // 상속 필드 바인딩은 그대로
+            assertEquals(false, k.settings.get("include-inherited-fields"));
+
+            AnalysisResult all = analyze("EdgeAction", "inheritedFields", c -> c.analysis.includeInheritedFields = true);
+            var vo2 = all.objects.stream().filter(o -> o.className.equals("NoticeVO")).findFirst().orElseThrow();
+            assertEquals(List.of("regId", "regDate", "title", "body"), vo2.declaredFields);
+            assertEquals(List.of("regDate", "body"), vo2.unassignedFields);
+        }
+
+        @Test
         void disabledBindings() {
             AnalysisResult off = analyze("CaseAction", "voBinding", c -> c.analysis.includeBindings = false);
             assertTrue(off.bindings.isEmpty());

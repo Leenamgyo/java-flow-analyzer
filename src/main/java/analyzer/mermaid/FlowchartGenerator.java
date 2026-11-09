@@ -655,44 +655,13 @@ public final class FlowchartGenerator {
                 && s.expansion != Expansion.SHARED && s.expansion != Expansion.CYCLE;
     }
 
-    /** exclude 패턴(* 와일드카드)에 맞는 호출: 대상 "클래스.메서드"(단순명·FQN, 구현 후보 포함) 또는 원문 "수신객체.메서드" */
+    /** exclude 패턴에 맞는 호출 ({@link analyzer.serializer.Excludes}) */
     static boolean excludedCall(AnalysisResult r, List<String> patterns, CallSiteInfo s) {
-        if (patterns.isEmpty()) {
-            return false;
-        }
-        List<String> names = new ArrayList<>();
-        for (String t : new String[]{s.targetMethodId, s.implementationMethodId}) {
-            if (t != null) {
-                names.addAll(methodNames(r, r.method(t)));
-            }
-        }
-        names.add(s.scopeExpression == null ? s.methodName : s.scopeExpression + "." + s.methodName);
-        return matches(patterns, names);
+        return analyzer.serializer.Excludes.call(r, patterns, s);
     }
 
     static boolean excludedMethod(AnalysisResult r, List<String> patterns, MethodInfo m) {
-        return !patterns.isEmpty() && matches(patterns, methodNames(r, m));
-    }
-
-    private static List<String> methodNames(AnalysisResult r, MethodInfo m) {
-        var c = r.classOf(m);
-        List<String> out = new ArrayList<>(List.of(c.name + "." + m.name));
-        if (c.qualifiedName != null) {
-            out.add(c.qualifiedName + "." + m.name);
-        }
-        return out;
-    }
-
-    private static boolean matches(List<String> patterns, List<String> names) {
-        for (String p : patterns) {
-            java.util.regex.Pattern re = java.util.regex.Pattern.compile(
-                    java.util.Arrays.stream(p.trim().split("\\*", -1)).map(java.util.regex.Pattern::quote)
-                            .collect(java.util.stream.Collectors.joining(".*")));
-            if (names.stream().anyMatch(n -> re.matcher(n).matches())) {
-                return true;
-            }
-        }
-        return false;
+        return analyzer.serializer.Excludes.method(r, patterns, m);
     }
 
     /** 메서드 시작 노드에 붙는 예외 처리 요약: ⚠ catch SQLException → log · error response / finally */

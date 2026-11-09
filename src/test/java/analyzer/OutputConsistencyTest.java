@@ -292,11 +292,16 @@ class OutputConsistencyTest {
         // mapping.md 는 모든 바인딩을 생략 없이 포함
         String mapping = new MappingReportWriter().render(r);
         r.bindings.forEach(b -> assertTrue(mapping.contains("| " + b.id + " |"), b.id));
-        String md = new analyzer.serializer.AnalysisReportWriter().render(r, tree, "flowchart LR\n", "SKIPPED");
+        String md = new analyzer.serializer.AnalysisReportWriter().render(r, "flowchart LR\n", "SKIPPED");
         for (String section : List.of("## 1. 분석 개요", "## 2. 실행 흐름도", "## 3. Request Parameter 분석",
                 "## 4. VO / DTO / Command 바인딩 명세", "## 5. 메서드 호출 관계", "## 6. 예외 처리")) {
             assertTrue(md.contains(section), section);
         }
+        // 메서드 목록·Unresolved 목록·호출 트리는 분석서에서 뺌 (call-tree.txt·analysis.yaml 에 있음)
+        for (String gone : List.of("### 8.2 메서드 목록", "### 8.3 Unresolved 목록", "### 8.4 호출 트리", "```text")) {
+            assertFalse(md.contains(gone), gone);
+        }
+        assertTrue(md.contains("### 8.2 분석 범위와 정적 분석 한계"), md);
     }
 
     @Test
@@ -330,5 +335,22 @@ class OutputConsistencyTest {
         ((Map<String, Object>) (Object) ((List<?>) doc.get("calls")).get(0)).put("from", "M999");
         List<String> errors = AnalysisSchema.validate(doc);
         assertTrue(errors.stream().anyMatch(e -> e.contains("schemaVersion")), errors.toString());
+    }
+
+    @Test
+    void callTreeExcludeDropsMatchingCalls() throws Exception {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "statementBinding");
+        String tree = new CallTreeWriter(true).exclude(List.of("String.*", "StringUtil.*")).render(r);
+        assertFalse(tree.contains("StringUtil.isNotEmpty"), tree);
+        assertFalse(tree.contains("StringUtil.getParam(HttpServletRequest"), tree); // 호출 줄 (println 원문 안에는 남음)
+        assertFalse(tree.contains("String.equals"), tree);
+        assertTrue(tree.contains("ODSUtil.isQAStore(String)"), tree); // 패턴 밖은 그대로
+        assertTrue(tree.contains("※ call-tree-exclude (사용자 설정으로 뺀 호출 3개): String.*, StringUtil.*"), tree);
+        // 블록 없는 트리도 같은 규칙
+        assertFalse(new CallTreeWriter(false).exclude(List.of("StringUtil.*")).render(r).contains("StringUtil.isNotEmpty"));
+        // 설정 키: output.call-tree-exclude
+        Path f = Files.createTempFile("cfg", ".yml");
+        Files.writeString(f, "target: { source-root: x, class: A }\noutput:\n  call-tree-exclude: [\"String.*\", \"StringUtil.*\"]\n");
+        assertEquals(List.of("String.*", "StringUtil.*"), analyzer.config.ConfigLoader.load(f).output.callTreeExclude);
     }
 }

@@ -20,6 +20,8 @@ analysis:
   include-bindings: true
   # 선언 뒤 값이 바뀌는 지역 변수·파라미터(total -= usePoint, size = MAX …) 변경 이력 수집
   include-variable-changes: true
+  # VO 필드 커버리지(선언·미할당 …)에 상위 클래스 필드 포함 (false = VO 자신이 선언한 필드만, 상속 필드 바인딩은 그대로 기록)
+  include-inherited-fields: false
   classpath-jars: []
 
 # 프로젝트 고유 요청 읽기 메서드 = 바인딩 (HttpServletRequest.getParameter/Values/Map 은 기본 내장) — 프로젝트별로 지정
@@ -55,3 +57,6 @@ output:
   #   호출 대상 "클래스.메서드"(단순명·FQN) 또는 호출 원문 "수신객체.메서드" 와 비교 — 맞는 메서드는 본문 상자도 생략
   #   예: ["*Util.*", "LOG.debug", "com.example.common.AuditHelper.*"]
   flowchart-exclude: []
+  # 호출 트리(call-tree.txt)에서 뺄 호출 — flowchart-exclude 와 같은 패턴. 맞는 호출은 줄도, 그 아래 전개도 없다
+  #   예: ["String.*", "StringUtil.*"]
+  call-tree-exclude: []

@@ -24,3 +24,11 @@ request-parameter-rules:
   - class: ParameterUtil
     methods:
       - { name: getInt, name-arg-index: 1, default-arg-index: 2, type: int }
+
+output:
+  # 호출 트리에서 뺄 호출 (* 와일드카드, 대상 "클래스.메서드" 단순명·FQN 또는 원문 "수신객체.메서드")
+  call-tree-exclude:
+    - "String.*"        # java.lang.String 메서드 (equals, trim …)
+    - "StringUtil.*"
+    - "Integer.*"       # java.lang.Integer (parseInt, valueOf …)
+    - "LOG.*"           # 로거 필드 LOG 의 호출 (info, debug …)

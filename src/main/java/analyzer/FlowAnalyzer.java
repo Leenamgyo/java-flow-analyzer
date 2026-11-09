@@ -135,7 +135,7 @@ public final class FlowAnalyzer {
                         public ClassInfo register(TypeDeclaration<?> td) {
                             return sourceClass(td);
                         }
-                    }).collect();
+                    }).inheritedFields(cfg.analysis.includeInheritedFields).collect();
         }
         if (cfg.analysis.includeVariableChanges) {
             new analyzer.binding.VariableStateCollector(result, declarations, paramsByCall, callExprs).collect();
@@ -170,6 +170,7 @@ public final class FlowAnalyzer {
         s.put("expand-roles", a.expandRoles);
         s.put("link-single-implementation", a.linkSingleImplementation);
         s.put("include-bindings", a.includeBindings);
+        s.put("include-inherited-fields", a.includeInheritedFields);
         s.put("classpath-jars", a.classpathJars);
         result.settings = s;
     }

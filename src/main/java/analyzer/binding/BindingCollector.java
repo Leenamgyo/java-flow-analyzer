@@ -73,6 +73,8 @@ public final class BindingCollector {
     private final RequestParameterExtractor params;
     private final Types types;
     private final SourceTracer tracer;
+    /** 필드 커버리지에 상위 클래스 필드 포함 (analysis.include-inherited-fields) */
+    private boolean inheritedFields;
 
     private final Map<Key, ObjectInfo> objects = new LinkedHashMap<>();
     private final Map<String, TypeDeclaration<?>> objectTypes = new HashMap<>();
@@ -89,6 +91,11 @@ public final class BindingCollector {
         this.types = types;
         this.tracer = new SourceTracer(r, declarations, paramsByCall, callExprs);
         callExprs.forEach((id, e) -> siteByExpr.put(e, r.callSite(id)));
+    }
+
+    public BindingCollector inheritedFields(boolean include) {
+        this.inheritedFields = include;
+        return this;
     }
 
     public void collect() {
@@ -516,8 +523,10 @@ public final class BindingCollector {
         if (!visited.add(td.getFullyQualifiedName().orElse(td.getNameAsString()))) {
             return;
         }
-        for (TypeDeclaration<?> sup : lookup.sourceSupertypes(td)) {
-            declaredFields(sup, out, visited);
+        if (inheritedFields) {
+            for (TypeDeclaration<?> sup : lookup.sourceSupertypes(td)) {
+                declaredFields(sup, out, visited);
+            }
         }
         for (FieldDeclaration f : td.getFields()) {
             if (f.isStatic()) {

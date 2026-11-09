@@ -26,13 +26,14 @@ import static analyzer.serializer.MappingReportWriter.method;
 /** analysis.md — 전체 소스 분석서 (공통 모델에서만 생성). */
 public final class AnalysisReportWriter {
 
-    public String render(AnalysisResult r, String treeText, String mermaidText, String mermaidStatus) {
+    public String render(AnalysisResult r, String mermaidText, String mermaidStatus) {
         StringBuilder sb = new StringBuilder();
         ClassInfo target = r.clazz(r.targetClassId);
         MethodInfo entry = r.method(r.entryMethodId);
         sb.append("# 소스 분석서: ").append(target.name).append('.').append(entry.name).append("()\n\n");
         sb.append("> `analysis.yaml`(원본 데이터)에서 생성. ID(C*, M*, CALL*, 블록, P*, O*, B*)는 모든 파일에서 동일합니다. ")
-                .append("필드 매핑 전체는 `mapping.md` 에 있습니다.\n\n");
+                .append("필드 매핑 전체는 `mapping.md`, 호출 트리는 `call-tree.txt`, 메서드 목록·미해결(UNRESOLVED) 항목은 `analysis.yaml` ")
+                .append("(methods · calls 의 resolution) 에 있습니다.\n\n");
 
         overview(r, target, entry, sb);
         sb.append("## 2. 실행 흐름도\n\n");
@@ -42,7 +43,7 @@ public final class AnalysisReportWriter {
         bindings(r, sb);
         calls(r, sb);
         exceptions(r, sb);
-        appendix(r, treeText, mermaidStatus, sb);
+        appendix(r, mermaidStatus, sb);
         return sb.toString();
     }
 
@@ -286,59 +287,12 @@ public final class AnalysisReportWriter {
 
     // ------------------------------------------------------------------ 7/8
 
-    private void appendix(AnalysisResult r, String treeText, String mermaidStatus, StringBuilder sb) {
+    private void appendix(AnalysisResult r, String mermaidStatus, StringBuilder sb) {
         sb.append("## 7. 마이그레이션 비교 결과\n\n신규 프로젝트 분석 데이터가 없어 생성하지 않았습니다(`comparison.md` 미생성).\n\n");
         sb.append("## 8. 부록\n\n### 8.1 분석 설정\n\n| 설정 | 값 |\n|---|---|\n");
         r.settings.forEach((k, v) -> sb.append("| ").append(k).append(" | ").append(v).append(" |\n"));
 
-        sb.append("\n### 8.2 메서드 목록\n\n| ID | 메서드 | 접근 | static | Depth | 분석 | 위치 |\n|---|---|---|---|---|---|---|\n");
-        for (MethodInfo m : r.methods()) {
-            sb.append("| ").append(m.id).append(" | `").append(r.classOf(m).name).append('.').append(md(m.signature))
-                    .append("` | ").append(m.visibility.text()).append(m.modifiersImplicit ? " (암묵적)" : "")
-                    .append(" | ").append(m.isStatic ? "Y" : "").append(" | D").append(m.depth)
-                    .append(" | ").append(m.analyzed ? "전개" : m.notAnalyzedReason.name())
-                    .append(" | ").append(m.location == null ? "-" : m.location.shortText()).append(" |\n");
-        }
-
-        sb.append("\n### 8.3 Unresolved 목록\n\n");
-        List<CallSiteInfo> requestReads = r.callSites.stream()
-                .filter(s -> s.resolution != ResolutionStatus.RESOLVED && !r.parametersAt(s.id).isEmpty()).toList();
-        List<CallSiteInfo> unresolved = r.callSites.stream()
-                .filter(s -> s.resolution != ResolutionStatus.RESOLVED && r.parametersAt(s.id).isEmpty()).toList();
-        List<ControlBlock> unresolvedThrows = r.blocks.stream()
-                .filter(b -> b.type == BlockType.THROW && b.exceptionResolution == ResolutionStatus.UNRESOLVED).toList();
-        List<analyzer.model.Binding> unresolvedBindings = r.bindings.stream()
-                .filter(b -> b.resolution != ResolutionStatus.RESOLVED).toList();
-        if (unresolved.isEmpty() && unresolvedThrows.isEmpty() && unresolvedBindings.isEmpty()) {
-            sb.append("없음.\n");
-        } else {
-            sb.append("| ID | 대상 | 상태 | 사유 | 위치 |\n|---|---|---|---|---|\n");
-            for (CallSiteInfo s : unresolved) {
-                sb.append("| ").append(s.id).append(" | `").append(md(Labels.truncate(s.expression, 60))).append("` | ")
-                        .append(s.resolution).append(" | ").append(md(n(s.resolutionReason))).append(" | ")
-                        .append(s.location.shortText()).append(" |\n");
-            }
-            for (ControlBlock b : unresolvedThrows) {
-                sb.append("| ").append(b.id).append(" | `throw ").append(md(Labels.truncate(b.expression, 50)))
-                        .append("` | 예외 흐름 UNRESOLVED | ").append(md(b.exceptionReason)).append(" | ")
-                        .append(b.location.shortText()).append(" |\n");
-            }
-            for (analyzer.model.Binding b : unresolvedBindings) {
-                sb.append("| ").append(b.id).append(" | `").append(r.object(b.objectId).className).append('.')
-                        .append(md(b.field)).append("` 바인딩 | ").append(b.resolution).append(" | ")
-                        .append(md(n(b.resolutionReason))).append(" | ").append(b.location.shortText()).append(" |\n");
-            }
-        }
-        if (!requestReads.isEmpty()) {
-            sb.append("\n- Request 읽기 호출 ").append(requestReads.size())
-                    .append("건은 수신 타입(HttpServletRequest 등)이 source-root 밖이라 PARTIALLY_RESOLVED — 3장에 표시\n");
-        }
-        sb.append("- 깊이 제한으로 전개하지 않은 호출(미해결과 구분): ")
-                .append(r.callSites.stream().filter(s -> s.expansion == Expansion.DEPTH_LIMIT).count()).append("건\n");
-
-        sb.append("\n### 8.4 호출 트리\n\n```text\n").append(treeText).append("```\n");
-
-        sb.append("\n### 8.5 분석 범위와 정적 분석 한계\n\n");
+        sb.append("\n### 8.2 분석 범위와 정적 분석 한계\n\n");
         sb.append("- 진입 메서드에서 도달한 메서드만 포함하며, 타입 해석을 위해 참조만 한 파일은 포함하지 않습니다.\n");
         sb.append("- 다른 클래스 메서드는 max-depth 까지 호출 관계·인자만 기록하고, `expand-roles` 역할만 본문을 분석합니다.\n");
         if (Boolean.TRUE.equals(r.settings.get("link-single-implementation"))) {
@@ -352,7 +306,7 @@ public final class AnalysisReportWriter {
         sb.append("- 호출 순서는 Java 평가 순서(수신 객체 → 인자 → 호출), for 는 init → 조건 → 본문 → update. switch fall-through, 생성자 본문, 익명/로컬 클래스는 흐름에서 제외됩니다.\n");
         sb.append("- Mermaid 렌더링 검증: ").append(mermaidStatus).append('\n');
         if (!r.notes.isEmpty()) {
-            sb.append("\n### 8.6 분석 중 생략된 항목\n\n");
+            sb.append("\n### 8.3 분석 중 생략된 항목\n\n");
             r.notes.forEach(x -> sb.append("- ").append(x).append('\n'));
         }
     }

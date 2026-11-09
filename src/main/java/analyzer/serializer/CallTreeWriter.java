@@ -16,6 +16,8 @@ import java.util.List;
 /** 진입 메서드를 루트로 하는 텍스트 호출 트리. */
 public final class CallTreeWriter {
     private final boolean includeBlocks;
+    private List<String> excludes = List.of();
+    private int excluded;
     private AnalysisResult r;
     private StringBuilder sb;
 
@@ -23,9 +25,16 @@ public final class CallTreeWriter {
         this.includeBlocks = includeBlocks;
     }
 
+    /** output.call-tree-exclude — 맞는 호출은 줄도, 그 아래 전개도 쓰지 않는다 */
+    public CallTreeWriter exclude(List<String> patterns) {
+        this.excludes = patterns == null ? List.of() : List.copyOf(patterns);
+        return this;
+    }
+
     public String render(AnalysisResult result) {
         this.r = result;
         this.sb = new StringBuilder();
+        this.excluded = 0;
         ClassInfo target = r.clazz(r.targetClassId);
         MethodInfo entry = r.method(r.entryMethodId);
         sb.append(target.name).append(" [").append(target.role.label()).append("]\n");
@@ -36,6 +45,10 @@ public final class CallTreeWriter {
         }
         sb.append('\n');
         renderMethod(entry, "    ");
+        if (!excludes.isEmpty()) {
+            sb.append("\n※ call-tree-exclude (사용자 설정으로 뺀 호출 ").append(excluded).append("개): ")
+                    .append(String.join(", ", excludes)).append('\n');
+        }
         return sb.toString();
     }
 
@@ -81,7 +94,14 @@ public final class CallTreeWriter {
         return ((FlowView.Summary) o).at();
     }
 
-    private void renderItems(MethodInfo m, List<Object> items, String prefix) {
+    private void renderItems(MethodInfo m, List<Object> all, String prefix) {
+        List<Object> items = all.stream().filter(o -> {
+            boolean out = o instanceof CallSiteInfo s && Excludes.call(r, excludes, s);
+            if (out) {
+                excluded++;
+            }
+            return !out;
+        }).toList();
         for (int i = 0; i < items.size(); i++) {
             boolean last = i == items.size() - 1;
             String branch = last ? "└── " : "├── ";

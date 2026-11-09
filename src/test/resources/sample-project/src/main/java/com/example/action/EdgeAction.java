@@ -4,6 +4,7 @@ import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.example.model.NoticeVO;
 import com.example.model.SearchVO;
 import com.example.support.Cache;
 import com.example.support.LogService;
@@ -192,5 +193,12 @@ public class EdgeAction {
         touch();
         extraInfo.add("C");
         return t;
+    }
+
+    // ---- 상위 클래스(BaseVO) 필드: include-inherited-fields 에 따라 선언 필드 목록에 포함/제외
+    public void inheritedFields(HttpServletRequest request) {
+        NoticeVO vo = new NoticeVO();
+        vo.setTitle(request.getParameter("title"));
+        vo.setRegId("admin");
     }
 }

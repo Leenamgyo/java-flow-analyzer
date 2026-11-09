@@ -26,7 +26,7 @@ public final class OutputWriter {
             new AnalysisYamlWriter().write(r, yaml);
             written.add(yaml);
         }
-        String tree = new CallTreeWriter(cfg.output.treeIncludeControlBlocks).render(r);
+        String tree = new CallTreeWriter(cfg.output.treeIncludeControlBlocks).exclude(cfg.output.callTreeExclude).render(r);
         if (cfg.output.tree) {
             Files.writeString(dir.resolve("call-tree.txt"), tree);
             written.add(dir.resolve("call-tree.txt"));
@@ -85,7 +85,7 @@ public final class OutputWriter {
         }
         Files.writeString(dir.resolve("mapping.md"), new MappingReportWriter().render(r));
         written.add(dir.resolve("mapping.md"));
-        Files.writeString(dir.resolve("analysis.md"), new AnalysisReportWriter().render(r, tree, mermaid, mermaidStatus));
+        Files.writeString(dir.resolve("analysis.md"), new AnalysisReportWriter().render(r, mermaid, mermaidStatus));
         written.add(dir.resolve("analysis.md"));
         return written;
     }
