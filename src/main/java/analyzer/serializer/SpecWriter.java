@@ -4,7 +4,6 @@ import analyzer.model.AnalysisResult;
 import analyzer.model.Binding;
 import analyzer.model.ClassInfo;
 import analyzer.model.MethodInfo;
-import analyzer.model.RequestParameterInfo;
 import analyzer.model.RequestSpecEntry;
 
 import java.util.LinkedHashSet;
@@ -59,15 +58,9 @@ public final class SpecWriter {
         }
     }
 
-    /** 설명: 분석으로 알 수 있는 것만 짧게 — 검증 조건 · 값 변환 (없으면 빈칸, 직접 채움) */
+    /** 설명: 값 변환만 짧게 (없으면 빈칸, 직접 채움). 검증 조건은 넣지 않는다(사용자 요구) — analysis.md 1장 */
     private static String description(AnalysisResult r, RequestSpecEntry e) {
         Set<String> parts = new LinkedHashSet<>();
-        for (String pid : e.parameterIds) {
-            RequestParameterInfo p = r.parameter(pid);
-            for (String v : AnalysisReportWriter.validations(r, p)) {
-                parts.add("조건 " + v.replaceFirst("^(if|else if|while|switch) \\((.*)\\)(.*)$", "$2$3"));
-            }
-        }
         for (String id : e.bindingIds) {
             Binding b = r.binding(id);
             if (!b.transforms.isEmpty()) {
