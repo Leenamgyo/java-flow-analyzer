@@ -356,7 +356,7 @@ public final class FlowchartGenerator {
         return phases == null ? (dark ? DARK_CLASS_DEFS : CLASS_DEFS) : (dark ? DARK_PHASE_CLASS_DEFS : PHASE_CLASS_DEFS);
     }
 
-    private int maxLineLength = 100;
+    private int maxLineLength = 150;
     /** 사용자 설정 output.flowchart-exclude */
     private List<String> excludes = List.of();
     private Rules rules;

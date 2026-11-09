@@ -582,7 +582,7 @@ public final class MermaidGraph {
     }
 
     /** 노드 한 줄 최대 길이 (넘으면 끊고 다음 줄 앞에 "> "). 0 이하면 끊지 않음 */
-    private int maxLineLength = 100;
+    private int maxLineLength = 150;
 
     public MermaidGraph maxLineLength(int n) {
         this.maxLineLength = n;
