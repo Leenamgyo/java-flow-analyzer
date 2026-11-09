@@ -195,10 +195,16 @@ public class EdgeAction {
         return t;
     }
 
-    // ---- 상위 클래스(BaseVO) 필드: include-inherited-fields 에 따라 선언 필드 목록에 포함/제외
+    // ---- 상위 클래스(BaseVO) 필드: include-inheritance 에 따라 선언 필드 목록에 포함/제외
     public void inheritedFields(HttpServletRequest request) {
         NoticeVO vo = new NoticeVO();
         vo.setTitle(request.getParameter("title"));
         vo.setRegId("admin");
+    }
+
+    // ---- 상위 클래스(BaseVO)를 쓰지 않음: BaseVO 는 출력에 나오지 않아야
+    public void inheritedUnused(HttpServletRequest request) {
+        NoticeVO vo = new NoticeVO();
+        vo.setTitle(request.getParameter("title"));
     }
 }

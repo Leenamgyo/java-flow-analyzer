@@ -71,10 +71,12 @@ public class AnalyzerConfig {
         /** 선언 뒤 값이 바뀌는 지역 변수·파라미터의 변경 이력(=, +=, ++ …)을 수집한다 */
         public boolean includeVariableChanges = true;
         /**
-         * VO 필드 커버리지(선언·미할당·초기값만·확인 불가)에 상위 클래스에서 물려받은 필드를 넣는다.
-         * false 면 VO 클래스 자신이 선언한 필드만. 상속 필드에 실제로 값을 넣는 바인딩은 어느 쪽이든 그대로 기록한다.
+         * 상속(extends) 정보를 분석 내용에 넣는다. false 면
+         * ① VO 필드 커버리지(선언·미할당·초기값만·확인 불가)에 상위 클래스 필드를 넣지 않고
+         * ② 클래스의 extends 목록을 비우고 ③ 상위 클래스 없이도 같은 역할이면 상위 클래스 역할 근거(SUPERTYPE)를 뺀다.
+         * 상속 필드에 실제로 값을 넣는 바인딩·상위 클래스 메서드 호출은 어느 쪽이든 그대로 기록한다.
          */
-        public boolean includeInheritedFields = false;
+        public boolean includeInheritance = false;
     }
 
     public static class Output {

@@ -135,7 +135,7 @@ public final class FlowAnalyzer {
                         public ClassInfo register(TypeDeclaration<?> td) {
                             return sourceClass(td);
                         }
-                    }).inheritedFields(cfg.analysis.includeInheritedFields).collect();
+                    }).inheritedFields(cfg.analysis.includeInheritance).collect();
         }
         if (cfg.analysis.includeVariableChanges) {
             new analyzer.binding.VariableStateCollector(result, declarations, paramsByCall, callExprs).collect();
@@ -170,7 +170,7 @@ public final class FlowAnalyzer {
         s.put("expand-roles", a.expandRoles);
         s.put("link-single-implementation", a.linkSingleImplementation);
         s.put("include-bindings", a.includeBindings);
-        s.put("include-inherited-fields", a.includeInheritedFields);
+        s.put("include-inheritance", a.includeInheritance);
         s.put("classpath-jars", a.classpathJars);
         result.settings = s;
     }
@@ -298,7 +298,9 @@ public final class FlowAnalyzer {
         if (td instanceof ClassOrInterfaceDeclaration ci) {
             c.kind = ci.isInterface() ? "INTERFACE" : "CLASS";
             c.isAbstract = ci.isAbstract();
-            ci.getExtendedTypes().forEach(t -> c.extendsTypes.add(t.asString()));
+            if (cfg.analysis.includeInheritance) {
+                ci.getExtendedTypes().forEach(t -> c.extendsTypes.add(t.asString()));
+            }
             ci.getImplementedTypes().forEach(t -> c.implementsTypes.add(t.asString()));
         } else if (td instanceof EnumDeclaration e) {
             c.kind = "ENUM";
@@ -312,17 +314,36 @@ public final class FlowAnalyzer {
             c.kind = "UNKNOWN";
         }
         td.getAnnotations().forEach(a -> c.annotations.add(a.getNameAsString()));
-        applyRole(c, classify(td));
+        applyRole(c, shownClassification(td));
         c.location = SourceLocation.of(td, sources.relativeFile(td));
         register(c, "C");
         return c;
     }
 
+    /**
+     * 출력할 역할 분류: include-inheritance: false 면 상위 클래스(extends) 없이 분류해 역할이 같을 때 그 결과(근거에 상위 클래스 없음).
+     * 상위 클래스로만 역할이 정해지면 근거를 지우지 않는다.
+     */
+    private ClassRoleClassifier.Classification shownClassification(TypeDeclaration<?> td) {
+        ClassRoleClassifier.Classification full = classify(td);
+        if (cfg.analysis.includeInheritance) {
+            return full;
+        }
+        ClassRoleClassifier.Classification own = classify(td, false);
+        return own.role() == full.role() ? own : full;
+    }
+
     private ClassRoleClassifier.Classification classify(TypeDeclaration<?> td) {
+        return classify(td, true);
+    }
+
+    private ClassRoleClassifier.Classification classify(TypeDeclaration<?> td, boolean withExtends) {
         List<String> annotations = td.getAnnotations().stream().map(a -> a.getNameAsString()).toList();
         List<String> supers = new ArrayList<>();
         if (td instanceof ClassOrInterfaceDeclaration ci) {
-            ci.getExtendedTypes().forEach(t -> supers.add(t.asString()));
+            if (withExtends) {
+                ci.getExtendedTypes().forEach(t -> supers.add(t.asString()));
+            }
             ci.getImplementedTypes().forEach(t -> supers.add(t.asString()));
         } else if (td instanceof EnumDeclaration e) {
             e.getImplementedTypes().forEach(t -> supers.add(t.asString()));

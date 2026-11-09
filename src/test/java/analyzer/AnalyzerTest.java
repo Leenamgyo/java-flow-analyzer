@@ -508,12 +508,29 @@ class AnalyzerTest {
             assertEquals(List.of("title", "body"), vo.declaredFields);       // 기본: BaseVO 필드(regId, regDate) 제외
             assertEquals(List.of("body"), vo.unassignedFields);
             assertEquals(List.of("title", "regId"), vo.assignedFields);    // 상속 필드 바인딩은 그대로
-            assertEquals(false, k.settings.get("include-inherited-fields"));
+            assertEquals(false, k.settings.get("include-inheritance"));
 
-            AnalysisResult all = analyze("EdgeAction", "inheritedFields", c -> c.analysis.includeInheritedFields = true);
+            AnalysisResult all = analyze("EdgeAction", "inheritedFields", c -> c.analysis.includeInheritance = true);
             var vo2 = all.objects.stream().filter(o -> o.className.equals("NoticeVO")).findFirst().orElseThrow();
             assertEquals(List.of("regId", "regDate", "title", "body"), vo2.declaredFields);
             assertEquals(List.of("regDate", "body"), vo2.unassignedFields);
+        }
+
+        @Test
+        void unusedSuperclassDoesNotAppearByDefault() {
+            // 상위 클래스를 쓰지 않으면 BaseVO 는 어디에도 나오지 않는다 (extends 목록·SUPERTYPE 근거)
+            AnalysisResult k = analyze("EdgeAction", "inheritedUnused");
+            var notice = k.classes().stream().filter(c -> c.name.equals("NoticeVO")).findFirst().orElseThrow();
+            assertEquals(List.of(), notice.extendsTypes);
+            assertTrue(notice.roleEvidence.stream().noneMatch(e -> e.kind().equals("SUPERTYPE")), notice.roleEvidence.toString());
+            assertEquals("VO", notice.role.label());
+            assertTrue(k.classes().stream().noneMatch(c -> c.name.equals("BaseVO")));
+            assertFalse(new analyzer.serializer.AnalysisYamlWriter().document(k).toString().contains("BaseVO"));
+
+            AnalysisResult all = analyze("EdgeAction", "inheritedUnused", c -> c.analysis.includeInheritance = true);
+            var n2 = all.classes().stream().filter(c -> c.name.equals("NoticeVO")).findFirst().orElseThrow();
+            assertEquals(List.of("BaseVO"), n2.extendsTypes);
+            assertTrue(n2.roleEvidence.stream().anyMatch(e -> e.kind().equals("SUPERTYPE")));
         }
 
         @Test

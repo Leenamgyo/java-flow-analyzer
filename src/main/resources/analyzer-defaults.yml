@@ -20,8 +20,9 @@ analysis:
   include-bindings: true
   # 선언 뒤 값이 바뀌는 지역 변수·파라미터(total -= usePoint, size = MAX …) 변경 이력 수집
   include-variable-changes: true
-  # VO 필드 커버리지(선언·미할당 …)에 상위 클래스 필드 포함 (false = VO 자신이 선언한 필드만, 상속 필드 바인딩은 그대로 기록)
-  include-inherited-fields: false
+  # 상속(extends) 정보 포함: 상위 클래스 필드(필드 커버리지)·extends 목록·상위 클래스 역할 근거(SUPERTYPE)
+  #   false = 빼기 (상위 클래스로만 역할이 정해지는 클래스는 근거 유지). 상속 필드 바인딩·상위 메서드 호출은 그대로 기록
+  include-inheritance: false
   classpath-jars: []
 
 # 프로젝트 고유 요청 읽기 메서드 = 바인딩 (HttpServletRequest.getParameter/Values/Map 은 기본 내장) — 프로젝트별로 지정

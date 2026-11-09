@@ -32,7 +32,7 @@ public final class AnalysisReportWriter {
         MethodInfo entry = r.method(r.entryMethodId);
         sb.append("# 소스 분석서: ").append(target.name).append('.').append(entry.name).append("()\n\n");
         sb.append("> `analysis.yaml`(원본 데이터)에서 생성. ID(C*, M*, CALL*, 블록, P*, O*, B*)는 모든 파일에서 동일합니다. ")
-                .append("필드 매핑 전체는 `mapping.md`, 호출 트리는 `call-tree.txt`, 메서드 목록·미해결(UNRESOLVED) 항목은 `analysis.yaml` ")
+                .append("필드 매핑 전체는 `mapping.md`, 호출 트리는 `call-tree.txt`, 메서드 호출 관계·메서드 목록·미해결(UNRESOLVED) 항목은 `analysis.yaml` ")
                 .append("(methods · calls 의 resolution) 에 있습니다.\n\n");
 
         overview(r, target, entry, sb);
@@ -41,7 +41,6 @@ public final class AnalysisReportWriter {
         sb.append("```mermaid\n").append(mermaidText == null ? "" : mermaidText).append("```\n\n");
         requestParameters(r, sb);
         bindings(r, sb);
-        calls(r, sb);
         exceptions(r, sb);
         appendix(r, mermaidStatus, sb);
         return sb.toString();
@@ -180,39 +179,12 @@ public final class AnalysisReportWriter {
 
     // ------------------------------------------------------------------ 5
 
-    private void calls(AnalysisResult r, StringBuilder sb) {
-        sb.append("## 5. 메서드 호출 관계\n\n");
-        sb.append("source 메서드 호출입니다(VO getter/setter 와 외부 라이브러리 호출 제외 — 전체는 `analysis.yaml` calls).\n\n");
-        sb.append("| ID | Caller | Callee | Arguments | Return | Depth · 전개 |\n|---|---|---|---|---|---|\n");
-        for (CallSiteInfo s : r.callSites) {
-            if (s.targetMethodId == null) {
-                continue;
-            }
-            MethodInfo t = r.method(s.targetMethodId);
-            ClassInfo tc = r.classOf(t);
-            if (t.origin != Origin.SOURCE || tc.role == ClassRole.VO) {
-                continue;
-            }
-            String impl = s.implementationMethodId == null ? "" : "<br>⇒ 구현 후보 `" + Labels.implementationTarget(r, s) + "`";
-            sb.append("| ").append(s.id).append(" | ").append(method(r, s.callerMethodId))
-                    .append(" | `").append(tc.name).append('.').append(md(t.signature)).append("` [").append(tc.role.label()).append("]").append(impl)
-                    .append(" | ").append(s.arguments.isEmpty() ? "-" : "`" + md(String.join(", ", s.arguments)) + "`")
-                    .append(" | `").append(md(t.returnType)).append("` → ").append(n(s.resultUsage))
-                    .append(" | D").append(s.depth).append(" · ").append(s.expansion.name().toLowerCase().replace('_', '-'))
-                    .append(" |\n");
-        }
-        if (r.excludedExternalCalls > 0) {
-            sb.append("\n- `include-external-library-calls: false` 로 제외된 외부 라이브러리 호출: ").append(r.excludedExternalCalls).append("건\n");
-        }
-        sb.append('\n');
-    }
-
-    // ------------------------------------------------------------------ 6
+    // ------------------------------------------------------------------ 5
 
     private static final Pattern NEW_TYPE = Pattern.compile("^new\\s+([\\w.]+)");
 
     private void exceptions(AnalysisResult r, StringBuilder sb) {
-        sb.append("## 6. 예외 처리\n\n");
+        sb.append("## 5. 예외 처리\n\n");
         sb.append("| Exception | 발생 가능 위치 | 처리 방식 | 반환 결과 |\n|---|---|---|---|\n");
         boolean any = false;
         for (ControlBlock c : r.blocks) {
@@ -285,14 +257,14 @@ public final class AnalysisReportWriter {
         return out;
     }
 
-    // ------------------------------------------------------------------ 7/8
+    // ------------------------------------------------------------------ 6/7
 
     private void appendix(AnalysisResult r, String mermaidStatus, StringBuilder sb) {
-        sb.append("## 7. 마이그레이션 비교 결과\n\n신규 프로젝트 분석 데이터가 없어 생성하지 않았습니다(`comparison.md` 미생성).\n\n");
-        sb.append("## 8. 부록\n\n### 8.1 분석 설정\n\n| 설정 | 값 |\n|---|---|\n");
+        sb.append("## 6. 마이그레이션 비교 결과\n\n신규 프로젝트 분석 데이터가 없어 생성하지 않았습니다(`comparison.md` 미생성).\n\n");
+        sb.append("## 7. 부록\n\n### 7.1 분석 설정\n\n| 설정 | 값 |\n|---|---|\n");
         r.settings.forEach((k, v) -> sb.append("| ").append(k).append(" | ").append(v).append(" |\n"));
 
-        sb.append("\n### 8.2 분석 범위와 정적 분석 한계\n\n");
+        sb.append("\n### 7.2 분석 범위와 정적 분석 한계\n\n");
         sb.append("- 진입 메서드에서 도달한 메서드만 포함하며, 타입 해석을 위해 참조만 한 파일은 포함하지 않습니다.\n");
         sb.append("- 다른 클래스 메서드는 max-depth 까지 호출 관계·인자만 기록하고, `expand-roles` 역할만 본문을 분석합니다.\n");
         if (Boolean.TRUE.equals(r.settings.get("link-single-implementation"))) {
@@ -306,7 +278,7 @@ public final class AnalysisReportWriter {
         sb.append("- 호출 순서는 Java 평가 순서(수신 객체 → 인자 → 호출), for 는 init → 조건 → 본문 → update. switch fall-through, 생성자 본문, 익명/로컬 클래스는 흐름에서 제외됩니다.\n");
         sb.append("- Mermaid 렌더링 검증: ").append(mermaidStatus).append('\n');
         if (!r.notes.isEmpty()) {
-            sb.append("\n### 8.3 분석 중 생략된 항목\n\n");
+            sb.append("\n### 7.3 분석 중 생략된 항목\n\n");
             r.notes.forEach(x -> sb.append("- ").append(x).append('\n'));
         }
     }

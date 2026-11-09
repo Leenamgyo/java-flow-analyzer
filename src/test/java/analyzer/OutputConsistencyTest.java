@@ -294,14 +294,14 @@ class OutputConsistencyTest {
         r.bindings.forEach(b -> assertTrue(mapping.contains("| " + b.id + " |"), b.id));
         String md = new analyzer.serializer.AnalysisReportWriter().render(r, "flowchart LR\n", "SKIPPED");
         for (String section : List.of("## 1. 분석 개요", "## 2. 실행 흐름도", "## 3. Request Parameter 분석",
-                "## 4. VO / DTO / Command 바인딩 명세", "## 5. 메서드 호출 관계", "## 6. 예외 처리")) {
+                "## 4. VO / DTO / Command 바인딩 명세", "## 5. 예외 처리")) {
             assertTrue(md.contains(section), section);
         }
         // 메서드 목록·Unresolved 목록·호출 트리는 분석서에서 뺌 (call-tree.txt·analysis.yaml 에 있음)
-        for (String gone : List.of("### 8.2 메서드 목록", "### 8.3 Unresolved 목록", "### 8.4 호출 트리", "```text")) {
+        for (String gone : List.of("## 5. 메서드 호출 관계", "### 8.2 메서드 목록", "### 8.3 Unresolved 목록", "### 8.4 호출 트리", "```text")) {
             assertFalse(md.contains(gone), gone);
         }
-        assertTrue(md.contains("### 8.2 분석 범위와 정적 분석 한계"), md);
+        assertTrue(md.contains("### 7.2 분석 범위와 정적 분석 한계"), md);
     }
 
     @Test
