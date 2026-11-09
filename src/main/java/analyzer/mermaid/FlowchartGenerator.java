@@ -356,7 +356,7 @@ public final class FlowchartGenerator {
         return phases == null ? (dark ? DARK_CLASS_DEFS : CLASS_DEFS) : (dark ? DARK_PHASE_CLASS_DEFS : PHASE_CLASS_DEFS);
     }
 
-    private int maxLineLength = 150;
+    private int maxLineLength = 120;
     /** 사용자 설정 output.flowchart-exclude */
     private List<String> excludes = List.of();
     private Rules rules;
@@ -1745,7 +1745,9 @@ public final class FlowchartGenerator {
                 lines.add(String.join(" · ", how));
             }
             g.node(sg, c.id, lines, Shape.SUBROUTINE, "exc");
-            g.edge(ts.id(), c.id, String.join(" | ", c.exceptionTypes), EdgeStyle.EXCEPTION);
+            // 간선 라벨은 짧게 — 예외 타입은 catch 노드에 이미 있고, try 상자(subgraph)에서 나가는 간선의 라벨은
+            // 바로 아래 catch 노드에 가려져 잘려 보였다 (사용자 지적, mmdc 렌더링으로 확인)
+            g.edge(ts.id(), c.id, "예외", EdgeStyle.EXCEPTION);
             if (c.rethrows || c.throwsNewException) {
                 String exit = m.id + "_uncaught";
                 if (!g.has(exit)) {
@@ -1800,7 +1802,9 @@ public final class FlowchartGenerator {
         for (String cid : t.catchBlockIds) {
             ControlBlock c = r.block(cid);
             g.node(sg, c.id, List.of(Labels.blockHeader(c)), Shape.SUBROUTINE, "exc");
-            g.edge(ts.id(), c.id, String.join(" | ", c.exceptionTypes), EdgeStyle.EXCEPTION);
+            // 간선 라벨은 짧게 — 예외 타입은 catch 노드에 이미 있고, try 상자(subgraph)에서 나가는 간선의 라벨은
+            // 바로 아래 catch 노드에 가려져 잘려 보였다 (사용자 지적, mmdc 렌더링으로 확인)
+            g.edge(ts.id(), c.id, "예외", EdgeStyle.EXCEPTION);
             out.addAll(emit(sg, m, c, List.of(new End(c.id))));
         }
         if (t.finallyBlockId != null) {

@@ -18,8 +18,16 @@ public final class MermaidGraph {
     /** 코드 줄(#n …)이 들어가는 노드 클래스 — 글자를 가운데가 아니라 왼쪽에 맞춘다 */
     public static final List<String> LEFT_ALIGNED = List.of("codeline", "req", "bind", "var", "state", "log", "depth", "external", "unresolved", "cycle", "fin", "exc", "check", "post");
 
+    /**
+     * 코드 줄 노드는 왼쪽 정렬 + 오른쪽 여유(padding-right) — Mermaid 는 1배율에서 글자 폭을 재서 상자를 만드는데,
+     * 확대·다른 배율·다른 글꼴로 보면 글자가 비례보다 넓어져 긴 줄 끝이 상자 밖으로 밀려 잘렸다 (사용자 지적,
+     * mmdc -s 3 렌더링으로 확인). 여유는 잴 때도 포함되어 상자가 그만큼 넓어진다.
+     * 모든 라벨 영역(foreignObject)은 overflow: visible — 그래도 넘치면 잘리지 않고 보이게.
+     */
     private static final String LEFT_ALIGN_CSS = String.join(", ", LEFT_ALIGNED.stream()
-            .map(c -> "." + c + " .nodeLabel, ." + c + " .nodeLabel p").toList()) + " { text-align: left !important; }";
+            .map(c -> "." + c + " .nodeLabel, ." + c + " .nodeLabel p").toList()) + " { text-align: left !important; } "
+            + String.join(", ", LEFT_ALIGNED.stream().map(c -> "." + c + " .nodeLabel").toList())
+            + " { padding-right: 3em; display: inline-block; } foreignObject { overflow: visible; }";
 
     /** 기본(dagre) 설정 줄 — LEFT_ALIGN_CSS 뒤에 선언해야 초기화 순서가 맞다 */
     public static final String INIT = init("dagre");
@@ -729,7 +737,7 @@ public final class MermaidGraph {
     }
 
     /** 노드 한 줄 최대 길이 (넘으면 끊고 다음 줄 앞에 "> "). 0 이하면 끊지 않음 */
-    private int maxLineLength = 150;
+    private int maxLineLength = 120;
 
     public MermaidGraph maxLineLength(int n) {
         this.maxLineLength = n;
