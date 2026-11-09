@@ -88,8 +88,8 @@ public class AnalyzerConfig {
         public String direction = "TD";
         /** Mermaid 레이아웃: dagre(Mermaid 기본) | elk(직각 간선, 뷰어가 ELK 지원 시) */
         public String layout = "dagre";
-        /** 흐름도 색 테마: dark(기본 — 어두운 노드 바탕·밝은 글자, Mermaid dark 테마) | light */
-        public String colorTheme = "dark";
+        /** 흐름도 색 테마: light(기본 — 흰 바탕) | dark(어두운 노드 바탕·밝은 글자, Mermaid dark 테마) */
+        public String colorTheme = "light";
         /** 흐름도 .mmd 를 flowchart-svg/ 에 SVG 로도 출력 (Mermaid CLI mmdc 필요, 없으면 경고 후 생략) */
         public boolean flowchartSvg = true;
         /** mmdc 실행 파일 경로 (비우면 PATH 의 mmdc) */

@@ -60,7 +60,7 @@ class OutputConsistencyTest {
         ((List<Map<String, Object>>) doc.get("methods")).forEach(m -> methodIds.add((String) m.get("id")));
         String mmd = Files.readString(dir.resolve("flowchart.mmd"));
         String tree = Files.readString(dir.resolve("call-tree.txt"));
-        assertTrue(mmd.startsWith(MermaidGraph.init("dagre", "dark") + "\nflowchart TD")); // 기본 색 테마 dark
+        assertTrue(mmd.startsWith(MermaidGraph.init("dagre", "light") + "\nflowchart TD")); // 기본 색 테마 light
         // 코드 줄 노드는 왼쪽 정렬 (themeCSS), 자동 줄바꿈 폭은 넉넉히
         assertTrue(MermaidGraph.INIT.contains(".codeline .nodeLabel") && MermaidGraph.INIT.contains("text-align: left"), MermaidGraph.INIT);
         assertTrue(MermaidGraph.INIT.contains("\"wrappingWidth\": 2400"));

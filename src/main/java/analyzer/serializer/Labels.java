@@ -66,10 +66,10 @@ public final class Labels {
         };
     }
 
-    /** Request Parameter 1건 표시: status / ?(expr) / (전체) / (body) */
+    /** Request Parameter 1건 표시: status / [식](이름이 식이라 미확정) / (전체) / (body) */
     public static String parameterName(RequestParameterInfo p) {
         if ("UNKNOWN".equals(p.nameResolution)) {
-            return "?(" + truncate(p.nameExpression, 30) + ")";
+            return "[" + p.nameExpression + "]";
         }
         if ("@ModelAttribute".equals(p.extraction)) {
             return "(바인딩 " + p.variable + ")";
@@ -103,10 +103,18 @@ public final class Labels {
      * 값 식 안의 요청 읽기 호출은 request.이름 으로 줄이고, 값이 상태가 바뀌는 변수면 끝에 ⟳ 변경 n회.
      * numbered: 같은 메서드의 호출 번호(#n)를 붙인다 (바인딩 메서드 안의 바인딩이면 false).
      */
+    /** Map 키 표시: 리터럴·상수 키 = ["status"], 식 키(모델 필드 "?(식)") = [keyVO.getKeyword()] — 코드 그대로 */
+    static String mapKey(String field) {
+        if (field.startsWith("?(") && field.endsWith(")")) {
+            return "[" + field.substring(2, field.length() - 1) + "]";
+        }
+        return "[\"" + field + "\"]";
+    }
+
     public static String bindingLine(AnalysisResult r, Binding b, boolean numbered) {
         ObjectInfo o = r.object(b.objectId);
         // 변수명 없이 프로퍼티만 (클래스는 노드 제목에): memberId = … / Map 은 ["status"] = …
-        String target = "MAP".equals(o.kind) ? "[\"" + b.field + "\"]" : b.field;
+        String target = "MAP".equals(o.kind) ? mapKey(b.field) : b.field;
         String value = codeValue(r, b.methodId, b.location, b.valueExpression);
         if (b.valueExpression != null && b.valueExpression.matches("[A-Za-z_$][\\w$]*")) {
             VariableInfo v = r.variableNamed(b.methodId, b.valueExpression);
@@ -133,9 +141,10 @@ public final class Labels {
         return out;
     }
 
-    /** request.mode ?: "NEW" / request.?("sort_" + userId) / request.(전체) */
+    /** request.mode ?: "NEW" / request["sort_" + userId] / request.(전체) */
     public static String requestValue(RequestParameterInfo p) {
-        return "request." + parameterName(p) + (p.defaultValue == null ? "" : " ?: " + p.defaultValue);
+        String name = parameterName(p);
+        return "request" + (name.startsWith("[") ? "" : ".") + name + (p.defaultValue == null ? "" : " ?: " + p.defaultValue);
     }
 
     /** 요청 파라미터 노드 1줄 — 코드 형식: #2 String mode = request.mode ?: "NEW" (대입이면 · mode v2) */

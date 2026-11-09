@@ -336,8 +336,8 @@ public final class FlowchartGenerator {
         return graph.maxLineLength(maxLineLength).theme(theme).render(direction, layout, classDefs());
     }
 
-    /** 색 테마 (설정 output.color-theme): dark(기본) | light */
-    private String theme = "dark";
+    /** 색 테마 (설정 output.color-theme): light(기본, 흰 바탕) | dark */
+    private String theme = "light";
 
     public FlowchartGenerator theme(String t) {
         this.theme = MermaidGraph.checkTheme(t);

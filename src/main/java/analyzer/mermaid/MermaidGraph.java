@@ -61,18 +61,20 @@ public final class MermaidGraph {
 
     /**
      * 글자 색으로 구분하는 줄 (한 노드 안에서 종류 구분): "req" = 요청 파라미터, "fn" = 바인딩 함수.
-     * 색은 rgb() 로 쓴다 — "#rrggbb;" 는 Mermaid 엔티티(#…;)로 해석된다.
+     * 태그는 {@code <font color='#rrggbb'>} — {@code <span style='color:…'>} 를 쓰면 Mermaid(11.x)가 한 노드에 그런 span 이
+     * 둘 이상 나온 뒤 줄의 엔티티 세미콜론을 잃어 "#7" 이 "#357", "#quot;" 가 "#quot" 로 보인다 (SVG 렌더링으로 확인).
+     * 색 뒤에 ';' 가 없으므로 #rrggbb 가 엔티티로 해석되지 않는다.
      */
     public static final Map<String, String> TEXT_COLORS = Map.of(
-            "req", "rgb(15,118,110)",
-            "fn", "rgb(124,58,237)");
+            "req", "#0f766e",
+            "fn", "#7c3aed");
     /** 다크 테마 글자 색 (어두운 노드 바탕 위에서 읽히게 밝은 색) */
     public static final Map<String, String> TEXT_COLORS_DARK = Map.of(
-            "req", "rgb(94,234,212)",
-            "fn", "rgb(196,181,253)");
+            "req", "#5eead4",
+            "fn", "#c4b5fd");
 
     /** 색 테마: dark | light (설정 output.color-theme) */
-    private String theme = "dark";
+    private String theme = "light";
 
     public MermaidGraph theme(String t) {
         this.theme = checkTheme(t);
@@ -267,6 +269,31 @@ public final class MermaidGraph {
         return sb.toString();
     }
 
+    /**
+     * 요청 값 표기(request.이름 ?: 기본값, request[식], request.(전체))만 글자색 — 줄 전체를 칠하면
+     * 같은 문장의 다른 코드(Integer.parseInt(…), + 연산 …)도 요청 항목처럼 보인다 (사용자 지적).
+     */
+    static final java.util.regex.Pattern REQUEST_VALUE = java.util.regex.Pattern.compile(
+            "request(?:\\[(?:[^\\[\\]]|\\[[^\\[\\]]*\\])*\\]|\\.(?:\\([^)]*\\)|[\\w$.\\-]++(?!\\()))"
+                    + "(?: \\?: (?:\"[^\"]*\"|[\\w$.\\-]+))?");
+
+    /** 글자색 시작 태그 (TEXT_COLORS 주석 참고) */
+    public static String fontOpen(String color) {
+        return "<font color='" + color + "'>";
+    }
+
+    public static String requestSpans(String piece, String color) {
+        java.util.regex.Matcher m = REQUEST_VALUE.matcher(piece);
+        StringBuilder out = new StringBuilder();
+        int at = 0;
+        while (m.find()) {
+            out.append(esc(piece.substring(at, m.start())))
+                    .append(fontOpen(color)).append(esc(m.group())).append("</font>");
+            at = m.end();
+        }
+        return out.append(esc(piece.substring(at))).toString();
+    }
+
     private void renderItem(StringBuilder sb, Object o, String indent) {
         if (o instanceof Subgraph s) {
             sb.append(indent).append("subgraph ").append(s.id).append("[\"").append(esc(s.label)).append("\"]\n");
@@ -280,8 +307,10 @@ public final class MermaidGraph {
             for (String l : n.lines()) {
                 String tc = textClass(l);
                 for (String piece : wrap(plain(l), maxLineLength)) {
+                    String color = tc == null ? null : ("dark".equals(theme) ? TEXT_COLORS_DARK : TEXT_COLORS).get(tc);
                     parts.add(tc == null ? esc(piece)
-                            : "<span style='color:" + ("dark".equals(theme) ? TEXT_COLORS_DARK : TEXT_COLORS).get(tc) + "'>" + esc(piece) + "</span>");
+                            : "req".equals(tc) ? requestSpans(piece, color)
+                            : fontOpen(color) + esc(piece) + "</font>");
                 }
             }
             String label = String.join("<br/>", parts);

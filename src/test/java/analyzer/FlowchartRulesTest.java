@@ -20,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 흐름도 규칙: 상태 변화 · 로그 · 바인딩 · Loop + 빠진 코드 없음(exclude 는 사용자 설정) — fixture CaseAction.flowRules */
 class FlowchartRulesTest {
 
-    static final String REQ = "<span style='color:" + MermaidGraph.TEXT_COLORS_DARK.get("req") + "'>";
-    static final String FN = "<span style='color:" + MermaidGraph.TEXT_COLORS_DARK.get("fn") + "'>";
+    static final String REQ = analyzer.mermaid.MermaidGraph.fontOpen(MermaidGraph.TEXT_COLORS.get("req"));
+    static final String FN = analyzer.mermaid.MermaidGraph.fontOpen(MermaidGraph.TEXT_COLORS.get("fn"));
 
     static CallSiteInfo call(AnalysisResult r, String expression) {
         return r.callSites.stream().filter(c -> c.expression.equals(expression)).findFirst()
@@ -75,11 +75,11 @@ class FlowchartRulesTest {
         // 요청 파라미터는 따로 블록이 아니라 바인딩 블록 안
         assertEquals(read.id, g.nodeOf(toSearch.id));
         String mmd = new FlowchartGenerator().render(r, "TD");
-        // 요청 파라미터 = 글자색 req, 바인딩 함수 = 글자색 fn, 안쪽 바인딩 함수는 │ 로 한 단계 더 중첩
-        assertTrue(mmd.contains(read.id + "[\"바인딩<br/>" + REQ + "#35;3 String id = request.id</span><br/>"
-                + FN + "▸ #35;4 SearchVO vo = toSearch(request)</span><br/>"
+        // 요청 값(request.이름)만 글자색 req, 바인딩 함수 = 글자색 fn, 안쪽 바인딩 함수는 │ 로 한 단계 더 중첩
+        assertTrue(mmd.contains(read.id + "[\"바인딩<br/>#35;3 String id = " + REQ + "request.id</font><br/>"
+                + FN + "▸ #35;4 SearchVO vo = toSearch(request)</font><br/>"
                 + "│ keyword = trimmed(request.q)<br/>"
-                + FN + "│ ▸ trimmed(request.q)</span><br/>"
+                + FN + "│ ▸ trimmed(request.q)</font><br/>"
                 + "│ │ return v == null ? #quot;#quot; : v.trim()<br/>"
                 + "│ sort = request.sort<br/>"
                 + "│ return vo\"]"), mmd);
@@ -155,20 +155,36 @@ class FlowchartRulesTest {
     }
 
     @Test
-    void colorThemeDarkByDefaultAndLightOnRequest() {
+    void onlyRequestValuesAreColoredNotTheWholeStatement() {
+        // int n = Integer.parseInt(request.size) — Integer.parseInt(…) 는 요청 항목이 아니라 칠하지 않는다
+        assertEquals("int n = Integer.parseInt(" + REQ + "request.size</font>)",
+                MermaidGraph.requestSpans("int n = Integer.parseInt(request.size)", MermaidGraph.TEXT_COLORS.get("req")));
+        assertEquals("String k = " + REQ + "request.a</font> + " + REQ + "request.b</font>",
+                MermaidGraph.requestSpans("String k = request.a + request.b", MermaidGraph.TEXT_COLORS.get("req")));
+        assertEquals("String m = " + REQ + "request.mode ?: #quot;NEW#quot;</font>.trim()",
+                MermaidGraph.requestSpans("String m = request.mode ?: \"NEW\".trim()", MermaidGraph.TEXT_COLORS.get("req")));
+        assertEquals("String w = " + REQ + "request[keyVO.getKeyword()]</font>",
+                MermaidGraph.requestSpans("String w = request[keyVO.getKeyword()]", MermaidGraph.TEXT_COLORS.get("req")));
+        // 요청 객체의 다른 메서드 호출은 요청 값 표기가 아니다
+        assertEquals("String u = request.getRequestURI()",
+                MermaidGraph.requestSpans("String u = request.getRequestURI()", MermaidGraph.TEXT_COLORS.get("req")));
+    }
+
+    @Test
+    void colorThemeLightByDefaultAndDarkOnRequest() {
         AnalysisResult r = Fixtures.analyze("CaseAction", "flowRules");
-        String dark = new FlowchartGenerator().render(r, "TD");
+        String dark = new FlowchartGenerator().theme("dark").render(r, "TD");
         assertTrue(dark.startsWith("%%{init: {\"theme\": \"dark\""), dark);
         assertTrue(dark.contains("classDef codeline " + FlowchartGenerator.DARK_CLASS_DEFS.get("codeline")), dark);
-        assertTrue(dark.contains(REQ), dark); // 다크 글자색
-        String light = new FlowchartGenerator().theme("light").render(r, "TD");
+        assertTrue(dark.contains(analyzer.mermaid.MermaidGraph.fontOpen(MermaidGraph.TEXT_COLORS_DARK.get("req"))), dark); // 다크 글자색
+        String light = new FlowchartGenerator().render(r, "TD"); // 기본 = light (흰 바탕 — 사용자 요구)
         assertFalse(light.contains("\"theme\": \"dark\""), light);
         assertTrue(light.contains("classDef codeline " + FlowchartGenerator.CLASS_DEFS.get("codeline")), light);
-        assertTrue(light.contains("<span style='color:" + MermaidGraph.TEXT_COLORS.get("req") + "'>"), light);
+        assertTrue(light.contains(analyzer.mermaid.MermaidGraph.fontOpen(MermaidGraph.TEXT_COLORS.get("req"))), light);
         // 분할 출력도 같은 테마
-        new FlowchartGenerator().renderSplit(r, "TD", "dagre").forEach(p -> assertTrue(p.mermaid().contains("\"theme\": \"dark\""), p.file()));
+        new FlowchartGenerator().theme("dark").renderSplit(r, "TD", "dagre").forEach(p -> assertTrue(p.mermaid().contains("\"theme\": \"dark\""), p.file()));
         // 설정 키 output.color-theme, 잘못된 값은 오류
-        assertEquals("dark", new AnalyzerConfig().output.colorTheme);
+        assertEquals("light", new AnalyzerConfig().output.colorTheme);
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> new FlowchartGenerator().theme("blue"));
     }
 }

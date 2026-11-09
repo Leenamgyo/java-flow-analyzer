@@ -130,7 +130,7 @@ class FlowchartSweepTest {
 
     /** 렌더링된 흐름도 텍스트를 사람이 보는 글자로 되돌리고 공백을 모두 뺀다 (줄바꿈 위치와 무관하게 비교) */
     static String normalize(String mmd) {
-        String s = mmd.replaceAll("<span style='[^']*'>", "").replace("</span>", "")
+        String s = mmd.replaceAll("<font color='[^']*'>", "").replace("</font>", "")
                 .replace("<br/>#gt; ", "").replace("<br/>", "\n") // 이어지는 줄 표시 "> " 는 이스케이프되어 있다
                 .replace("#quot;", "\"").replace("#lt;", "<").replace("#gt;", ">").replace("#124;", "|")
                 .replace("#96;", "`").replace("#35;", "#");

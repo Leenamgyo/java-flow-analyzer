@@ -133,6 +133,16 @@ class FlowchartEdgeCaseTest {
     }
 
     @Test
+    void dynamicMapKeyAndRequestNameShownAsCode() {
+        // m.put(keyVO.getKeyword(), …) / request.getParameter(keyVO.getKeyword()): 이름이 식 — ?(…) 대신 코드 그대로 [식]
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "mapDynamicKey");
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("[keyVO.getKeyword()] = request.v"), mmd);
+        assertTrue(mmd.contains("String w = " + MermaidGraph.fontOpen(MermaidGraph.TEXT_COLORS.get("req")) + "request[keyVO.getKeyword()]</font>"), mmd);
+        assertFalse(mmd.contains("?("), mmd);
+    }
+
+    @Test
     void partiallyResolvedExternalCallIsNotUnresolvedColor() {
         // String uri = request.getRequestURI(): 대상 타입은 확정(시그니처만 모름) → 주황 점선(unresolved)이 아니라 external
         AnalysisResult r = Fixtures.analyze("EdgeAction", "externalRequestCall",

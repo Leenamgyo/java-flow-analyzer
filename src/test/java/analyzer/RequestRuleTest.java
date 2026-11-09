@@ -56,11 +56,11 @@ class RequestRuleTest {
         assertEquals("getSystemId", sys.extraction);
         // 흐름도: 요청 파라미터는 바인딩 블록 안 (글자색으로 구분), 호출 노드가 아님
         String mmd = new FlowchartGenerator().render(r, "TD");
-        String req = "<span style='color:" + analyzer.mermaid.MermaidGraph.TEXT_COLORS_DARK.get("req") + "'>";
-        assertTrue(mmd.contains("바인딩<br/>" + req + "#35;1 String deviceId = request.deviceId</span><br/>"
-                + req + "#35;2 String systemId = request.systemId</span><br/>"
-                + req + "#35;3 String abi = request.abiType</span><br/>" + req + "#35;4 String query = request.query</span><br/>"
-                + req + "#35;6 String isAutoUpdate = request.isAutoUpdate ?: #quot;0#quot;</span>"), mmd); // 안쪽 getParam(#5)은 따로 없음
+        String req = analyzer.mermaid.MermaidGraph.fontOpen(analyzer.mermaid.MermaidGraph.TEXT_COLORS.get("req"));
+        assertTrue(mmd.contains("바인딩<br/>#35;1 String deviceId = " + req + "request.deviceId</font><br/>"
+                + "#35;2 String systemId = " + req + "request.systemId</font><br/>"
+                + "#35;3 String abi = " + req + "request.abiType</font><br/>#35;4 String query = " + req + "request.query</font><br/>"
+                + "#35;6 String isAutoUpdate = " + req + "request.isAutoUpdate ?: #quot;0#quot;</font>"), mmd); // 안쪽 getParam(#5)은 따로 없음
     }
 
     @Test

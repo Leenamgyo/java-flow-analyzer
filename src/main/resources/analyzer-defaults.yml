@@ -50,8 +50,8 @@ output:
   direction: TD
   # Mermaid 레이아웃: dagre = Mermaid 기본 / elk = 직각 간선 (뷰어가 ELK 를 지원할 때)
   layout: dagre
-  # 흐름도 색: dark(어두운 바탕·밝은 글자, Mermaid dark 테마) | light
-  color-theme: dark
+  # 흐름도 색: light(흰 바탕, SVG 도 흰 바탕) | dark(어두운 바탕·밝은 글자, Mermaid dark 테마)
+  color-theme: light
   # 흐름도를 flowchart-svg/ 에 SVG 로도 (Mermaid CLI 필요: npm install -g @mermaid-js/mermaid-cli, 없으면 경고 후 생략)
   #   큰 흐름도도 그리도록 글자 수·간선 수 한계를 올려서 렌더링한다
   flowchart-svg: true

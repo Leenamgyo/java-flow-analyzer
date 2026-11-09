@@ -11,6 +11,8 @@ import com.example.support.LogService;
 import com.example.support.Registry;
 import com.example.util.StringUtil;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 /** 흐름도 규칙의 경계 사례 */
 public class EdgeAction {
@@ -182,6 +184,15 @@ public class EdgeAction {
         String first = extraInfo.isEmpty() ? null : extraInfo.get(0);
         touch();
         return extraInfo;
+    }
+
+    // ---- Map 키가 리터럴·상수가 아니면(식) 이름 미확정 — 흐름도는 ?(…) 대신 코드 그대로 [식]
+    public Map<String, Object> mapDynamicKey(HttpServletRequest request, SearchVO keyVO) {
+        Map<String, Object> m = new HashMap<>();
+        m.put(keyVO.getKeyword(), request.getParameter("v"));
+        String w = request.getParameter(keyVO.getKeyword());
+        m.put("w", w);
+        return m;
     }
 
     // ---- 소스 밖 타입(HttpServletRequest)의 호출: 시그니처를 몰라 PARTIALLY_RESOLVED 지만 미해결 색이 아니라 외부 호출 색
