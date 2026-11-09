@@ -71,8 +71,16 @@ public final class JspLocator {
         return src.getParent();
     }
 
-    /** 이름(appList.jsp / vas/appList.jsp / /WEB-INF/jsp/vas/appList.jsp)으로 찾기 */
+    /**
+     * JSP 파일 경로를 직접 지정한 경우(절대 경로 또는 실행 위치 기준 상대 경로로 실제 파일이 있음) 그 파일을 그대로 쓴다.
+     * 웹 루트(include "/…" 기준) = 위쪽 폴더 중 WEB-INF 의 부모, 없으면 설정·자동 웹 루트 중 그 파일을 품은 것, 그것도 없으면 파일 폴더.
+     * 아니면 이름(appList.jsp / vas/appList.jsp / /WEB-INF/jsp/vas/appList.jsp)으로 웹 루트에서 찾는다.
+     */
     public Result find(String requested) {
+        Path direct = directFile(requested);
+        if (direct != null) {
+            return new Result(requested, Status.FOUND, direct, webRootOf(direct), List.of());
+        }
         if (webRoots.isEmpty()) {
             return new Result(requested, Status.NO_WEB_ROOT, null, null, List.of());
         }
@@ -98,6 +106,29 @@ public final class JspLocator {
         }
         return new Result(requested, hits.isEmpty() ? Status.NOT_FOUND : Status.AMBIGUOUS, null, null,
                 hits.stream().map(h -> h[0]).toList());
+    }
+
+    private static Path directFile(String requested) {
+        try {
+            Path p = Path.of(requested).toAbsolutePath().normalize();
+            return Files.isRegularFile(p) ? p : null;
+        } catch (RuntimeException e) {
+            return null; // 경로로 쓸 수 없는 문자열 → 이름 검색
+        }
+    }
+
+    private Path webRootOf(Path file) {
+        for (Path p = file.getParent(); p != null; p = p.getParent()) {
+            if (Files.isDirectory(p.resolve("WEB-INF")) || p.getFileName() != null && p.getFileName().toString().equals("WEB-INF")) {
+                return p.getFileName() != null && p.getFileName().toString().equals("WEB-INF") ? p.getParent() : p;
+            }
+        }
+        for (Path w : webRoots) {
+            if (file.startsWith(w.toAbsolutePath().normalize())) {
+                return w;
+            }
+        }
+        return file.getParent();
     }
 
     /** JSP 안의 include 경로: "/" 로 시작하면 웹 루트 기준, 아니면 현재 파일 폴더 기준 */

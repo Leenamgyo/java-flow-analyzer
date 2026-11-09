@@ -56,6 +56,20 @@ class ResponseTest {
     }
 
     @Test
+    void jspByFilePath() {
+        String path = "src/test/resources/sample-project/src/main/webapp/WEB-INF/jsp/vas/appDetail.jsp";
+        for (String p : List.of(path, java.nio.file.Path.of(path).toAbsolutePath().toString())) {
+            AnalyzerConfig c = cfg(p);
+            c.response.webRoots = List.of("/nonexistent"); // 경로 지정이면 웹 루트 검색과 무관
+            ResponseModel m = ResponseAnalyzer.analyze(c, Main.analyze(c));
+            ResponseModel.Jsp j = m.jsps.get(0);
+            assertEquals("FOUND", j.status, p);
+            assertEquals("src/main/webapp/WEB-INF/jsp/vas/appDetail.jsp", j.file);
+            assertEquals(List.of("src/main/webapp/WEB-INF/jsp/common/footer.jsp"), j.includes); // "/WEB-INF/…" include = WEB-INF 의 부모 기준
+        }
+    }
+
+    @Test
     void notFoundIsReportedNotGuessed() {
         AnalyzerConfig c = cfg("nothing.jsp");
         AnalysisResult r = Main.analyze(c);

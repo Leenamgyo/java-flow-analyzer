@@ -103,12 +103,15 @@ output:
 
 ## Response(JSP) 등록하기
 
-Action 이 응답으로 쓰는 JSP(XML 출력)를 **파일명으로 지정**하면, 그 JSP 의 XML 항목과 값 출처를 분석해
+Action 이 응답으로 쓰는 JSP(XML 출력)를 **JSP 파일 경로(또는 파일명)로 지정**하면, 그 JSP 의 XML 항목과 값 출처를 분석해
 `spec.md` 의 `## 2. Response 정의` 와 `response.md` 를 만듭니다. 어느 JSP 인지는 분석기가 추측하지 않으므로 Action 마다 직접 정합니다.
 
 1. **CLI 로 (Action 마다 다르므로 보통 이쪽)**
 
    ```bash
+   # JSP 파일 경로를 그대로 (절대 경로, 또는 이 저장소 루트 기준 상대 경로)
+   ./gradlew run --args="--config /path/to/my-project.yml --class AppDetailAction --jsp /path/to/project/WebContent/WEB-INF/jsp/vas/appDetail.jsp"
+   # 파일명만 줘도 됨 — 웹 루트(WEB-INF 가 있는 폴더)에서 찾음
    ./gradlew run --args="--config /path/to/my-project.yml --class AppDetailAction --jsp appDetail.jsp"
    # JSP 가 여러 개면 --jsp 를 반복
    ./gradlew run --args="--config my-project.yml --class AppDetailAction --jsp appDetail.jsp --jsp error.jsp"
@@ -118,12 +121,15 @@ Action 이 응답으로 쓰는 JSP(XML 출력)를 **파일명으로 지정**하�
 
    ```yaml
    response:
-     jsp: [appDetail.jsp]               # 파일명 또는 끝부분 경로 (vas/appDetail.jsp)
+     jsp:
+       - /path/to/project/WebContent/WEB-INF/jsp/vas/appDetail.jsp   # JSP 파일 경로
+       # - appDetail.jsp                 # 또는 파일명·끝부분 경로 (vas/appDetail.jsp) → 웹 루트에서 찾음
      web-roots:                          # 선택: WEB-INF 가 있는 폴더. 비우면 프로젝트 폴더에서 자동으로 찾음
        - /path/to/project/WebContent
    ```
 
-- 파일은 웹 루트(`WEB-INF` 가 있는 폴더) 아래에서 이름 끝이 일치하는 것을 찾습니다.
+- 실제 있는 파일 경로면 그 파일을 그대로 씁니다(`/WEB-INF/…` include 는 위쪽 `WEB-INF` 의 부모 폴더 기준).
+- 파일명이면 웹 루트(`WEB-INF` 가 있는 폴더) 아래에서 이름 끝이 일치하는 것을 찾습니다.
   - 같은 이름이 여러 개면 고르지 않고 후보를 보여 줍니다 → `vas/appDetail.jsp` 처럼 앞 폴더까지 적으세요.
   - 못 찾으면(`NOT_FOUND`) 이름을 확인하거나 `web-roots` 를 지정하세요.
 - `--jsp` 를 주면 설정 파일의 `response.jsp` 를 대체합니다. 둘 다 없으면 Response 분석을 하지 않습니다(2장·`response.md` 없음).
@@ -155,7 +161,7 @@ Action 이 응답으로 쓰는 JSP(XML 출력)를 **파일명으로 지정**하�
 | `--class <name>` | 분석할 Action/Controller (단순명 또는 FQN — 같은 이름이 여러 개면 FQN) |
 | `--method <name>` | 진입 메서드 (생략 시 추론) |
 | `--output <dir>` | 출력 디렉터리. 결과는 `<dir>/<클래스명>/` |
-| `--jsp <name>` | Response 로 분석할 JSP 파일명 (여러 번 지정 가능, 설정 `response.jsp` 대체) |
+| `--jsp <path>` | Response 로 분석할 JSP 파일 경로 또는 파일명 (여러 번 지정 가능, 설정 `response.jsp` 대체) |
 
 ## 출력 파일
 
