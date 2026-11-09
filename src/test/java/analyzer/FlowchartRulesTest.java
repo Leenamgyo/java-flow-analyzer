@@ -20,8 +20,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 흐름도 규칙: 상태 변화 · 로그 · 바인딩 · Loop + 빠진 코드 없음(exclude 는 사용자 설정) — fixture CaseAction.flowRules */
 class FlowchartRulesTest {
 
-    static final String REQ = "<span style='color:" + MermaidGraph.TEXT_COLORS.get("req") + "'>";
-    static final String FN = "<span style='color:" + MermaidGraph.TEXT_COLORS.get("fn") + "'>";
+    static final String REQ = "<span style='color:" + MermaidGraph.TEXT_COLORS_DARK.get("req") + "'>";
+    static final String FN = "<span style='color:" + MermaidGraph.TEXT_COLORS_DARK.get("fn") + "'>";
 
     static CallSiteInfo call(AnalysisResult r, String expression) {
         return r.callSites.stream().filter(c -> c.expression.equals(expression)).findFirst()
@@ -152,5 +152,23 @@ class FlowchartRulesTest {
         ControlBlock thrown = r.blocks.stream().filter(b -> b.type == analyzer.model.BlockType.THROW && c1.id.equals(b.caughtBy))
                 .findFirst().orElseThrow();
         assertTrue(mmd.contains(thrown.id + " -.->|\"catch\"| " + c1.id), mmd);
+    }
+
+    @Test
+    void colorThemeDarkByDefaultAndLightOnRequest() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "flowRules");
+        String dark = new FlowchartGenerator().render(r, "TD");
+        assertTrue(dark.startsWith("%%{init: {\"theme\": \"dark\""), dark);
+        assertTrue(dark.contains("classDef codeline " + FlowchartGenerator.DARK_CLASS_DEFS.get("codeline")), dark);
+        assertTrue(dark.contains(REQ), dark); // 다크 글자색
+        String light = new FlowchartGenerator().theme("light").render(r, "TD");
+        assertFalse(light.contains("\"theme\": \"dark\""), light);
+        assertTrue(light.contains("classDef codeline " + FlowchartGenerator.CLASS_DEFS.get("codeline")), light);
+        assertTrue(light.contains("<span style='color:" + MermaidGraph.TEXT_COLORS.get("req") + "'>"), light);
+        // 분할 출력도 같은 테마
+        new FlowchartGenerator().renderSplit(r, "TD", "dagre").forEach(p -> assertTrue(p.mermaid().contains("\"theme\": \"dark\""), p.file()));
+        // 설정 키 output.color-theme, 잘못된 값은 오류
+        assertEquals("dark", new AnalyzerConfig().output.colorTheme);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> new FlowchartGenerator().theme("blue"));
     }
 }

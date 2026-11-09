@@ -50,6 +50,13 @@ output:
   direction: TD
   # Mermaid 레이아웃: dagre = Mermaid 기본 / elk = 직각 간선 (뷰어가 ELK 를 지원할 때)
   layout: dagre
+  # 흐름도 색: dark(어두운 바탕·밝은 글자, Mermaid dark 테마) | light
+  color-theme: dark
+  # 흐름도를 flowchart-svg/ 에 SVG 로도 (Mermaid CLI 필요: npm install -g @mermaid-js/mermaid-cli, 없으면 경고 후 생략)
+  #   큰 흐름도도 그리도록 글자 수·간선 수 한계를 올려서 렌더링한다
+  flowchart-svg: true
+  # mmdc 경로 (비우면 PATH 의 mmdc)
+  mermaid-cli: ""
   # 노드 한 줄 최대 길이 — 넘으면 쉼표·연산자·메서드 체인 앞에서 끊고 이어지는 줄은 "> " 로 시작 (0 = 끊지 않음)
   max-line-length: 100
   # 큰 흐름도: flowchart/ 에 메서드별 파일 + 00-overview(호출 관계), flowchart.md 에 합본(목차 + 다이어그램들)

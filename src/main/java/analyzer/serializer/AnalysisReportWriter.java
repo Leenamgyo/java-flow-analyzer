@@ -42,6 +42,7 @@ public final class AnalysisReportWriter {
         sb.append("흐름도는 크기가 커서 분석서에 넣지 않습니다. 아래 파일을 직접 열어 확인하세요.\n\n")
                 .append("- `flowchart.md` — 메서드별 흐름도 합본(목차 포함), 낱개 파일은 `flowchart/` (`00-overview.mmd` = 메서드 호출 관계)\n")
                 .append("- `flowchart.mmd` — 전체 흐름도 한 파일\n")
+                .append("- `flowchart-svg/` — 위 흐름도들의 SVG (브라우저로 바로 열기, Mermaid CLI 가 있을 때)\n")
                 .append("- `phase-flowchart.mmd` · `phase-summary.md` — 단계 보기(바인딩 › 체크 › 로직 › 후처리) 요약\n\n");
         bindings(r, sb);
         exceptions(r, sb);

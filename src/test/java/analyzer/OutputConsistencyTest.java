@@ -40,9 +40,13 @@ class OutputConsistencyTest {
     void yamlTreeAndMermaidShareIds(@TempDir Path tmp) throws Exception {
         AnalyzerConfig cfg = Fixtures.config("ScpAppListAction", "execute");
         cfg.output.directory = tmp.toString();
+        cfg.output.mermaidCli = tmp.resolve("no-mmdc").toString(); // mmdc 없음 → SVG 생략 (테스트 환경과 무관하게)
         AnalysisResult r = Main.analyze(cfg);
         Path dir = Main.outputDir(cfg, "ScpAppListAction");
         new OutputWriter().write(r, cfg, dir);
+        // flowchart-svg: mmdc 가 없으면 만들지 않고 분석서에 생략 사유
+        assertFalse(Files.exists(dir.resolve("flowchart-svg")));
+        assertTrue(Files.readString(dir.resolve("analysis.md")).contains("flowchart-svg 생략"));
 
         for (String f : List.of("analysis.yaml", "call-tree.txt", "flowchart.mmd", "mapping.md", "analysis.md")) {
             assertTrue(Files.exists(dir.resolve(f)), f);
@@ -56,7 +60,7 @@ class OutputConsistencyTest {
         ((List<Map<String, Object>>) doc.get("methods")).forEach(m -> methodIds.add((String) m.get("id")));
         String mmd = Files.readString(dir.resolve("flowchart.mmd"));
         String tree = Files.readString(dir.resolve("call-tree.txt"));
-        assertTrue(mmd.startsWith(MermaidGraph.INIT + "\nflowchart TD"));
+        assertTrue(mmd.startsWith(MermaidGraph.init("dagre", "dark") + "\nflowchart TD")); // 기본 색 테마 dark
         // 코드 줄 노드는 왼쪽 정렬 (themeCSS), 자동 줄바꿈 폭은 넉넉히
         assertTrue(MermaidGraph.INIT.contains(".codeline .nodeLabel") && MermaidGraph.INIT.contains("text-align: left"), MermaidGraph.INIT);
         assertTrue(MermaidGraph.INIT.contains("\"wrappingWidth\": 2400"));

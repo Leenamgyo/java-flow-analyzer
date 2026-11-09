@@ -48,6 +48,8 @@ public final class FlowchartGenerator {
     public static final Map<String, String> CLASS_DEFS = new LinkedHashMap<>();
     /** 단계 보기 흐름도: 기본 + 바인딩·체크·후처리 요약 노드 */
     public static final Map<String, String> PHASE_CLASS_DEFS = new LinkedHashMap<>();
+    public static final Map<String, String> DARK_CLASS_DEFS = new LinkedHashMap<>();
+    public static final Map<String, String> DARK_PHASE_CLASS_DEFS = new LinkedHashMap<>();
 
     static {
         CLASS_DEFS.put("entry", "fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px");
@@ -70,6 +72,27 @@ public final class FlowchartGenerator {
         PHASE_CLASS_DEFS.putAll(CLASS_DEFS);
         PHASE_CLASS_DEFS.put("check", "fill:#fefce8,stroke:#a16207");
         PHASE_CLASS_DEFS.put("post", "fill:#f5f3ff,stroke:#6d28d9");
+        // 다크 테마: 어두운 바탕 + 밝은 테두리·글자 (같은 계열 색, 클래스 이름은 라이트와 같다)
+        DARK_CLASS_DEFS.put("entry", "fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#f8fafc");
+        DARK_CLASS_DEFS.put("method", "fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff");
+        DARK_CLASS_DEFS.put("external", "fill:#1f2937,stroke:#6b7280,color:#d1d5db");
+        DARK_CLASS_DEFS.put("depth", "fill:#292524,stroke:#a8a29e,color:#e7e5e4,stroke-dasharray:2 2");
+        DARK_CLASS_DEFS.put("unresolved", "fill:#431407,stroke:#fb923c,color:#fed7aa,stroke-dasharray:4 3");
+        DARK_CLASS_DEFS.put("cycle", "fill:#422006,stroke:#facc15,color:#fef08a");
+        DARK_CLASS_DEFS.put("ret", "fill:#052e16,stroke:#4ade80,color:#dcfce7");
+        DARK_CLASS_DEFS.put("throw", "fill:#450a0a,stroke:#f87171,color:#fee2e2");
+        DARK_CLASS_DEFS.put("exc", "fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-dasharray:4 3");
+        DARK_CLASS_DEFS.put("req", "fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#ccfbf1");
+        DARK_CLASS_DEFS.put("bind", "fill:#083344,stroke:#22d3ee,color:#cffafe");
+        DARK_CLASS_DEFS.put("var", "fill:#431407,stroke:#fb923c,color:#ffedd5");
+        DARK_CLASS_DEFS.put("golink", "fill:#0f172a,stroke:#94a3b8,color:#e2e8f0,stroke-dasharray:5 3");
+        DARK_CLASS_DEFS.put("codeline", "fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff");
+        DARK_CLASS_DEFS.put("fin", "fill:#1e293b,stroke:#94a3b8,color:#e2e8f0,stroke-dasharray:3 3");
+        DARK_CLASS_DEFS.put("state", "fill:#431407,stroke:#fb923c,color:#ffedd5");
+        DARK_CLASS_DEFS.put("log", "fill:#334155,stroke:#94a3b8,color:#cbd5e1,stroke-dasharray:2 2");
+        DARK_PHASE_CLASS_DEFS.putAll(DARK_CLASS_DEFS);
+        DARK_PHASE_CLASS_DEFS.put("check", "fill:#422006,stroke:#eab308,color:#fef9c3");
+        DARK_PHASE_CLASS_DEFS.put("post", "fill:#2e1065,stroke:#a78bfa,color:#ede9fe");
     }
 
     /** 다음 요소로 이어질 열린 끝 (노드 + 간선 라벨/스타일) */
@@ -310,7 +333,20 @@ public final class FlowchartGenerator {
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
         }
-        return graph.maxLineLength(maxLineLength).render(direction, layout, phases == null ? CLASS_DEFS : PHASE_CLASS_DEFS);
+        return graph.maxLineLength(maxLineLength).theme(theme).render(direction, layout, classDefs());
+    }
+
+    /** 색 테마 (설정 output.color-theme): dark(기본) | light */
+    private String theme = "dark";
+
+    public FlowchartGenerator theme(String t) {
+        this.theme = MermaidGraph.checkTheme(t);
+        return this;
+    }
+
+    private Map<String, String> classDefs() {
+        boolean dark = "dark".equals(theme);
+        return phases == null ? (dark ? DARK_CLASS_DEFS : CLASS_DEFS) : (dark ? DARK_PHASE_CLASS_DEFS : PHASE_CLASS_DEFS);
     }
 
     private int maxLineLength = 100;
@@ -341,7 +377,7 @@ public final class FlowchartGenerator {
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
         }
-        Map<String, String> classDefs = phases == null ? CLASS_DEFS : PHASE_CLASS_DEFS;
+        Map<String, String> classDefs = classDefs();
         List<MethodInfo> drawn = r.methods().stream().filter(m -> drawnMethods.contains(m.id) && full.has("sg_" + m.id)).toList();
         Map<String, String> fileOf = new LinkedHashMap<>();
         int i = 1;
@@ -370,7 +406,7 @@ public final class FlowchartGenerator {
                 }
             }
         }
-        parts.add(new Part("00-overview.mmd", "전체 구조 (메서드 호출 관계)", ov.render(direction, layout, classDefs)));
+        parts.add(new Part("00-overview.mmd", "전체 구조 (메서드 호출 관계)", ov.theme(theme).render(direction, layout, classDefs)));
         for (MethodInfo m : drawn) {
             MermaidGraph one = full.extract("sg_" + m.id, to -> {
                 String target = owner.get(to);
@@ -378,7 +414,7 @@ public final class FlowchartGenerator {
                 return List.of("▶ " + full.labelOf(to), (target == null ? to : target) + where);
             });
             parts.add(new Part(fileOf.get(m.id), m.id + " " + r.classOf(m).name + "." + m.name + "()",
-                    one.render(direction, layout, classDefs)));
+                    one.theme(theme).render(direction, layout, classDefs)));
         }
         return parts;
     }

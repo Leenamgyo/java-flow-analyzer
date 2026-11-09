@@ -25,9 +25,23 @@ public final class MermaidGraph {
     public static final String INIT = init("dagre");
 
     public static String init(String layout) {
-        return "%%{init: {\"flowchart\": {\"padding\": 20, \"nodeSpacing\": 40, \"rankSpacing\": 50, \"wrappingWidth\": 2400}"
+        return init(layout, "light");
+    }
+
+    /** theme: light(Mermaid 기본 테마) | dark(Mermaid dark 테마 — 메서드 상자 배경·간선·라벨도 어둡게) */
+    public static String init(String layout, String theme) {
+        return "%%{init: {" + ("dark".equals(theme) ? "\"theme\": \"dark\", " : "")
+                + "\"flowchart\": {\"padding\": 20, \"nodeSpacing\": 40, \"rankSpacing\": 50, \"wrappingWidth\": 2400}"
                 + ("elk".equals(layout) ? ", \"layout\": \"elk\"" : "")
                 + ", \"themeCSS\": \"" + LEFT_ALIGN_CSS + "\"}}%%";
+    }
+
+    /** 색 테마 이름 확인 (설정 output.color-theme) */
+    public static String checkTheme(String theme) {
+        if (!"dark".equals(theme) && !"light".equals(theme)) {
+            throw new IllegalArgumentException("output.color-theme 은 dark 또는 light: " + theme);
+        }
+        return theme;
     }
 
     public enum Shape { RECT, ROUND, STADIUM, DIAMOND, HEX, SUBROUTINE, ASYM }
@@ -52,6 +66,18 @@ public final class MermaidGraph {
     public static final Map<String, String> TEXT_COLORS = Map.of(
             "req", "rgb(15,118,110)",
             "fn", "rgb(124,58,237)");
+    /** 다크 테마 글자 색 (어두운 노드 바탕 위에서 읽히게 밝은 색) */
+    public static final Map<String, String> TEXT_COLORS_DARK = Map.of(
+            "req", "rgb(94,234,212)",
+            "fn", "rgb(196,181,253)");
+
+    /** 색 테마: dark | light (설정 output.color-theme) */
+    private String theme = "dark";
+
+    public MermaidGraph theme(String t) {
+        this.theme = checkTheme(t);
+        return this;
+    }
 
     private static final char STYLE_START = '\u0001';
     private static final char STYLE_END = '\u0002';
@@ -218,7 +244,7 @@ public final class MermaidGraph {
 
     public String render(String direction, String layout, Map<String, String> classDefs) {
         // 여러 줄 라벨(요청 파라미터·VO 값 설정)이 잘리지 않도록 노드 여백·줄바꿈 폭을 넉넉히
-        StringBuilder sb = new StringBuilder(init(layout)).append('\n').append("flowchart ").append(direction).append('\n');
+        StringBuilder sb = new StringBuilder(init(layout, theme)).append('\n').append("flowchart ").append(direction).append('\n');
         comments.forEach(c -> sb.append("    %% ").append(c).append('\n'));
         for (Object o : root.items) {
             renderItem(sb, o, "    ");
@@ -255,7 +281,7 @@ public final class MermaidGraph {
                 String tc = textClass(l);
                 for (String piece : wrap(plain(l), maxLineLength)) {
                     parts.add(tc == null ? esc(piece)
-                            : "<span style='color:" + TEXT_COLORS.get(tc) + "'>" + esc(piece) + "</span>");
+                            : "<span style='color:" + ("dark".equals(theme) ? TEXT_COLORS_DARK : TEXT_COLORS).get(tc) + "'>" + esc(piece) + "</span>");
                 }
             }
             String label = String.join("<br/>", parts);
