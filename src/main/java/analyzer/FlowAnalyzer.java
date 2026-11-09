@@ -172,6 +172,9 @@ public final class FlowAnalyzer {
             if (s.sql == null) {
                 s.sql = analyzer.sql.SqlCalls.mapperRef(result, s);
             }
+            if (s.sql == null) {
+                s.sql = analyzer.sql.SqlCalls.interfaceRef(result, s); // *DAO 이름의 MyBatis 인터페이스 등
+            }
         }
         if (result.callSites.stream().noneMatch(s -> s.sql != null)) {
             return;
@@ -190,6 +193,25 @@ public final class FlowAnalyzer {
                     }
                     return b == null ? abs.toString() : b.relativize(abs).toString();
                 });
+                // 모양만으로 확정할 수 없던 호출은 XML 에 statement 가 있어야 SQL 호출 (없으면 지움 — 추측 금지)
+                if (s.sql.requiresXmlMatch && !"FOUND".equals(s.sql.xmlStatus) && !"AMBIGUOUS".equals(s.sql.xmlStatus)) {
+                    s.sql = null;
+                }
+            }
+        }
+        // 공통 DAO·상위 DAO 안의 sqlSession.selectList(statementId, …): id 가 이 메서드 파라미터면 실제 id 는 호출하는 쪽에 있다
+        for (CallSiteInfo s : result.callSites) {
+            if (s.sql == null || !"UNRESOLVED".equals(s.sql.basis)) {
+                continue;
+            }
+            MethodInfo m = result.method(s.callerMethodId);
+            if (m.parameters.stream().noneMatch(p -> p.name().equals(s.sql.statementId))) {
+                continue;
+            }
+            List<String> callers = result.callSites.stream().filter(c -> c.sql != null && m.id.equals(c.expansionTargetId())
+                    && !"UNRESOLVED".equals(c.sql.basis)).map(c -> c.id + " " + c.sql.statementId).toList();
+            if (!callers.isEmpty()) {
+                s.sql.notes.add("id 는 파라미터 " + s.sql.statementId + " — 호출하는 쪽에서 정함: " + String.join(", ", callers));
             }
         }
     }
@@ -265,6 +287,13 @@ public final class FlowAnalyzer {
                 boolean sql = cfg.analysis.includeSqlIds && analyzer.sql.SqlCalls.isSessionCall(call, t.receiverType());
                 if (sql) {
                     sqlByCall.put(call, analyzer.sql.SqlCalls.sessionRef(call, e -> params.stringValue(e, callerType, call)));
+                } else if (cfg.analysis.includeSqlIds) {
+                    // 상속 메서드(EgovAbstractDAO.selectList …)·공통 DAO 빈 호출: 첫 인자가 XML statement 와 맞을 때만 SQL (sqlIds)
+                    analyzer.model.SqlRef ref = analyzer.sql.SqlCalls.byStatementArgument(call, e -> params.stringValue(e, callerType, call));
+                    if (ref != null) {
+                        sqlByCall.put(call, ref);
+                        sql = true;
+                    }
                 }
                 if (!cfg.analysis.includeExternalLibraryCalls && t.origin() == Origin.LIBRARY && !readsRequest && !logging
                         && !sql && !outermostInStatement(call)) {

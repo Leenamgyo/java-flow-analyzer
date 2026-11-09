@@ -39,7 +39,68 @@ public final class SqlCalls {
     static final Set<String> SQL_ANNOTATIONS = Set.of("Select", "Insert", "Update", "Delete", "SelectProvider",
             "InsertProvider", "UpdateProvider", "DeleteProvider");
 
+    /**
+     * SqlSession 타입이 아닌 수신 객체에서도 SQL 호출로 쓰이는 메서드 이름 — 상속 메서드(EgovAbstractDAO·EgovAbstractMapper·
+     * SqlSessionDaoSupport·프로젝트 BaseDAO 의 selectList/list/insert …)나 공통 DAO 빈(commonDao.selectList("ns.id"))
+     */
+    static final Set<String> SQL_VERBS;
+
+    static {
+        Set<String> v = new java.util.HashSet<>(SESSION_METHODS);
+        v.addAll(Set.of("list", "listWithPaging", "selectByPk", "selectListWithPaging", "selectPaging", "queryForInt",
+                "queryForLong", "queryForString", "selectCount", "count", "exists", "merge", "save", "execute"));
+        SQL_VERBS = Set.copyOf(v);
+    }
+
     private SqlCalls() {
+    }
+
+    /**
+     * SqlSession 류가 아닌 호출 중 SQL 동사 이름 + 첫 인자가 문자열(리터럴·상수·그 연결)이고 statement id 모양인 것 →
+     * XML 확인이 필요한 SqlRef (requiresXmlMatch). 아니면 null. 매퍼 XML 에 그 id 가 없으면 나중에 버린다.
+     */
+    public static SqlRef byStatementArgument(MethodCallExpr call, Function<Expression, Optional<String>> strings) {
+        if (!SQL_VERBS.contains(call.getNameAsString()) || call.getArguments().isEmpty()) {
+            return null;
+        }
+        SqlRef ref = sessionRef(call, strings);
+        if ("UNRESOLVED".equals(ref.basis) || !ref.statementId.matches("[A-Za-z_$][\\w$.\\-]*")) {
+            return null;
+        }
+        ref.requiresXmlMatch = true;
+        ref.notes.add("SqlSession 타입이 아닌 호출(" + call.getScope().map(x -> x + ".").orElse("") + call.getNameAsString()
+                + ") — 첫 인자가 매퍼 XML statement 와 일치해서 SQL 호출로 봄");
+        return ref;
+    }
+
+    /**
+     * Mapper 역할이 아닌 source 인터페이스(예: MyBatis 매퍼를 *DAO 로 이름 붙인 경우)의 본문 없는 메서드 →
+     * FQN.메서드명. 인터페이스에 @Mapper 가 있으면 그대로, 없으면 XML 에 그 statement 가 있을 때만 (requiresXmlMatch).
+     */
+    public static SqlRef interfaceRef(AnalysisResult r, CallSiteInfo s) {
+        if (s.targetMethodId == null) {
+            return null;
+        }
+        MethodInfo m = r.method(s.targetMethodId);
+        ClassInfo c = r.classOf(m);
+        if (m.hasBody || !"INTERFACE".equals(c.kind) || c.role == ClassRole.MAPPER || c.qualifiedName == null
+                || m.origin != analyzer.model.Origin.SOURCE) {
+            return null;
+        }
+        SqlRef ref = new SqlRef();
+        ref.statementId = c.qualifiedName + "." + m.name;
+        ref.basis = "MAPPER_INTERFACE";
+        boolean mapperAnnotation = c.annotations.stream().anyMatch(a -> a.equals("Mapper") || a.endsWith(".Mapper"));
+        if (m.annotations.stream().anyMatch(SQL_ANNOTATIONS::contains)) {
+            ref.xmlStatus = "ANNOTATION";
+            ref.notes.add("SQL 이 메서드 어노테이션(@" + String.join(", @", m.annotations.stream()
+                    .filter(SQL_ANNOTATIONS::contains).toList()) + ")에 있음 — XML 없음");
+            return ref;
+        }
+        ref.requiresXmlMatch = !mapperAnnotation;
+        ref.notes.add("역할 " + c.role.label() + " 인터페이스 — " + (mapperAnnotation ? "@Mapper" : "XML namespace 가 인터페이스 FQN")
+                + " 라서 매퍼로 봄");
+        return ref;
     }
 
     /** SqlSession 류 호출인가 (수신 객체 타입 또는 getSqlSession() 수신) */

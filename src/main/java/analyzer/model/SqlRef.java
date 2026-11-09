@@ -29,6 +29,11 @@ public final class SqlRef {
     public final List<String> tables = new ArrayList<>();
     /** AMBIGUOUS 후보 XML 들 */
     public final List<String> candidates = new ArrayList<>();
+    /**
+     * true = 호출 모양만으로는 SQL 호출이라 확정할 수 없어(SqlSession 타입이 아닌 수신 객체·상속 메서드, Mapper 역할이 아닌
+     * 인터페이스) 매퍼 XML 에 그 statement 가 있을 때만 SQL 호출로 남긴다 (없으면 sql 을 지움 — 추측 금지). YAML 에는 쓰지 않음.
+     */
+    public boolean requiresXmlMatch;
     /** 참고 (include 미해결, 동적 테이블 등) */
     public final List<String> notes = new ArrayList<>();
 }

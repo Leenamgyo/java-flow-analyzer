@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,6 +39,37 @@ class MapperSqlTest {
                 "merge into TGT t using SRC s on (t.id = s.id) when matched then update set t.v = s.v"));
         assertEquals(List.of("${table}"), MapperXmlIndex.tables("select * from ${table} where 1=1"));
         assertEquals(List.of("T"), MapperXmlIndex.tables("select seq.nextval from dual; insert into T (a) values (1)"));
+    }
+
+    /**
+     * DAO 의 흔한 SQL 호출 방식 — SqlSession 타입이 아니어도 첫 인자가 매퍼 XML statement 와 맞으면 SQL 호출:
+     * 상속 메서드(selectList("ns.id") / super.insert), 라이브러리 상위 클래스(EgovAbstractDAO.list), 공통 DAO 빈,
+     * *DAO 이름의 MyBatis 인터페이스(XML namespace = FQN). XML 에 없으면 SQL 로 보지 않는다 (추측 금지).
+     */
+    @Test
+    void daoPatternsAreSqlCallsOnlyWhenXmlHasTheStatement() {
+        AnalysisResult r = Fixtures.analyze("DaoPatternAction", "execute", c -> c.analysis.expandRoles = List.of("DAO"));
+        for (String[] e : new String[][]{
+                {"selectList(\"notice.selectNotices\", vo)", "notice.selectNotices", "TB_NOTICE"},
+                {"super.insert(\"notice.insertNotice\", vo)", "notice.insertNotice", "TB_NOTICE"},
+                {"list(\"article.selectArticles\", vo)", "article.selectArticles", "TB_ARTICLE"},
+                {"commonDao.selectList(\"notice.countNotices\", vo)", "notice.countNotices", "TB_NOTICE"},
+                {"memberDAO.selectMember(memberId)", "com.example.dao.MemberDAO.selectMember", "TB_MEMBER"}}) {
+            SqlRef ref = sql(r, e[0]);
+            assertNotNull(ref, e[0]);
+            assertEquals("FOUND", ref.xmlStatus, e[0]);
+            assertEquals(e[1], ref.statementId, e[0]);
+            assertTrue(ref.tables.contains(e[2]), e[0] + " " + ref.tables);
+        }
+        // XML 에 없는 id·메서드는 SQL 호출이 아니다
+        assertNull(sql(r, "selectList(\"notInXml\", null)"));
+        assertNull(sql(r, "memberDAO.notInXml(memberId)"));
+        // 공통 DAO 안의 sqlSession.selectList(statementId, …) 는 id 미확정 + 호출하는 쪽 안내
+        SqlRef inner = r.callSites.stream().filter(c -> c.expression.equals("sqlSession.selectList(statementId, param)")
+                && r.method(c.callerMethodId).name.equals("selectList") && r.classOf(r.method(c.callerMethodId)).name.equals("CommonDAO"))
+                .findFirst().orElseThrow().sql;
+        assertEquals("SKIPPED", inner.xmlStatus);
+        assertTrue(inner.notes.stream().anyMatch(n -> n.contains("notice.countNotices")), inner.notes.toString());
     }
 
     @Test
