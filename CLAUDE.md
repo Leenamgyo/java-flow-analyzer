@@ -133,7 +133,7 @@ analyzer/
 - `analysis.yaml` 단일 문서, camelCase, `schemaVersion: "1.0"`. 쓰고 다시 읽어 `AnalysisSchema` 로 필수 키·타입·열거값·ID 형식·참조 검증 → 실패 시 예외. 숫자처럼 보이는 문자열은 따옴표 강제(`ALWAYS_QUOTE_NUMBERS_AS_STRINGS`).
 - 바인딩은 표시용 `source`/`transform`/`condition` 문자열과 구조화된 `sources`/`transforms`/`conditions` 를 함께 기록.
 - `comparison.md`(SPEC-v2 §7)는 신규 프로젝트 데이터가 없으면 만들지 않는다(미구현).
-- analysis.md 순서(사용자 요구): 1 Request Parameter → 2 분석 개요(관련 클래스 표: 인터페이스 먼저·그다음 클래스, `종류`·`사용 위치` 열 — 호출자 → 메서드 · CALL ID :줄, 구현 후보 연결, VO 객체) → 3 실행 흐름도(다이어그램은 너무 커서 넣지 않고 flowchart.md·flowchart.mmd·phase-flowchart.mmd 를 직접 열라는 안내만) → 4 바인딩 → 5 예외 → 6 비교 → 7 부록.
+- analysis.md 순서(사용자 요구): 1 Request Parameter → 2 분석 개요(관련 클래스 표: 역할별 `#### 역할 (n)` 표 — `CLASS_GROUPS` 순서 Action·Controller·Service·Biz·DAO / Mapper(한 묶음)·Repository·VO·Validator·Util·Other (Service·Biz 는 따로 — 사용자 요구), 역할 안에서 인터페이스 먼저·그다음 클래스, `종류`·`사용 위치` 열 — 호출자 → 메서드 · CALL ID :줄, 구현 후보 연결, VO 객체) → 3 실행 흐름도(다이어그램은 너무 커서 넣지 않고 flowchart.md·flowchart.mmd·phase-flowchart.mmd 를 직접 열라는 안내만) → 4 바인딩 → 5 예외 → 6 비교 → 7 부록.
 - analysis.md 에는 메서드 호출 관계·메서드 목록·Unresolved 목록·호출 트리를 넣지 않는다(사용자 요구: 분석서에 중요하지 않음). 각각 `analysis.yaml`(methods, calls 의 resolution)·`call-tree.txt` 에 있고, 분석서 머리말에 위치를 안내.
 - 호출 트리 제외 `output.call-tree-exclude`(사용자 관리, 기본 없음): `flowchart-exclude` 와 같은 패턴·매처(`serializer.Excludes`, 흐름도와 공용). 맞는 호출은 줄도 그 아래 전개도 없고, 트리 끝에 `※ call-tree-exclude (… N개)` 를 남긴다. 표시에서만 빼며 모델·YAML·mapping.md 는 그대로.
 

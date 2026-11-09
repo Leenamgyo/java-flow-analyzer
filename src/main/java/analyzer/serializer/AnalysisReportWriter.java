@@ -70,19 +70,33 @@ public final class AnalysisReportWriter {
         sb.append("| 선언 예외 | ").append(entry.thrownTypes.isEmpty() ? "-" : String.join(", ", entry.thrownTypes)).append(" |\n");
         sb.append("| 소스 위치 | `").append(entry.location.file()).append(":").append(entry.location.beginLine())
                 .append("-").append(entry.location.endLine()).append("` |\n\n");
-        sb.append("**관련 클래스** (진입 메서드에서 도달한 source 클래스 — 인터페이스 먼저, 그다음 클래스)\n\n")
-                .append("| ID | 종류 | 클래스 | 역할 | 근거 | 사용 위치 |\n|---|---|---|---|---|---|\n");
+        sb.append("**관련 클래스** (진입 메서드에서 도달한 source 클래스 — 역할별, 각 역할 안에서 인터페이스 먼저)\n\n");
         List<ClassInfo> source = r.classes().stream().filter(c -> c.origin == Origin.SOURCE).toList();
-        List<ClassInfo> ordered = new java.util.ArrayList<>(source.stream().filter(c -> "INTERFACE".equals(c.kind)).toList());
-        source.stream().filter(c -> !"INTERFACE".equals(c.kind)).forEach(ordered::add);
-        for (ClassInfo c : ordered) {
-            String ev = String.join(", ", c.roleEvidence.stream().map(e -> e.kind() + ":" + e.value()).toList());
-            sb.append("| ").append(c.id).append(" | ").append(kindLabel(c)).append(" | `").append(c.name).append("` | ")
-                    .append(c.role.label()).append(c.roleConflict ? " ⚠️충돌" : "").append(" | ").append(ev.isEmpty() ? "-" : ev)
-                    .append(" | ").append(usages(r, c)).append(" |\n");
+        for (List<ClassRole> groupRoles : CLASS_GROUPS) {
+            List<ClassInfo> group = source.stream().filter(c -> groupRoles.contains(c.role)).toList();
+            if (group.isEmpty()) {
+                continue;
+            }
+            List<ClassInfo> ordered = new java.util.ArrayList<>(group.stream().filter(c -> "INTERFACE".equals(c.kind)).toList());
+            group.stream().filter(c -> !"INTERFACE".equals(c.kind)).forEach(ordered::add);
+            sb.append("#### ").append(String.join(" / ", groupRoles.stream().map(ClassRole::label).toList()))
+                    .append(" (").append(group.size()).append(")\n\n")
+                    .append("| ID | 종류 | 클래스 | 근거 | 사용 위치 |\n|---|---|---|---|---|\n");
+            for (ClassInfo c : ordered) {
+                String ev = String.join(", ", c.roleEvidence.stream().map(e -> e.kind() + ":" + e.value()).toList());
+                sb.append("| ").append(c.id).append(" | ").append(kindLabel(c)).append(" | `").append(c.name).append('`')
+                        .append(c.roleConflict ? " ⚠️역할 근거 충돌" : "").append(" | ").append(ev.isEmpty() ? "-" : ev)
+                        .append(" | ").append(usages(r, c)).append(" |\n");
+            }
+            sb.append('\n');
         }
-        sb.append('\n');
     }
+
+    /** 관련 클래스 표 묶음 (순서대로). DAO 와 Mapper 는 한 묶음 — 사용자 요구, Service 와 Biz 는 따로 */
+    private static final List<List<ClassRole>> CLASS_GROUPS = List.of(
+            List.of(ClassRole.ACTION), List.of(ClassRole.CONTROLLER), List.of(ClassRole.SERVICE), List.of(ClassRole.BIZ),
+            List.of(ClassRole.DAO, ClassRole.MAPPER), List.of(ClassRole.REPOSITORY), List.of(ClassRole.VO),
+            List.of(ClassRole.VALIDATOR), List.of(ClassRole.UTIL), List.of(ClassRole.OTHER));
 
     private static String kindLabel(ClassInfo c) {
         return switch (c.kind == null ? "" : c.kind) {

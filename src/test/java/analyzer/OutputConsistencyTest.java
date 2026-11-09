@@ -302,6 +302,11 @@ class OutputConsistencyTest {
             assertFalse(md.contains(gone), gone);
         }
         assertTrue(md.contains("### 7.2 분석 범위와 정적 분석 한계"), md);
+        // 관련 클래스는 역할별 (Action 이 VO 앞), 역할 안에서 인터페이스 먼저
+        assertTrue(md.indexOf("#### Action (") < md.indexOf("#### VO ("), md);
+        String scp = new analyzer.serializer.AnalysisReportWriter().render(Fixtures.analyze("ScpAppListAction", "execute"), "SKIPPED");
+        List<String> groups = java.util.Arrays.stream(scp.split("\n")).filter(l -> l.startsWith("#### ")).toList();
+        assertEquals(List.of("#### Action (2)", "#### Biz (1)", "#### DAO / Mapper (1)", "#### VO (1)", "#### Util (2)"), groups); // DAO·Mapper 한 묶음
     }
 
     @Test
