@@ -290,8 +290,9 @@ class OutputConsistencyTest {
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         for (var b : r.bindings) {
             if (b.callSiteId != null) {
-                // setter 는 개별 노드가 아니라 바인딩 블록 안의 줄
-                assertTrue(!g.has(b.callSiteId) || mmdLabel(g, b.callSiteId).startsWith("바인딩"), "setter: " + b.callSiteId);
+                // setter 는 개별 노드가 아니라 코드 블록 안의 VO 줄 (객체 표시 "· SearchVO vo" 아래)
+                assertTrue(!g.has(b.callSiteId) || g.nodeById(g.nodeOf(b.callSiteId)).lines().stream()
+                        .anyMatch(l -> l.startsWith("· " + r.object(b.objectId).className)), "setter: " + b.callSiteId);
                 assertFalse(tree.contains("(" + b.callSiteId + ")"));
             }
         }

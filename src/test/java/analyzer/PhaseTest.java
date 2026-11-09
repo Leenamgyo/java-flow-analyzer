@@ -240,7 +240,7 @@ class PhaseTest {
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         assertEquals(g.nodeOf(calls.get(0).id), g.nodeOf(calls.get(1).id)); // 한 줄 (요청 파라미터와 같은 바인딩 블록)
         String mmd = new FlowchartGenerator().render(r, "TD");
-        assertTrue(g.labelOf(g.nodeOf(calls.get(0).id)).equals("바인딩"), g.labelOf(g.nodeOf(calls.get(0).id)));
+        assertFalse(g.labelOf(g.nodeOf(calls.get(0).id)).equals("바인딩"), g.labelOf(g.nodeOf(calls.get(0).id))); // 제목 없음
         assertTrue(mmd.contains("</font><br/>#35;4–6 boolean checkMandatoryParameterInQA = com.example.util.ODSUtil.isQAStore(shopID)"
                 + "<br/>#gt; && com.example.util.StringUtil.isNotEmpty(sdkVer) && #quot;1#quot;.equals(pd)\"]"), mmd); // 120자에서 && 앞 줄바꿈
         PhaseModel pm = PhaseAnalyzer.analyze(r, new AnalyzerConfig.Phases());

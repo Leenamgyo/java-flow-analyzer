@@ -33,7 +33,8 @@ class FlowchartEdgeCaseTest {
         MermaidGraph g = new FlowchartGenerator().build(r);
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
         String mmd = new FlowchartGenerator().render(r, "TD");
-        assertTrue(mmd.contains("[\"상태 변화<br/>n = n - 1 · n v2\"]"), mmd);
+        // 상태 변화: 제목 없이 버전 꼬리표 + 주황 글자
+        assertTrue(mmd.contains("[\"" + MermaidGraph.fontOpen(MermaidGraph.TEXT_COLORS.get("state")) + "n = n - 1 · n v2</font>\"]"), mmd);
         assertTrue(mmd.contains("CALL4[\"#35;4 touch()\"]"), mmd);
         assertFalse(mmd.contains(" · this v"), mmd); // 수신 객체 버전 표시 없음
     }
@@ -102,9 +103,10 @@ class FlowchartEdgeCaseTest {
     void logVariantsMergeAndCatchLogsAreDrawn() {
         AnalysisResult r = Fixtures.analyze("EdgeAction", "logVariants");
         MermaidGraph g = new FlowchartGenerator().build(r);
+        // 로그도 종류로 나누지 않고 앞뒤 코드 줄과 한 블록 (제목·배경색 없음) — 요청 읽기 #1 부터 이어진다
         CallSiteInfo info = call(r, "LOG.info(\"id=\" + request.getParameter(\"id\"))");
         for (String e : List.of("LOG.error(\"fail\", new RuntimeException())", "System.err.println(\"err\")")) {
-            assertEquals(info.id, g.nodeOf(call(r, e).id), e);
+            assertEquals(g.nodeOf(info.id), g.nodeOf(call(r, e).id), e);
         }
         // catch 안: printStackTrace + LOG.warn 한 블록
         assertEquals(g.nodeOf(call(r, "e.printStackTrace()").id), g.nodeOf(call(r, "LOG.warn(\"caught\", e)").id));

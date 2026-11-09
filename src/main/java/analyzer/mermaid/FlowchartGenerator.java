@@ -51,45 +51,52 @@ public final class FlowchartGenerator {
     public static final Map<String, String> DARK_CLASS_DEFS = new LinkedHashMap<>();
     public static final Map<String, String> DARK_PHASE_CLASS_DEFS = new LinkedHashMap<>();
 
+    /**
+     * 코드 상자(네모)는 색으로 구분하지 않는다 (사용자 요구) — 호출·요청·VO·상태 변화·로그 모두 같은 상자,
+     * 구분은 글자 색(요청 값 청록·바인딩 함수 보라·상태 변화 주황)만. 모양이 다른 노드(분기·return·throw·catch)는 그대로.
+     */
+    private static final String BOX = "fill:#f8fafc,stroke:#64748b";
+    private static final String DARK_BOX = "fill:#1e293b,stroke:#94a3b8,color:#e2e8f0";
+
     static {
         CLASS_DEFS.put("entry", "fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px");
         CLASS_DEFS.put("method", "fill:#eef2ff,stroke:#4338ca");
-        CLASS_DEFS.put("external", "fill:#f3f4f6,stroke:#9ca3af,color:#374151");
-        CLASS_DEFS.put("depth", "fill:#f5f5f4,stroke:#78716c,stroke-dasharray:2 2");
-        CLASS_DEFS.put("unresolved", "fill:#fff7ed,stroke:#c2410c,stroke-dasharray:4 3");
-        CLASS_DEFS.put("cycle", "fill:#fef9c3,stroke:#a16207");
+        CLASS_DEFS.put("external", BOX);
+        CLASS_DEFS.put("depth", BOX);
+        CLASS_DEFS.put("unresolved", BOX);
+        CLASS_DEFS.put("cycle", BOX);
         CLASS_DEFS.put("ret", "fill:#dcfce7,stroke:#15803d");
         CLASS_DEFS.put("throw", "fill:#fee2e2,stroke:#b91c1c");
         CLASS_DEFS.put("exc", "fill:#fee2e2,stroke:#b91c1c,stroke-dasharray:4 3");
-        CLASS_DEFS.put("req", "fill:#ccfbf1,stroke:#0f766e,stroke-width:2px");
-        CLASS_DEFS.put("bind", "fill:#ecfeff,stroke:#0e7490");
-        CLASS_DEFS.put("var", "fill:#fff7ed,stroke:#ea580c");
+        CLASS_DEFS.put("req", BOX);
+        CLASS_DEFS.put("bind", BOX);
+        CLASS_DEFS.put("var", BOX);
         CLASS_DEFS.put("golink", "fill:#f8fafc,stroke:#64748b,stroke-dasharray:5 3");
-        CLASS_DEFS.put("codeline", "fill:#eef2ff,stroke:#6366f1");
+        CLASS_DEFS.put("codeline", BOX);
         CLASS_DEFS.put("fin", "fill:#f1f5f9,stroke:#475569,stroke-dasharray:3 3");
-        CLASS_DEFS.put("state", "fill:#fff7ed,stroke:#ea580c");
-        CLASS_DEFS.put("log", "fill:#e2e8f0,stroke:#64748b,color:#334155,stroke-dasharray:2 2");
+        CLASS_DEFS.put("state", BOX);
+        CLASS_DEFS.put("log", BOX);
         PHASE_CLASS_DEFS.putAll(CLASS_DEFS);
         PHASE_CLASS_DEFS.put("check", "fill:#fefce8,stroke:#a16207");
         PHASE_CLASS_DEFS.put("post", "fill:#f5f3ff,stroke:#6d28d9");
         // 다크 테마: 어두운 바탕 + 밝은 테두리·글자 (같은 계열 색, 클래스 이름은 라이트와 같다)
         DARK_CLASS_DEFS.put("entry", "fill:#1e3a8a,stroke:#60a5fa,stroke-width:2px,color:#f8fafc");
         DARK_CLASS_DEFS.put("method", "fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff");
-        DARK_CLASS_DEFS.put("external", "fill:#1f2937,stroke:#6b7280,color:#d1d5db");
-        DARK_CLASS_DEFS.put("depth", "fill:#292524,stroke:#a8a29e,color:#e7e5e4,stroke-dasharray:2 2");
-        DARK_CLASS_DEFS.put("unresolved", "fill:#431407,stroke:#fb923c,color:#fed7aa,stroke-dasharray:4 3");
-        DARK_CLASS_DEFS.put("cycle", "fill:#422006,stroke:#facc15,color:#fef08a");
+        DARK_CLASS_DEFS.put("external", DARK_BOX);
+        DARK_CLASS_DEFS.put("depth", DARK_BOX);
+        DARK_CLASS_DEFS.put("unresolved", DARK_BOX);
+        DARK_CLASS_DEFS.put("cycle", DARK_BOX);
         DARK_CLASS_DEFS.put("ret", "fill:#052e16,stroke:#4ade80,color:#dcfce7");
         DARK_CLASS_DEFS.put("throw", "fill:#450a0a,stroke:#f87171,color:#fee2e2");
         DARK_CLASS_DEFS.put("exc", "fill:#450a0a,stroke:#f87171,color:#fee2e2,stroke-dasharray:4 3");
-        DARK_CLASS_DEFS.put("req", "fill:#042f2e,stroke:#2dd4bf,stroke-width:2px,color:#ccfbf1");
-        DARK_CLASS_DEFS.put("bind", "fill:#083344,stroke:#22d3ee,color:#cffafe");
-        DARK_CLASS_DEFS.put("var", "fill:#431407,stroke:#fb923c,color:#ffedd5");
+        DARK_CLASS_DEFS.put("req", DARK_BOX);
+        DARK_CLASS_DEFS.put("bind", DARK_BOX);
+        DARK_CLASS_DEFS.put("var", DARK_BOX);
         DARK_CLASS_DEFS.put("golink", "fill:#0f172a,stroke:#94a3b8,color:#e2e8f0,stroke-dasharray:5 3");
-        DARK_CLASS_DEFS.put("codeline", "fill:#1e1b4b,stroke:#818cf8,color:#e0e7ff");
+        DARK_CLASS_DEFS.put("codeline", DARK_BOX);
         DARK_CLASS_DEFS.put("fin", "fill:#1e293b,stroke:#94a3b8,color:#e2e8f0,stroke-dasharray:3 3");
-        DARK_CLASS_DEFS.put("state", "fill:#431407,stroke:#fb923c,color:#ffedd5");
-        DARK_CLASS_DEFS.put("log", "fill:#334155,stroke:#94a3b8,color:#cbd5e1,stroke-dasharray:2 2");
+        DARK_CLASS_DEFS.put("state", DARK_BOX);
+        DARK_CLASS_DEFS.put("log", DARK_BOX);
         DARK_PHASE_CLASS_DEFS.putAll(DARK_CLASS_DEFS);
         DARK_PHASE_CLASS_DEFS.put("check", "fill:#422006,stroke:#eab308,color:#fef9c3");
         DARK_PHASE_CLASS_DEFS.put("post", "fill:#2e1065,stroke:#a78bfa,color:#ede9fe");
@@ -356,7 +363,7 @@ public final class FlowchartGenerator {
         return phases == null ? (dark ? DARK_CLASS_DEFS : CLASS_DEFS) : (dark ? DARK_PHASE_CLASS_DEFS : PHASE_CLASS_DEFS);
     }
 
-    private int maxLineLength = 120;
+    private int maxLineLength = 100;
     /** 사용자 설정 output.flowchart-exclude */
     private List<String> excludes = List.of();
     private Rules rules;
@@ -1025,12 +1032,13 @@ public final class FlowchartGenerator {
             this.container = container;
         }
 
-        /** kind 블록을 이어 쌓을 준비 — 다른 종류가 쌓여 있으면 먼저 내보낸다 */
+        /**
+         * 이어 쌓을 준비. 종류(요청 읽기·VO 값 설정·상태 변화·로그·일반 호출)로 나누지 않고 계속 쌓는다 —
+         * 노드를 끊는 것은 제어 블록(if·반복·try…)과 따로 그리는 호출(세부 상자로 가는 호출 등)뿐 (사용자 요구:
+         * "바인딩/상태 변화/로그" 제목·색으로 나누는 것이 제대로 나누지 못해 없앰). k 는 예전 호환용으로 무시.
+         */
         List<End> start(String k, List<End> cur, String firstId) {
-            if (kind != null && !kind.equals(k)) {
-                cur = flush(cur);
-            }
-            kind = k;
+            kind = "block";
             if (nodeId == null) {
                 nodeId = firstId;
             }
@@ -1124,16 +1132,25 @@ public final class FlowchartGenerator {
         }
 
         List<End> log(CallSiteInfo s, List<End> cur) {
-            cur = start("log", cur, s.id);
-            lines.add(new Line(Labels.logLine(s), null, null));
-            members.add(s.id);
-            return cur;
+            return code(s, cur); // 로그도 코드 한 줄 (제목·배경색 구분 없음)
         }
 
         /** 일반 호출 (세부 상자로 가지 않는 호출) — 색 구분(css)이 같으면 이어 쌓는다 */
         List<End> code(CallSiteInfo s, List<End> cur) {
-            cur = start("code:" + callCss(s), cur, s.id);
+            cur = start("block", cur, s.id);
             codeCalls.add(s);
+            lines.add(new Line(callCode(s), null, null));
+            String impl = Labels.implementationTarget(r, s);
+            if (impl != null) {
+                lines.add(new Line("  impl 후보: " + impl, null, null));
+            }
+            String req = Labels.requestTag(r, s);
+            if (req != null) {
+                lines.add(new Line("  " + req, null, null));
+            }
+            Labels.sqlLines(s.sql).forEach(l -> lines.add(new Line("  " + l, null, null)));
+            members.add(s.id);
+            assignedBy.getOrDefault(s.id, List.of()).forEach(v -> members.add(v.id));
             return cur;
         }
 
@@ -1147,83 +1164,42 @@ public final class FlowchartGenerator {
 
         List<End> change(VariableChange c, List<End> cur) {
             cur = start("state", cur, "VAR_" + c.id);
-            lines.add(new Line(Labels.changeLine(r, c), null, null));
+            lines.add(new Line(Labels.changeLine(r, c), "state", null)); // 상태 변화 = 버전 꼬리표 + 주황 글자
             members.add(c.id);
             return cur;
         }
 
         List<End> flush(List<End> cur) {
-            String k = kind;
             String id = nodeId;
             kind = null;
             nodeId = null;
-            if (k != null && k.startsWith("code:")) {
-                List<CallSiteInfo> cs = new ArrayList<>(codeCalls);
-                codeCalls.clear();
-                if (cs.size() == 1) {
-                    callNode(sg, cs.get(0));
-                    return link(cur, id);
-                }
-                List<String> out = new ArrayList<>();
-                for (CallSiteInfo c : cs) {
-                    out.add(callCode(c));
-                    String impl = Labels.implementationTarget(r, c);
-                    if (impl != null) {
-                        out.add("  impl 후보: " + impl);
-                    }
-                    String req = Labels.requestTag(r, c);
-                    if (req != null) {
-                        out.add("  " + req);
-                    }
-                    Labels.sqlLines(c.sql).forEach(l -> out.add("  " + l));
-                }
-                g.node(sg, id, out, Shape.RECT, k.substring(5));
-                for (CallSiteInfo c : cs) {
-                    if (!c.id.equals(id)) {
-                        g.alias(c.id, id);
-                    }
-                    assignedBy.getOrDefault(c.id, List.of()).forEach(v -> g.alias(v.id, id));
-                }
-                return link(cur, id);
-            }
-            if (k == null || lines.isEmpty()) {
+            List<CallSiteInfo> cs = new ArrayList<>(codeCalls);
+            codeCalls.clear();
+            if (id == null || lines.isEmpty()) {
                 lines.clear();
                 members.clear();
                 return cur;
             }
-            List<String> out = new ArrayList<>();
-            String css;
-            switch (k) {
-                case "bind" -> {
-                    List<String> objects = lines.stream().map(Line::objectId).filter(java.util.Objects::nonNull).distinct().toList();
-                    out.add("바인딩" + (objects.isEmpty() ? "" : " · " + String.join(", ",
-                            objects.stream().map(o -> r.object(o).className).distinct().toList())));
-                    String last = null;
-                    for (Line l : lines) {
-                        // 객체가 둘 이상이면 어느 객체의 줄인지 (객체가 바뀔 때마다)
-                        if (objects.size() > 1 && l.objectId() != null && !l.objectId().equals(last)) {
-                            var o = r.object(l.objectId());
-                            out.add("· " + o.className + (o.variable == null ? "" : " " + o.variable));
-                        }
-                        if (l.objectId() != null) {
-                            last = l.objectId();
-                        }
-                        out.add(l.textClass() == null ? l.text() : MermaidGraph.styled(l.textClass(), l.text()));
-                    }
-                    css = "bind";
-                }
-                case "state" -> {
-                    out.add("상태 변화");
-                    lines.forEach(l -> out.add(l.textClass() == null ? l.text() : MermaidGraph.styled(l.textClass(), l.text())));
-                    css = "state";
-                }
-                default -> {
-                    out.add("로그");
-                    lines.forEach(l -> out.add(l.text()));
-                    css = "log";
-                }
+            // 호출 하나뿐이면 예전 호출 노드 그대로
+            if (cs.size() == 1 && members.stream().allMatch(x -> x.equals(cs.get(0).id)
+                    || assignedBy.getOrDefault(cs.get(0).id, List.of()).stream().anyMatch(v -> v.id.equals(x)))) {
+                lines.clear();
+                members.clear();
+                callNode(sg, cs.get(0));
+                return link(cur, id);
             }
-            g.node(sg, id, out, Shape.RECT, css);
+            List<String> out = new ArrayList<>();
+            String last = null;
+            for (Line l : lines) {
+                // VO 값 설정 줄: 어느 객체의 줄인지 (객체가 바뀔 때마다 한 줄)
+                if (l.objectId() != null && !l.objectId().equals(last)) {
+                    var o = r.object(l.objectId());
+                    out.add("· " + o.className + (o.variable == null ? "" : " " + o.variable));
+                }
+                last = l.objectId() != null ? l.objectId() : last;
+                out.add(l.textClass() == null ? l.text() : MermaidGraph.styled(l.textClass(), l.text()));
+            }
+            g.node(sg, id, out, Shape.RECT, "codeline");
             for (String x : members) {
                 if (!x.equals(id) && !g.has(x)) {
                     g.alias(x, id);
@@ -1512,8 +1488,8 @@ public final class FlowchartGenerator {
         if (vars.isEmpty()) {
             return cur;
         }
-        List<String> lines = new ArrayList<>(List.of("상태 변화"));
-        vars.forEach(c -> lines.add(Labels.changeLine(r, c)));
+        List<String> lines = new ArrayList<>();
+        vars.forEach(c -> lines.add(MermaidGraph.styled("state", Labels.changeLine(r, c))));
         String id = "VAR_" + vars.get(0).id;
         g.node(sg, id, lines, Shape.RECT, "state");
         vars.forEach(c -> g.alias(c.id, id));

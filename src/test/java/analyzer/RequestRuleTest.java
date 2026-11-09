@@ -57,7 +57,7 @@ class RequestRuleTest {
         // 흐름도: 요청 파라미터는 바인딩 블록 안 (글자색으로 구분), 호출 노드가 아님
         String mmd = new FlowchartGenerator().render(r, "TD");
         String req = analyzer.mermaid.MermaidGraph.fontOpen(analyzer.mermaid.MermaidGraph.TEXT_COLORS.get("req"));
-        assertTrue(mmd.contains("바인딩<br/>#35;1 String deviceId = " + req + "request.deviceId</font><br/>"
+        assertTrue(mmd.contains("[\"#35;1 String deviceId = " + req + "request.deviceId</font><br/>"
                 + "#35;2 String systemId = " + req + "request.systemId</font><br/>"
                 + "#35;3 String abi = " + req + "request.abiType</font><br/>#35;4 String query = " + req + "request.query</font><br/>"
                 + "#35;6 String isAutoUpdate = " + req + "request.isAutoUpdate ?: #quot;0#quot;</font>"), mmd); // 안쪽 getParam(#5)은 따로 없음

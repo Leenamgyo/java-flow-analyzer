@@ -59,11 +59,14 @@ class FlowchartRulesTest {
         MermaidGraph g = new FlowchartGenerator().build(r);
         assertEquals(info.id, g.nodeOf(debug.id));
         String mmd = new FlowchartGenerator().render(r, "TD");
-        // 간략히: 레벨 + 인자 (수신 객체·세미콜론 없음)
-        assertTrue(mmd.contains(info.id + "[\"로그<br/>#35;1 info #quot;start #quot; + request.getRequestURI()<br/>"
-                + "#35;2 debug #quot;items={}#quot;, items.size()\"]"), mmd);
-        assertTrue(mmd.contains("classDef log fill:"), mmd);
-        assertTrue(mmd.matches("(?s).*class [^\\n]*" + info.id + "[^\\n]* log\\n.*"), mmd);
+        // 로그도 코드 그대로 한 줄씩, "로그" 제목 없이 이어지는 코드와 같은 블록 (사용자 요구: 제목·배경색 구분 없앰)
+        assertTrue(mmd.contains(info.id + "[\"#35;1 LOG.info(#quot;start #quot; + request.getRequestURI())<br/>"
+                + "#35;2 LOG.debug(#quot;items={}#quot;, items.size())<br/>"), mmd);
+        assertFalse(mmd.contains("로그<br/>"), mmd);
+        assertFalse(mmd.contains("바인딩<br/>"), mmd);
+        // 네모(코드 상자)는 색 구분 없음 — 같은 스타일
+        assertTrue(mmd.contains("classDef log fill:#f8fafc,stroke:#64748b") && mmd.contains("classDef bind fill:#f8fafc,stroke:#64748b")
+                && mmd.contains("classDef codeline fill:#f8fafc,stroke:#64748b"), mmd);
     }
 
     @Test
@@ -72,11 +75,11 @@ class FlowchartRulesTest {
         MermaidGraph g = new FlowchartGenerator().build(r);
         CallSiteInfo read = call(r, "request.getParameter(\"id\")");
         CallSiteInfo toSearch = call(r, "toSearch(request)");
-        // 요청 파라미터는 따로 블록이 아니라 바인딩 블록 안
-        assertEquals(read.id, g.nodeOf(toSearch.id));
+        // 요청 파라미터·바인딩 함수·로그 모두 한 코드 블록 (종류로 나누지 않음)
+        assertEquals(g.nodeOf(read.id), g.nodeOf(toSearch.id));
         String mmd = new FlowchartGenerator().render(r, "TD");
         // 요청 값(request.이름)만 글자색 req, 바인딩 함수 = 글자색 fn, 안쪽 바인딩 함수는 │ 로 한 단계 더 중첩
-        assertTrue(mmd.contains(read.id + "[\"바인딩<br/>#35;3 String id = " + REQ + "request.id</font><br/>"
+        assertTrue(mmd.contains("<br/>#35;3 String id = " + REQ + "request.id</font><br/>"
                 + FN + "▸ #35;4 SearchVO vo = toSearch(request)</font><br/>"
                 + "│ keyword = trimmed(request.q)<br/>"
                 + FN + "│ ▸ trimmed(request.q)</font><br/>"

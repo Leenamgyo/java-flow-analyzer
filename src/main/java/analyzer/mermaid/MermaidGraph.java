@@ -75,11 +75,13 @@ public final class MermaidGraph {
      */
     public static final Map<String, String> TEXT_COLORS = Map.of(
             "req", "#0f766e",
-            "fn", "#7c3aed");
+            "fn", "#7c3aed",
+            "state", "#ea580c");
     /** 다크 테마 글자 색 (어두운 노드 바탕 위에서 읽히게 밝은 색) */
     public static final Map<String, String> TEXT_COLORS_DARK = Map.of(
             "req", "#5eead4",
-            "fn", "#c4b5fd");
+            "fn", "#c4b5fd",
+            "state", "#fdba74");
 
     /** 색 테마: dark | light (설정 output.color-theme) */
     private String theme = "light";
@@ -737,7 +739,7 @@ public final class MermaidGraph {
     }
 
     /** 노드 한 줄 최대 길이 (넘으면 끊고 다음 줄 앞에 "> "). 0 이하면 끊지 않음 */
-    private int maxLineLength = 120;
+    private int maxLineLength = 100;
 
     public MermaidGraph maxLineLength(int n) {
         this.maxLineLength = n;

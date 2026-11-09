@@ -34,7 +34,7 @@ class InitialValueAndReaderTest {
         for (String code : List.of("boolean data = false", "int count = 0", "String mode = #quot;LIST#quot;", "String label",
                 "long limit = MAX_ROWS * 2L", "List#lt;String#gt; names = new ArrayList#lt;#gt;()",
                 "String result = mode + count + data + limit")) {
-            assertTrue(mmd.contains("<br/>" + code + "<br/>") || mmd.contains("<br/>" + code + "\"]"), code + "\n" + mmd);
+            assertTrue(mmd.matches("(?s).*(\\[\"|<br/>)" + java.util.regex.Pattern.quote(code) + "(<br/>|\"\\]).*"), code + "\n" + mmd);
         }
         // 선언 = v1 (꼬리표 없음), 변경은 v2
         assertTrue(mmd.contains("data = true · data v2"), mmd);
