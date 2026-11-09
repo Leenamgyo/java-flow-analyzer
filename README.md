@@ -103,39 +103,39 @@ output:
 
 ## Response(JSP) 등록하기
 
-Action 이 응답으로 쓰는 JSP(XML 출력)를 **JSP 파일 경로(또는 파일명)로 지정**하면, 그 JSP 의 XML 항목과 값 출처를 분석해
-`spec.md` 의 `## 2. Response 정의` 와 `response.md` 를 만듭니다. 어느 JSP 인지는 분석기가 추측하지 않으므로 Action 마다 직접 정합니다.
+Action 이 응답으로 쓰는 JSP(XML 출력)의 **파일명만 주면** 분석기가 원본 프로젝트에서 그 파일을 찾아 분석하고,
+`spec.md` 의 `## 2. Response 정의` 와 `response.md` 를 만듭니다. 어느 JSP 인지는 Action 마다 직접 정합니다(분석기가 추측하지 않음).
 
-1. **CLI 로 (Action 마다 다르므로 보통 이쪽)**
+**방법 1 — 실행할 때 `--jsp` 로 (권장)**
 
-   ```bash
-   # JSP 파일 경로를 그대로 (절대 경로, 또는 이 저장소 루트 기준 상대 경로)
-   ./gradlew run --args="--config /path/to/my-project.yml --class AppDetailAction --jsp /path/to/project/WebContent/WEB-INF/jsp/vas/appDetail.jsp"
-   # 파일명만 줘도 됨 — 웹 루트(WEB-INF 가 있는 폴더)에서 찾음
-   ./gradlew run --args="--config /path/to/my-project.yml --class AppDetailAction --jsp appDetail.jsp"
-   # JSP 가 여러 개면 --jsp 를 반복
-   ./gradlew run --args="--config my-project.yml --class AppDetailAction --jsp appDetail.jsp --jsp error.jsp"
-   ```
+```bash
+./gradlew run --args="--config my-project.yml --class AppDetailAction --jsp appDetail.jsp"
+```
 
-2. **설정 파일로**
+**방법 2 — 설정 파일에**
 
-   ```yaml
-   response:
-     jsp:
-       - /path/to/project/WebContent/WEB-INF/jsp/vas/appDetail.jsp   # JSP 파일 경로
-       # - appDetail.jsp                 # 또는 파일명·끝부분 경로 (vas/appDetail.jsp) → 웹 루트에서 찾음
-     web-roots:                          # 선택: WEB-INF 가 있는 폴더. 비우면 프로젝트 폴더에서 자동으로 찾음
-       - /path/to/project/WebContent
-   ```
+```yaml
+response:
+  jsp: [appDetail.jsp]
+```
 
-- 실제 있는 파일 경로면 그 파일을 그대로 씁니다(`/WEB-INF/…` include 는 위쪽 `WEB-INF` 의 부모 폴더 기준).
-- 파일명이면 웹 루트(`WEB-INF` 가 있는 폴더) 아래에서 이름 끝이 일치하는 것을 찾습니다.
-  - 같은 이름이 여러 개면 고르지 않고 후보를 보여 줍니다 → `vas/appDetail.jsp` 처럼 앞 폴더까지 적으세요.
-  - 못 찾으면(`NOT_FOUND`) 이름을 확인하거나 `web-roots` 를 지정하세요.
-- `--jsp` 를 주면 설정 파일의 `response.jsp` 를 대체합니다. 둘 다 없으면 Response 분석을 하지 않습니다(2장·`response.md` 없음).
-- 값 출처: `${x}` 는 Action 이 넘긴 `request.setAttribute("x", …)`(·`model.addAttribute`·`mav.addObject`), `${param.x}` 는 요청 파라미터,
-  `c:forEach` 변수는 `items` 의 원소, `c:set` 은 그 값. 넣는 곳을 못 찾으면 "Action 에서 넣는 곳 없음".
-  `<%@ include %>`·`jsp:include`·`c:import` 는 그 자리에 펼쳐 읽습니다. 스크립틀릿은 `response.md` 에 확인 항목으로 남습니다.
+**찾는 방식**
+
+1. 원본 프로젝트(소스 루트의 프로젝트 폴더)에서 `WEB-INF` 가 있는 폴더(웹 루트)를 자동으로 찾습니다.
+2. 그 아래에서 파일명이 같은 JSP 를 찾아 분석합니다.
+
+**안 될 때**
+
+| 상황 | 해결 |
+|---|---|
+| 같은 이름이 여러 개 (`AMBIGUOUS`, 후보 표시) | 앞 폴더까지: `--jsp vas/appDetail.jsp` |
+| 못 찾음 (`NOT_FOUND`) | 이름 확인, 또는 설정에 웹 루트 지정 `response.web-roots: [/path/to/project/WebContent]` |
+| 위치를 정확히 알고 있음 | 파일 경로를 그대로: `--jsp /path/to/project/WebContent/WEB-INF/jsp/vas/appDetail.jsp` |
+
+- JSP 가 여러 개면 `--jsp` 를 반복합니다 (`--jsp appDetail.jsp --jsp error.jsp`).
+- `--jsp` 를 주면 설정 파일의 `response.jsp` 대신 씁니다. 둘 다 없으면 Response 분석을 하지 않습니다.
+- 값 출처: `${x}` = Action 의 `request.setAttribute("x", …)`, `${param.x}` = 요청 파라미터, `c:forEach` 변수 = `items` 의 원소.
+  include 된 JSP 도 그 자리에 펼쳐 읽습니다.
 
 `spec.md` 예:
 
