@@ -101,6 +101,51 @@ output:
 - 결과는 이 저장소의 `output/<클래스명>/` 에 생깁니다(`--output` 으로 변경). 출력 위치가 분석 대상 소스 루트 안이면 실행을 거부합니다.
 - 분석 대상 프로젝트는 읽기만 합니다(수정·빌드·실행 없음).
 
+## Response(JSP) 등록하기
+
+Action 이 응답으로 쓰는 JSP(XML 출력)를 **파일명으로 지정**하면, 그 JSP 의 XML 항목과 값 출처를 분석해
+`spec.md` 의 `## 2. Response 정의` 와 `response.md` 를 만듭니다. 어느 JSP 인지는 분석기가 추측하지 않으므로 Action 마다 직접 정합니다.
+
+1. **CLI 로 (Action 마다 다르므로 보통 이쪽)**
+
+   ```bash
+   ./gradlew run --args="--config /path/to/my-project.yml --class AppDetailAction --jsp appDetail.jsp"
+   # JSP 가 여러 개면 --jsp 를 반복
+   ./gradlew run --args="--config my-project.yml --class AppDetailAction --jsp appDetail.jsp --jsp error.jsp"
+   ```
+
+2. **설정 파일로**
+
+   ```yaml
+   response:
+     jsp: [appDetail.jsp]               # 파일명 또는 끝부분 경로 (vas/appDetail.jsp)
+     web-roots:                          # 선택: WEB-INF 가 있는 폴더. 비우면 프로젝트 폴더에서 자동으로 찾음
+       - /path/to/project/WebContent
+   ```
+
+- 파일은 웹 루트(`WEB-INF` 가 있는 폴더) 아래에서 이름 끝이 일치하는 것을 찾습니다.
+  - 같은 이름이 여러 개면 고르지 않고 후보를 보여 줍니다 → `vas/appDetail.jsp` 처럼 앞 폴더까지 적으세요.
+  - 못 찾으면(`NOT_FOUND`) 이름을 확인하거나 `web-roots` 를 지정하세요.
+- `--jsp` 를 주면 설정 파일의 `response.jsp` 를 대체합니다. 둘 다 없으면 Response 분석을 하지 않습니다(2장·`response.md` 없음).
+- 값 출처: `${x}` 는 Action 이 넘긴 `request.setAttribute("x", …)`(·`model.addAttribute`·`mav.addObject`), `${param.x}` 는 요청 파라미터,
+  `c:forEach` 변수는 `items` 의 원소, `c:set` 은 그 값. 넣는 곳을 못 찾으면 "Action 에서 넣는 곳 없음".
+  `<%@ include %>`·`jsp:include`·`c:import` 는 그 자리에 펼쳐 읽습니다. 스크립틀릿은 `response.md` 에 확인 항목으로 남습니다.
+
+`spec.md` 예:
+
+```markdown
+## 2. Response 정의
+
+| 항목 | 필수 | 반복 | 값 |
+|---|---|---|---|
+| response/country | Y |  | country |
+| response/lang | Y |  | request.lang |
+| response/apps/app@id | N | Y | appList[] |
+| response/version | Y |  | 고정 1.0 |
+```
+
+필수 = `c:if`·`c:choose` 안이면 N, 반복 = `c:forEach` 안이면 Y.
+
 ## CLI 옵션
 
 | 옵션 | 설명 |
@@ -110,6 +155,7 @@ output:
 | `--class <name>` | 분석할 Action/Controller (단순명 또는 FQN — 같은 이름이 여러 개면 FQN) |
 | `--method <name>` | 진입 메서드 (생략 시 추론) |
 | `--output <dir>` | 출력 디렉터리. 결과는 `<dir>/<클래스명>/` |
+| `--jsp <name>` | Response 로 분석할 JSP 파일명 (여러 번 지정 가능, 설정 `response.jsp` 대체) |
 
 ## 출력 파일
 
@@ -118,6 +164,8 @@ output:
 | 파일 | 내용 |
 |---|---|
 | `analysis.yaml` | 분석 결과 원본(Source of Truth). 나머지 파일은 모두 이 모델에서 생성 |
+| `spec.md` | 간결한 명세: 1. Request Param 정의(파라미터·타입·필수·기본값·설명), 2. Response 정의(JSP 지정 시) |
+| `response.md` | JSP 지정 시: XML 구조, 값마다 출처 사슬·JSP 위치, Action → JSP attribute 표 |
 | `call-tree.txt` | 진입 메서드부터의 호출 트리 (분기·예외·요청 파라미터·바인딩 요약 포함) |
 | `flowchart.mmd` | Mermaid 흐름도 (메서드별 subgraph). try 는 블록 1개로 묶고 예외는 블록에서 catch 노드로 한 번에(`try -.->|ValidationException| catch …`), finally 는 그 뒤 노드 1개. 레이아웃은 Mermaid 기본(dagre), 직각 간선을 원하면 `output.layout: elk`(뷰어가 ELK 를 지원해야 함). 세부(박스)는 Service 쪽으로 넘어가는 흐름만 그림(Action → Service → Service·Biz·DAO·Mapper). Action 의 내부 함수(`readItems`, `preparePayment`, `calculateTotal` …)와 `checkLogin` 같은 값 조회는 코드 한 줄(`#15 items = readItems(request)` / `VO 값 설정 · OrderItemVO`) — 안에서 읽는 요청 값·VO 매핑은 `mapping.md` 에 그대로. 연속된 요청 값 읽기 → `요청 파라미터` 노드, 연속된 setter·builder·생성자 → `VO 값 설정` 노드 (아래 예시) |
 | `flowchart/` | 큰 흐름도 나눠 보기: `00-overview.mmd`(메서드 박스 + 호출 관계) + 메서드마다 한 파일(`01-M1-Xxx.execute.mmd` …). 다른 메서드로 넘어가는 호출은 `▶ 대상 — 파일명` 노드로 끝남 (`output.split-flowchart`, 기본 켜짐) |
