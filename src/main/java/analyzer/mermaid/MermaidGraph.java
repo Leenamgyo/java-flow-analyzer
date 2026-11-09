@@ -269,7 +269,7 @@ public final class MermaidGraph {
         for (Edge e : edges) {
             sb.append("    ").append(e.from()).append(' ').append(e.style().arrow);
             if (e.label() != null && !e.label().isBlank()) {
-                sb.append("|\"").append(esc(e.label())).append("\"|");
+                sb.append("|\"").append(wrapped(e.label())).append("\"|");
             }
             sb.append(' ').append(e.to()).append('\n');
         }
@@ -312,7 +312,7 @@ public final class MermaidGraph {
 
     private void renderItem(StringBuilder sb, Object o, String indent) {
         if (o instanceof Subgraph s) {
-            sb.append(indent).append("subgraph ").append(s.id).append("[\"").append(esc(s.label)).append("\"]\n");
+            sb.append(indent).append("subgraph ").append(s.id).append("[\"").append(wrapped(s.label)).append("\"]\n");
             for (Object c : s.items) {
                 renderItem(sb, c, indent + "    ");
             }
@@ -341,6 +341,11 @@ public final class MermaidGraph {
             };
             sb.append(indent).append(n.id()).append(br[0]).append(label).append(br[1]).append('\n');
         }
+    }
+
+    /** 한 줄 라벨(subgraph 제목·간선 라벨)도 노드 줄과 같은 한도로 끊는다 */
+    private String wrapped(String label) {
+        return String.join("<br/>", wrap(label == null ? "" : label, maxLineLength).stream().map(MermaidGraph::esc).toList());
     }
 
     /** subgraph 안의 모든 ID (자신·중첩 subgraph·노드) */
@@ -591,49 +596,98 @@ public final class MermaidGraph {
 
     /**
      * 긴 코드 줄을 끊기 좋은 자리에서 나눈다: 쉼표 뒤 > + / - 앞 > '.' 앞(메서드 체인) > '(' 뒤.
-     * 이어지는 줄은 "> " 로 시작. 끊을 자리가 없으면 그대로 둔다 (단어 중간을 자르지 않음).
+     * 이어지는 줄은 "> " 로 시작. 길이는 화면 폭 기준({@link #width} — 한글·한자 등 전각 문자 = 2).
+     * 방어: 마땅한 자리가 없어도 한 줄이 한도를 크게 넘지 않게 — 공백(문자열 리터럴 밖 → 안) → 강제 자르기 순으로
+     * 끊는다 (긴 문자열 리터럴·식별자 한 덩어리가 노드 폭을 넘어 라벨이 잘리거나 겹쳐 보이던 문제).
      */
     public static List<String> wrap(String line, int max) {
         List<String> out = new ArrayList<>();
-        if (max <= 0 || line == null || line.length() <= max) {
+        if (max <= 0 || line == null || width(line) <= max) {
             out.add(line);
             return out;
         }
+        int limit = Math.max(max, MIN_WRAP);
         String rest = line;
         boolean first = true;
         while (true) {
             String prefix = first ? "" : "> ";
-            int room = max - prefix.length();
-            if (rest.length() <= room) {
+            int room = limit - prefix.length();
+            if (width(rest) <= room) {
                 out.add(prefix + rest);
                 break;
             }
             int cut = breakAt(rest, room);
-            if (cut <= 0 || cut >= rest.length()) {
-                out.add(prefix + rest);
+            String head = rest.substring(0, cut).stripTrailing();
+            if (head.isEmpty()) {           // 공백만 앞에 있던 경우 — 진행 보장
+                head = rest.substring(0, cut);
+            }
+            out.add(prefix + head);
+            rest = rest.substring(cut).stripLeading();
+            if (rest.isEmpty()) {
                 break;
             }
-            out.add(prefix + rest.substring(0, cut).stripTrailing());
-            rest = rest.substring(cut).stripLeading();
             first = false;
         }
         return out;
     }
 
+    /** 이 폭보다 좁게는 끊지 않는다 ("> " 와 몇 글자만 남는 줄 방지) */
+    private static final int MIN_WRAP = 20;
+
+    /** 화면 폭: 전각(한글·CJK·전각 기호·이모지) 2, 나머지 1 */
+    public static int width(String s) {
+        int w = 0;
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            w += charWidth(cp);
+            i += Character.charCount(cp);
+        }
+        return w;
+    }
+
+    private static int charWidth(int cp) {
+        if (cp < 0x1100) {
+            return 1;
+        }
+        Character.UnicodeScript sc = Character.UnicodeScript.of(cp);
+        if (sc == Character.UnicodeScript.HANGUL || sc == Character.UnicodeScript.HAN
+                || sc == Character.UnicodeScript.HIRAGANA || sc == Character.UnicodeScript.KATAKANA) {
+            return 2;
+        }
+        return (cp >= 0x3000 && cp <= 0x303F) || (cp >= 0xFF01 && cp <= 0xFF60) || (cp >= 0xFFE0 && cp <= 0xFFE6)
+                || (cp >= 0x1F300 && cp <= 0x1FAFF) ? 2 : 1;
+    }
+
     /**
-     * room 안의 끊을 자리. 강한 자리(쉼표 뒤·+/- 앞·).체인 앞)를 우선, 없으면 약한 자리('(' 뒤),
-     * 한도 안에 마땅한 자리가 없으면 한도를 넘는 첫 자리, 그것도 없으면 -1. 문자열 리터럴 안은 제외.
+     * room(화면 폭) 안의 끊을 자리(문자 인덱스, 항상 0 보다 크고 s.length() 보다 작음).
+     * 1) 강한 자리(쉼표 뒤·+/- 앞·&amp;&amp;/|| 앞·).체인 앞) 2) 약한 자리('(' 뒤) — 둘 다 room/3 넘는 위치일 때,
+     * 3) 한도를 조금(1/3) 넘는 첫 강한·약한 자리, 4) 리터럴 밖 공백, 5) 앞쪽이라도 리터럴 밖 자리, 6) 리터럴 안 공백,
+     * 7) 강제 자르기(한도 위치, 서로게이트 쌍은 나누지 않음).
      */
     private static int breakAt(String s, int room) {
         int strong = -1;
         int weak = -1;
         int after = -1;
+        int spaceOut = -1;
+        int spaceIn = -1;
+        int hard = -1;
+        int w = 0;
+        int afterLimit = room + room / 3;
         char quote = 0;
         for (int i = 0; i < s.length() - 1; i++) {
             char ch = s.charAt(i);
+            w += Character.isLowSurrogate(ch) ? 0 : charWidth(s.codePointAt(i));
+            if (w > room && hard < 0) {
+                hard = Character.isLowSurrogate(ch) ? i - 1 : i; // 이 글자부터 다음 줄
+            }
+            int widthBefore = w - (Character.isLowSurrogate(ch) ? 0 : charWidth(s.codePointAt(i)));
             if (quote != 0) {
+                if (ch == ' ' && widthBefore + 1 <= room && i > 0) {
+                    spaceIn = i + 1;
+                }
                 if (ch == '\\') {
                     i++;
+                    w += i < s.length() ? charWidth(s.charAt(i)) : 0;
                 } else if (ch == quote) {
                     quote = 0;
                 }
@@ -645,6 +699,9 @@ public final class MermaidGraph {
             }
             if (i == 0) {
                 continue;
+            }
+            if (ch == ' ' && w <= room) {
+                spaceOut = i + 1;
             }
             int cut = -1;
             boolean isStrong = true;
@@ -663,26 +720,37 @@ public final class MermaidGraph {
             if (cut <= 0) {
                 continue;
             }
-            if (cut <= room) {
+            int cutWidth = cut == i ? widthBefore : w;
+            if (cutWidth <= room) {
                 if (isStrong) {
                     strong = cut;
                 } else {
                     weak = cut;
                 }
-            } else if (after < 0) {
+            } else if (after < 0 && cutWidth <= afterLimit) {
                 after = cut;
             }
         }
-        if (strong > room / 3) {
-            return strong;
-        }
-        if (weak > room / 3) {
-            return weak;
+        int third = room / 3;
+        for (int c : new int[]{strong, weak}) {
+            if (c > 0 && width(s.substring(0, c)) > third) {
+                return c;
+            }
         }
         if (after > 0) {
             return after;
         }
-        return Math.max(strong, weak);
+        if (spaceOut > 0 && width(s.substring(0, spaceOut)) > third) {
+            return spaceOut;
+        }
+        int outside = Math.max(Math.max(strong, weak), spaceOut);   // 앞쪽이라도 리터럴 밖 자리가 리터럴 안보다 낫다
+        if (outside > 0) {
+            return outside;
+        }
+        if (spaceIn > 0) {
+            return spaceIn;
+        }
+        return hard > 0 ? hard : Math.max(1, s.length() - 1);
     }
 
     /** 라벨 특수문자를 Mermaid 엔티티로 치환 (# 먼저) */
