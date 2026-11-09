@@ -178,6 +178,17 @@ public final class AnalysisYamlWriter {
                     .put2("deferred", s.deferred)
                     .put2("requestParameterIds", r.parametersAt(s.id).stream().map(p -> p.id).toList())
                     .put2("bindingIds", r.bindings.stream().filter(b -> s.id.equals(b.callSiteId)).map(b -> b.id).toList())
+                    .opt("sql", s.sql == null ? null : Y.map()
+                            .put2("statementId", s.sql.statementId)
+                            .put2("basis", s.sql.basis)
+                            .put2("xmlStatus", s.sql.xmlStatus)
+                            .opt("xmlFile", s.sql.xmlFile)
+                            .opt("namespace", s.sql.namespace)
+                            .opt("id", s.sql.id)
+                            .opt("statementType", s.sql.statementType)
+                            .put2("tables", s.sql.tables)
+                            .opt("candidates", s.sql.candidates)
+                            .opt("notes", s.sql.notes))
                     .put2("location", Y.loc(s.location)));
         }
         return out;

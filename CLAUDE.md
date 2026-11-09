@@ -52,6 +52,7 @@ analyzer/
   serializer/            AnalysisYamlWriter + AnalysisSchema(내장 스키마 검증), MappingReportWriter(mapping.md),
                          AnalysisReportWriter(analysis.md), CallTreeWriter, FlowView(흐름 보기 규칙), Labels(표시 문자열), OutputWriter
   mermaid/               MermaidGraph(중간표현+검증), FlowchartGenerator(일반 / 단계 보기 모드), MermaidCli
+  sql/                   SqlCalls(호출 → statement id), MapperXmlIndex(매퍼 XML 색인·테이블 추출, 읽기 전용)
   phase/                 PhaseAnalyzer(진입 메서드 요소 → 바인딩·체크·로직·후처리), PhaseModel, PhaseText(표시), PhaseReportWriter(phase-summary.md)
 ```
 
@@ -74,6 +75,13 @@ analyzer/
 - `var`, 체인 호출 결과, 선언 없는 이름 → `UNRESOLVED`.
 - 솔버가 반환한 AST 는 다른 파서 인스턴스 소유이므로 `ProjectSources.mapToOwnAst` 로 같은 위치의 자체 AST 로 매핑해서 쓴다.
 - `include-external-library-calls: false` 면 origin=LIBRARY 호출은 모델에 넣지 않고 개수만 센다. 단 Request Parameter 추출은 필터 이전에 수행. 예외: **문장의 가장 바깥 호출**(`extraInfo.add(X)`, `int n = Integer.parseInt(…)`, 삼항 `a.isEmpty() ? … : a.get(0)` — 다른 호출의 인자·수신 객체가 아니고 조건식·return·for 헤더·식 람다 본문 밖, `FlowAnalyzer.outermostInStatement`)은 빼면 그 문장이 흐름도에서 사라지므로 남긴다(사용자 요구: 하나도 빼먹지 말 것, `if` 본문이 JDK 호출뿐이라 비었던 문제).
+
+**매퍼 SQL (`sql/`, `CallSiteInfo.sql` = `SqlRef`, 설정 `analysis.include-sql-ids`·`mapper-xml-roots`)**
+- 사용자 요구: 쿼리는 손으로 옮기므로 **어떤 XML 의 어떤 id 인지 + 그 문장이 쓰는 테이블 이름만**. 쿼리 본문은 모델·출력 어디에도 넣지 않는다.
+- 판정은 두 가지뿐(추측 금지, `SqlCalls`): ① SqlSession/SqlMapClient 호출 — 수신 타입 단순명이 `SESSION_TYPES` 이거나 수신 객체가 `getSqlSession()` 등이고 메서드가 selectList·insert·queryForList … 이면 첫 인자(리터럴·상수·그 `+` 연결 → basis LITERAL/CONSTANT, 식이면 UNRESOLVED·SKIPPED)가 statement id. 라이브러리 호출이어도 모델에 남긴다(`FlowAnalyzer` 필터 예외, 요청 읽기·로그와 같은 이유). ② 역할 Mapper 인 source 인터페이스의 본문 없는 메서드 — `FQN.메서드명`(MAPPER_INTERFACE), `@Select` 류 어노테이션이면 ANNOTATION(XML 없음).
+- XML(`MapperXmlIndex`, 읽기 전용, 외부 DTD 미로드): `mapper-xml-roots` 비우면 각 source root + 옆 `src/main/resources`. `<mapper namespace>`·`<sqlMap>` 의 select/insert/update/delete/statement/procedure. 매칭: `ns.id` 정확히 → 없으면 단순명 namespace(`OrderMapper.insertOrder`)·namespace 없는 id(iBatis) → 0개 NOT_FOUND, 2개 이상 AMBIGUOUS(후보). 파일 경로는 프로젝트 폴더(…/src 의 부모) 기준.
+- 테이블(`MapperXmlIndex.tables`): `<include refid>` 펼침(`<sql>` 조각), 동적 태그(<if> 등)·selectKey 내용 포함. 토큰 단위로 FROM 목록(쉼표)·JOIN·INTO(뒤 괄호 = 컬럼 목록)·UPDATE(FOR/KEY/THEN 뒤 제외)·MERGE USING 뒤 이름. 괄호는 SELECT/WITH 로 시작할 때만 SQL 문맥(EXTRACT(x FROM y)·TRIM 제외), 문자열·주석 제외, DUAL·WITH 이름 제외, `${…}` 는 그대로 + notes. 정규식 수준 추출이라는 한계를 분석서에 적는다.
+- 출력: analysis.md `## 2. Mapper SQL` (2.1 매퍼(namespace)별 XML·테이블, 2.2 호출별 id·종류·XML·테이블·비고), 흐름도 호출 노드·return 노드(합쳐진 호출) 아래 `SQL id · 파일 <종류>` / `테이블 …` 줄(`Labels.sqlLines`), call-tree `⛁ …`, analysis.yaml calls[].sql. fixture `EdgeAction.sqlCalls`·`UserMapper`·`OrderDAO`·`src/main/resources/{mapper,sqlmap}/*.xml`, `MapperSqlTest`.
 
 **요청 읽기 규칙 (`request-parameter-rules`, `RequestParameterExtractor`)**
 - 바인딩으로 볼 프로젝트 고유 메서드는 YAML 로 관리. `class` 생략 = 메서드명만으로 매칭(상속 메서드 등). `name-arg-index` = 이름 인자 위치, `parameter` = 고정 이름, 둘 다 없으면 메서드명에서(`getSystemId` → `systemId`, nameResolution `CONFIG`). 둘 다 쓰면 설정 오류. `wraps: n` = 기본값 래퍼(인자 n 이 요청 읽기면 그 P* 를 래퍼 호출로 옮기고 default·받는 변수·extraction `A → B` 갱신, 안쪽 읽기는 인자 안 호출이 되어 흐름도에서 빠짐; commons StringUtils.defaultIfEmpty/Blank/defaultString 내장). fixture `com.example.action.vas.GetVasAppList`, `RequestRuleTest`.
@@ -133,7 +141,7 @@ analyzer/
 - `analysis.yaml` 단일 문서, camelCase, `schemaVersion: "1.0"`. 쓰고 다시 읽어 `AnalysisSchema` 로 필수 키·타입·열거값·ID 형식·참조 검증 → 실패 시 예외. 숫자처럼 보이는 문자열은 따옴표 강제(`ALWAYS_QUOTE_NUMBERS_AS_STRINGS`).
 - 바인딩은 표시용 `source`/`transform`/`condition` 문자열과 구조화된 `sources`/`transforms`/`conditions` 를 함께 기록.
 - `comparison.md`(SPEC-v2 §7)는 신규 프로젝트 데이터가 없으면 만들지 않는다(미구현).
-- analysis.md 순서(사용자 요구): 1 Request Parameter → 2 분석 개요(관련 클래스 표: 역할별 `#### 역할 (n)` 표 — `CLASS_GROUPS` 순서 Action·Controller·Service·Biz·DAO / Mapper / Repository(한 묶음)·VO·Validator·Util·Other (Service·Biz 는 따로 — 사용자 요구), 역할 안에서 인터페이스 먼저·그다음 클래스, `종류`·`사용 위치` 열 — 호출자 → 메서드 · CALL ID :줄, 구현 후보 연결, VO 객체) → 3 실행 흐름도(다이어그램은 너무 커서 넣지 않고 flowchart-skeleton·flowchart-sections·flowchart.mmd·phase-flowchart.mmd 를 직접 열라는 안내만) → 4 바인딩 → 5 예외 → 6 비교 → 7 부록.
+- analysis.md 순서(사용자 요구): 1 Request Parameter → 2 Mapper SQL(XML id·테이블) → 3 분석 개요(관련 클래스 표: 역할별 `#### 역할 (n)` 표 — `CLASS_GROUPS` 순서 Action·Controller·Service·Biz·DAO / Mapper / Repository(한 묶음)·VO·Validator·Util·Other (Service·Biz 는 따로 — 사용자 요구), 역할 안에서 인터페이스 먼저·그다음 클래스, `종류`·`사용 위치` 열 — 호출자 → 메서드 · CALL ID :줄, 구현 후보 연결, VO 객체) → 4 실행 흐름도(다이어그램은 너무 커서 넣지 않고 flowchart-skeleton·flowchart-sections·flowchart.mmd·phase-flowchart.mmd 를 직접 열라는 안내만) → 5 바인딩 → 6 예외 → 7 비교 → 8 부록.
 - analysis.md 에는 메서드 호출 관계·메서드 목록·Unresolved 목록·호출 트리를 넣지 않는다(사용자 요구: 분석서에 중요하지 않음). 각각 `analysis.yaml`(methods, calls 의 resolution)·`call-tree.txt` 에 있고, 분석서 머리말에 위치를 안내.
 - 호출 트리 제외 `output.call-tree-exclude`(사용자 관리, 기본 없음): `flowchart-exclude` 와 같은 패턴·매처(`serializer.Excludes`, 흐름도와 공용). 맞는 호출은 줄도 그 아래 전개도 없고, 트리 끝에 `※ call-tree-exclude (… N개)` 를 남긴다. 표시에서만 빼며 모델·YAML·mapping.md 는 그대로.
 

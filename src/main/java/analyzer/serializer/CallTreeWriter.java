@@ -160,6 +160,10 @@ public final class CallTreeWriter {
             default -> {
             }
         }
+        List<String> sql = Labels.sqlLines(s.sql);
+        if (!sql.isEmpty()) {
+            l.append("  ⛁ ").append(String.join(" · ", sql));
+        }
         return l.toString();
     }
 }

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.UserMapper">
+    <sql id="userCols">u.USER_ID, u.USER_NM</sql>
+    <sql id="userFrom">FROM TB_USER u</sql>
+    <select id="selectUser" resultType="string">
+        WITH recent AS (SELECT USER_ID FROM TB_LOGIN_HIST WHERE LOGIN_DT > SYSDATE - 1)
+        SELECT <include refid="userCols"/>, EXTRACT(YEAR FROM u.REG_DT) AS REG_YEAR,
+               (SELECT COUNT(*) FROM TB_ORDER o WHERE o.USER_ID = u.USER_ID) AS ORDER_CNT
+        <include refid="userFrom"/>
+        LEFT OUTER JOIN TB_ROLE r ON r.ROLE_ID = u.ROLE_ID
+        , recent rc
+        <where>
+            <if test="userId != null">AND u.USER_ID = #{userId}</if>
+            AND u.STATUS != 'FROM X'  -- 주석 FROM TB_COMMENT
+        </where>
+    </select>
+    <update id="updateUserName">
+        UPDATE TB_USER SET USER_NM = (SELECT NM FROM ${nameTable} WHERE ID = #{userId}) WHERE USER_ID = #{userId}
+    </update>
+</mapper>

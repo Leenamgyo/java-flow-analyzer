@@ -65,6 +65,8 @@ public final class CallSiteInfo {
     /** 그 문장의 위치 — 같은 문장의 호출끼리 묶는 키 */
     public SourceLocation statementLocation;
     public SourceLocation location;
+    /** 매퍼 XML statement (SqlSession 호출·매퍼 인터페이스 호출일 때만) */
+    public SqlRef sql;
 
     /** 전개 판정 대상: 구현 연결이 있으면 구현 메서드, 아니면 선언 대상 */
     public String expansionTargetId() {

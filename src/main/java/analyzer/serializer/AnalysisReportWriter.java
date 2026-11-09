@@ -36,8 +36,9 @@ public final class AnalysisReportWriter {
                 .append("(methods · calls 의 resolution) 에 있습니다.\n\n");
 
         requestParameters(r, sb);
+        sql(r, sb);
         overview(r, target, entry, sb);
-        sb.append("## 3. 실행 흐름도\n\n");
+        sb.append("## 4. 실행 흐름도\n\n");
         // 흐름도는 커서 분석서에 넣지 않는다 (사용자 요구) — 파일을 직접 열어 확인
         sb.append("흐름도는 크기가 커서 분석서에 넣지 않습니다. 아래 파일을 직접 열어 확인하세요.\n\n")
                 .append("- `flowchart.mmd` — 전체 흐름도 한 파일\n")
@@ -54,7 +55,7 @@ public final class AnalysisReportWriter {
     // ------------------------------------------------------------------ 1
 
     private void overview(AnalysisResult r, ClassInfo target, MethodInfo entry, StringBuilder sb) {
-        sb.append("## 2. 분석 개요\n\n| 항목 | 값 |\n|---|---|\n");
+        sb.append("## 3. 분석 개요\n\n| 항목 | 값 |\n|---|---|\n");
         sb.append("| 대상 클래스 | `").append(target.qualifiedName).append("` (").append(target.id).append(", ")
                 .append(target.role.label()).append(") |\n");
         sb.append("| 대상 메서드 | `").append(entry.signature).append("` (").append(entry.id).append(", ")
@@ -99,6 +100,68 @@ public final class AnalysisReportWriter {
             List.of(ClassRole.ACTION), List.of(ClassRole.CONTROLLER), List.of(ClassRole.SERVICE), List.of(ClassRole.BIZ),
             List.of(ClassRole.DAO, ClassRole.MAPPER, ClassRole.REPOSITORY), List.of(ClassRole.VO),
             List.of(ClassRole.VALIDATOR), List.of(ClassRole.UTIL), List.of(ClassRole.OTHER));
+
+    /**
+     * 2. Mapper SQL — 매퍼 호출이 쓰는 XML statement id 와 테이블 (쿼리 본문은 넣지 않음 — 사용자가 손으로 옮김).
+     * 2.1 매퍼(namespace)별 테이블, 2.2 호출별 id.
+     */
+    private static void sql(AnalysisResult r, StringBuilder sb) {
+        sb.append("## 2. Mapper SQL (XML id · 테이블)\n\n");
+        List<CallSiteInfo> calls = r.callSites.stream().filter(s -> s.sql != null).toList();
+        if (calls.isEmpty()) {
+            sb.append("매퍼 SQL 호출이 없습니다 (SqlSession.select…(\"id\") 호출·Mapper 인터페이스 메서드 호출 없음).\n\n");
+            return;
+        }
+        sb.append("> 쿼리 본문은 넣지 않습니다 — XML 파일과 statement id 로 찾아 옮기세요. 테이블은 SQL 의 FROM·JOIN·INTO·UPDATE·MERGE USING ")
+                .append("뒤 이름을 뽑은 것이며 동적 SQL(<if> 등)은 모든 분기를 포함합니다. `${…}` 는 실행 시 정해지는 이름입니다.\n\n");
+        // 2.1 매퍼별 (namespace, 없으면 statement id 앞부분)
+        java.util.Map<String, java.util.LinkedHashSet<String>> tables = new java.util.LinkedHashMap<>();
+        java.util.Map<String, java.util.LinkedHashSet<String>> files = new java.util.LinkedHashMap<>();
+        for (CallSiteInfo s : calls) {
+            String key = "UNRESOLVED".equals(s.sql.basis) ? "(id 미확정 — 2.2 참고)"
+                    : s.sql.namespace != null ? s.sql.namespace
+                    : s.sql.statementId.contains(".") ? s.sql.statementId.substring(0, s.sql.statementId.lastIndexOf('.')) : "(namespace 없음)";
+            tables.computeIfAbsent(key, k -> new java.util.LinkedHashSet<>()).addAll(s.sql.tables);
+            if (s.sql.xmlFile != null) {
+                files.computeIfAbsent(key, k -> new java.util.LinkedHashSet<>()).add(s.sql.xmlFile);
+            }
+        }
+        sb.append("### 2.1 매퍼별 테이블\n\n| 매퍼 (namespace) | XML 파일 | 테이블 |\n|---|---|---|\n");
+        tables.forEach((k, t) -> sb.append("| `").append(k).append("` | ")
+                .append(files.containsKey(k) ? String.join("<br>", files.get(k).stream().map(f -> "`" + f + "`").toList()) : "-")
+                .append(" | ").append(t.isEmpty() ? "-" : String.join(", ", t)).append(" |\n"));
+        sb.append("\n### 2.2 호출별 SQL id\n\n| 호출 | 위치 | statement id | 종류 | XML 파일 | 테이블 | 비고 |\n|---|---|---|---|---|---|---|\n");
+        for (CallSiteInfo s : calls) {
+            var q = s.sql;
+            String status = switch (q.xmlStatus == null ? "" : q.xmlStatus) {
+                case "NOT_FOUND" -> "XML 미발견";
+                case "AMBIGUOUS" -> "XML 후보 여러 개: " + String.join(", ", q.candidates);
+                case "ANNOTATION" -> "어노테이션 SQL";
+                case "SKIPPED" -> "id 미확정(식)";
+                default -> "";
+            };
+            List<String> notes = new ArrayList<>();
+            if (!status.isEmpty()) {
+                notes.add(status);
+            }
+            notes.addAll(q.notes);
+            if ("CONSTANT".equals(q.basis)) {
+                notes.add("상수에서 계산");
+            }
+            sb.append("| ").append(s.id).append(" `").append(cell(s.expression)).append("` | ")
+                    .append(r.method(s.callerMethodId).name).append(" ").append(s.location.shortText())
+                    .append(" | `").append(q.namespace != null && q.id != null ? q.namespace + "." + q.id : cell(q.statementId)).append("` | ")
+                    .append(q.statementType == null ? "-" : q.statementType).append(" | ")
+                    .append(q.xmlFile == null ? "-" : "`" + q.xmlFile + "`").append(" | ")
+                    .append(q.tables.isEmpty() ? "-" : String.join(", ", q.tables)).append(" | ")
+                    .append(notes.isEmpty() ? "" : cell(String.join("; ", notes))).append(" |\n");
+        }
+        sb.append('\n');
+    }
+
+    private static String cell(String s) {
+        return s == null ? "" : s.replace("|", "\\|").replace("\n", " ");
+    }
 
     private static String kindLabel(ClassInfo c) {
         return switch (c.kind == null ? "" : c.kind) {
@@ -235,7 +298,7 @@ public final class AnalysisReportWriter {
     // ------------------------------------------------------------------ 4
 
     private void bindings(AnalysisResult r, StringBuilder sb) {
-        sb.append("## 4. VO / DTO / Command 바인딩 명세\n\n");
+        sb.append("## 5. VO / DTO / Command 바인딩 명세\n\n");
         if (r.bindings.isEmpty()) {
             sb.append(Boolean.FALSE.equals(r.settings.get("include-bindings")) ? "`include-bindings: false` — 수집하지 않음.\n\n"
                     : "바인딩 없음.\n\n");
@@ -254,7 +317,7 @@ public final class AnalysisReportWriter {
     private static final Pattern NEW_TYPE = Pattern.compile("^new\\s+([\\w.]+)");
 
     private void exceptions(AnalysisResult r, StringBuilder sb) {
-        sb.append("## 5. 예외 처리\n\n");
+        sb.append("## 6. 예외 처리\n\n");
         sb.append("| Exception | 발생 가능 위치 | 처리 방식 | 반환 결과 |\n|---|---|---|---|\n");
         boolean any = false;
         for (ControlBlock c : r.blocks) {
@@ -330,11 +393,11 @@ public final class AnalysisReportWriter {
     // ------------------------------------------------------------------ 6/7
 
     private void appendix(AnalysisResult r, String mermaidStatus, StringBuilder sb) {
-        sb.append("## 6. 마이그레이션 비교 결과\n\n신규 프로젝트 분석 데이터가 없어 생성하지 않았습니다(`comparison.md` 미생성).\n\n");
-        sb.append("## 7. 부록\n\n### 7.1 분석 설정\n\n| 설정 | 값 |\n|---|---|\n");
+        sb.append("## 7. 마이그레이션 비교 결과\n\n신규 프로젝트 분석 데이터가 없어 생성하지 않았습니다(`comparison.md` 미생성).\n\n");
+        sb.append("## 8. 부록\n\n### 8.1 분석 설정\n\n| 설정 | 값 |\n|---|---|\n");
         r.settings.forEach((k, v) -> sb.append("| ").append(k).append(" | ").append(v).append(" |\n"));
 
-        sb.append("\n### 7.2 분석 범위와 정적 분석 한계\n\n");
+        sb.append("\n### 8.2 분석 범위와 정적 분석 한계\n\n");
         sb.append("- 진입 메서드에서 도달한 메서드만 포함하며, 타입 해석을 위해 참조만 한 파일은 포함하지 않습니다.\n");
         sb.append("- 다른 클래스 메서드는 max-depth 까지 호출 관계·인자만 기록하고, `expand-roles` 역할만 본문을 분석합니다.\n");
         if (Boolean.TRUE.equals(r.settings.get("link-single-implementation"))) {
@@ -348,7 +411,7 @@ public final class AnalysisReportWriter {
         sb.append("- 호출 순서는 Java 평가 순서(수신 객체 → 인자 → 호출), for 는 init → 조건 → 본문 → update. switch fall-through, 생성자 본문, 익명/로컬 클래스는 흐름에서 제외됩니다.\n");
         sb.append("- Mermaid 렌더링 검증: ").append(mermaidStatus).append('\n');
         if (!r.notes.isEmpty()) {
-            sb.append("\n### 7.3 분석 중 생략된 항목\n\n");
+            sb.append("\n### 8.3 분석 중 생략된 항목\n\n");
             r.notes.forEach(x -> sb.append("- ").append(x).append('\n'));
         }
     }

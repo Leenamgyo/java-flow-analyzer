@@ -52,6 +52,10 @@ public class AnalyzerConfig {
 
     public static class Analysis {
         public int maxDepth = 1;
+        /** 매퍼 호출이 쓰는 XML statement(파일·id·테이블) 찾기 — 쿼리 본문은 넣지 않음 */
+        public boolean includeSqlIds = true;
+        /** 매퍼 XML 폴더 (비우면 source root 와 그 옆 src/main/resources) */
+        public List<String> mapperXmlRoots = new ArrayList<>();
         public boolean expandSameClassMethods = true;
         public boolean includeConditions = true;
         public boolean includeExceptions = true;

@@ -1154,6 +1154,7 @@ public final class FlowchartGenerator {
                     if (req != null) {
                         out.add("  " + req);
                     }
+                    Labels.sqlLines(c.sql).forEach(l -> out.add("  " + l));
                 }
                 g.node(sg, id, out, Shape.RECT, k.substring(5));
                 for (CallSiteInfo c : cs) {
@@ -1773,6 +1774,9 @@ public final class FlowchartGenerator {
         if (b.type == BlockType.THROW && b.exceptionResolution == ResolutionStatus.UNRESOLVED) {
             lines.add("(catch 경로 unresolved)");
         }
+        // return sqlSession.selectList("ns.id", p) / return mapper.selectX(vo) — 합쳐진 호출의 매퍼 SQL
+        r.callSites.stream().filter(c -> b.id.equals(c.controlBlockId) && c.sql != null)
+                .forEach(c -> lines.addAll(Labels.sqlLines(c.sql)));
         g.node(sg, b.id, lines, b.type == BlockType.RETURN ? Shape.STADIUM : Shape.ASYM,
                 b.type == BlockType.RETURN ? "ret" : "throw");
         if (phases == null) {
@@ -1845,6 +1849,7 @@ public final class FlowchartGenerator {
         if (impl != null) {
             lines.add("impl 후보: " + impl);
         }
+        lines.addAll(Labels.sqlLines(s.sql));
         String req = Labels.requestTag(r, s);
         if (req != null) {
             lines.add(req);

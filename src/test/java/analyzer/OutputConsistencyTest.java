@@ -309,15 +309,19 @@ class OutputConsistencyTest {
         String mapping = new MappingReportWriter().render(r);
         r.bindings.forEach(b -> assertTrue(mapping.contains("| " + b.id + " |"), b.id));
         String md = new analyzer.serializer.AnalysisReportWriter().render(r, "SKIPPED");
-        for (String section : List.of("## 1. Request Parameter 분석", "## 2. 분석 개요", "## 3. 실행 흐름도",
-                "## 4. VO / DTO / Command 바인딩 명세", "## 5. 예외 처리")) {
-            assertTrue(md.contains(section), section);
+        List<String> order = List.of("## 1. Request Parameter 분석", "## 2. Mapper SQL", "## 3. 분석 개요", "## 4. 실행 흐름도",
+                "## 5. VO / DTO / Command 바인딩 명세", "## 6. 예외 처리", "## 8. 부록");
+        for (int k = 0; k < order.size(); k++) {
+            assertTrue(md.contains(order.get(k)), order.get(k));
+            if (k > 0) {
+                assertTrue(md.indexOf(order.get(k - 1)) < md.indexOf(order.get(k)), order.get(k));
+            }
         }
         // 메서드 목록·Unresolved 목록·호출 트리는 분석서에서 뺌 (call-tree.txt·analysis.yaml 에 있음)
-        for (String gone : List.of("```mermaid", "## 5. 메서드 호출 관계", "### 8.2 메서드 목록", "### 8.3 Unresolved 목록", "### 8.4 호출 트리", "```text")) {
+        for (String gone : List.of("```mermaid", "## 5. 메서드 호출 관계", "메서드 목록\n", "### 8.3 Unresolved 목록", "### 8.4 호출 트리", "```text")) {
             assertFalse(md.contains(gone), gone);
         }
-        assertTrue(md.contains("### 7.2 분석 범위와 정적 분석 한계"), md);
+        assertTrue(md.contains("### 8.2 분석 범위와 정적 분석 한계"), md);
         // 관련 클래스는 역할별 (Action 이 VO 앞), 역할 안에서 인터페이스 먼저
         assertTrue(md.indexOf("#### Action (") < md.indexOf("#### VO ("), md);
         String scp = new analyzer.serializer.AnalysisReportWriter().render(Fixtures.analyze("ScpAppListAction", "execute"), "SKIPPED");

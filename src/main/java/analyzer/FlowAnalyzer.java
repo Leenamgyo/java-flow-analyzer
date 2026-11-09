@@ -83,6 +83,8 @@ public final class FlowAnalyzer {
     private final Map<String, MethodDeclaration> declarations = new HashMap<>();
     /** 호출 표현식(노드 동일성) → 그 호출에서 읽은 Request Parameter. JavaParser Node.equals 는 구조 비교라 IdentityHashMap 사용 */
     private final Map<MethodCallExpr, List<analyzer.model.RequestParameterInfo>> paramsByCall = new java.util.IdentityHashMap<>();
+    /** SqlSession 류 호출의 statement id (recorded 에서 호출 위치에 붙임) */
+    private final Map<MethodCallExpr, analyzer.model.SqlRef> sqlByCall = new java.util.IdentityHashMap<>();
     /** callSiteId → 호출 표현식 (값 추적용) */
     private final Map<String, MethodCallExpr> callExprs = new HashMap<>();
 
@@ -123,6 +125,9 @@ public final class FlowAnalyzer {
             analyzeBody(queue.poll());
         }
         finish();
+        if (cfg.analysis.includeSqlIds) {
+            sqlIds();
+        }
         if (cfg.analysis.includeBindings) {
             new analyzer.binding.BindingCollector(result, declarations, paramsByCall, callExprs, types, params,
                     new analyzer.binding.BindingCollector.Types() {
@@ -158,6 +163,48 @@ public final class FlowAnalyzer {
         return result;
     }
 
+    /**
+     * 매퍼 XML statement: 매퍼 인터페이스 호출도 SqlRef 로, 그다음 원본 프로젝트의 XML(읽기 전용)에서
+     * 파일·id·종류·테이블을 찾는다. 쿼리 본문은 모델에 넣지 않는다 (사용자: id 만 알면 쿼리는 손으로 옮김).
+     */
+    private void sqlIds() {
+        for (CallSiteInfo s : result.callSites) {
+            if (s.sql == null) {
+                s.sql = analyzer.sql.SqlCalls.mapperRef(result, s);
+            }
+        }
+        if (result.callSites.stream().noneMatch(s -> s.sql != null)) {
+            return;
+        }
+        List<java.nio.file.Path> roots = analyzer.sql.SqlCalls.xmlRoots(cfg.analysis.mapperXmlRoots, sources.sourceRoots());
+        analyzer.sql.MapperXmlIndex idx = analyzer.sql.MapperXmlIndex.scan(roots);
+        idx.errors().forEach(e -> result.notes.add("매퍼 XML: " + e));
+        java.nio.file.Path base = projectBase();
+        for (CallSiteInfo s : result.callSites) {
+            if (s.sql != null) {
+                analyzer.sql.SqlCalls.match(s.sql, idx, f -> {
+                    java.nio.file.Path b = base;
+                    java.nio.file.Path abs = f.toAbsolutePath().normalize();
+                    while (b != null && !abs.startsWith(b)) {
+                        b = b.getParent();
+                    }
+                    return b == null ? abs.toString() : b.relativize(abs).toString();
+                });
+            }
+        }
+    }
+
+    /** 경로 표시 기준: source 기준 폴더가 …/src/… 아래면 src 의 부모(프로젝트 폴더) */
+    private java.nio.file.Path projectBase() {
+        java.nio.file.Path base = sources.sourceBase().toAbsolutePath().normalize();
+        for (java.nio.file.Path p = base; p != null; p = p.getParent()) {
+            if (p.getFileName() != null && p.getFileName().toString().equals("src") && p.getParent() != null) {
+                return p.getParent();
+            }
+        }
+        return base;
+    }
+
     private void recordSettings() {
         var a = cfg.analysis;
         Map<String, Object> s = new LinkedHashMap<>();
@@ -172,6 +219,8 @@ public final class FlowAnalyzer {
         s.put("include-bindings", a.includeBindings);
         s.put("include-inheritance", a.includeInheritance);
         s.put("classpath-jars", a.classpathJars);
+        s.put("include-sql-ids", a.includeSqlIds);
+        s.put("mapper-xml-roots", a.mapperXmlRoots);
         result.settings = s;
     }
 
@@ -212,8 +261,13 @@ public final class FlowAnalyzer {
                         call.getScope().map(Object::toString).orElse(null));
                 // 문장의 가장 바깥 호출(extraInfo.add(x) 처럼 문장이 곧 JDK 호출)은 빼면 그 코드가 흐름도에서 사라지므로 남긴다.
                 // 다른 호출의 인자·수신 객체 안 호출은 바깥 호출 코드에 보이므로 제외 대상
+                // SqlSession.selectList("ns.id") 류는 매퍼 XML statement 의 근거이므로 남긴다
+                boolean sql = cfg.analysis.includeSqlIds && analyzer.sql.SqlCalls.isSessionCall(call, t.receiverType());
+                if (sql) {
+                    sqlByCall.put(call, analyzer.sql.SqlCalls.sessionRef(call, e -> params.stringValue(e, callerType, call)));
+                }
                 if (!cfg.analysis.includeExternalLibraryCalls && t.origin() == Origin.LIBRARY && !readsRequest && !logging
-                        && !outermostInStatement(call)) {
+                        && !sql && !outermostInStatement(call)) {
                     result.excludedExternalCalls++;
                     return null;
                 }
@@ -223,6 +277,7 @@ public final class FlowAnalyzer {
             @Override
             public void recorded(CallSiteInfo site, MethodCallExpr call) {
                 paramsByCall.getOrDefault(call, List.of()).forEach(p -> p.callSiteId = site.id);
+                site.sql = sqlByCall.remove(call);
                 callExprs.put(site.id, call);
                 site.depth = w.depth() + 1;
                 if (site.targetMethodId == null) {

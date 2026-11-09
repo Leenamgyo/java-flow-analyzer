@@ -5,6 +5,8 @@ import javax.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.example.model.NoticeVO;
+import com.example.dao.OrderDAO;
+import com.example.mapper.UserMapper;
 import com.example.model.SearchVO;
 import com.example.support.Cache;
 import com.example.support.LogService;
@@ -184,6 +186,22 @@ public class EdgeAction {
         String first = extraInfo.isEmpty() ? null : extraInfo.get(0);
         touch();
         return extraInfo;
+    }
+
+    // ---- 매퍼 SQL: 매퍼 인터페이스 호출·SqlSession 호출 → XML 파일·id·테이블 (쿼리 본문은 안 씀)
+    private UserMapper userMapper;
+    private OrderDAO orderDAO;
+
+    public String sqlCalls(String userId) {
+        String name = userMapper.selectUser(userId);
+        userMapper.updateUserName(userId);
+        int n = userMapper.countUsers();
+        orderDAO.selectOrders(userId);
+        orderDAO.insertOrder(name);
+        orderDAO.deleteOrder(userId);
+        orderDAO.dynamic(userId);
+        orderDAO.missing();
+        return name + n;
     }
 
     // ---- return 식 자체가 세부 메서드 호출: 호출 노드를 따로 만들지 않고 return 노드에서 ==> (중복 노드·간선 없음)

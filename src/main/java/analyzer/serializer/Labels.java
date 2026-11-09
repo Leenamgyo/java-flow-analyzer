@@ -66,6 +66,31 @@ public final class Labels {
         };
     }
 
+    /**
+     * 매퍼 SQL 표시 (흐름도 호출 노드 아래 줄): "SQL com.x.UserMapper.selectUser · UserMapper.xml",
+     * "테이블 TB_USER, TB_ROLE". 쿼리 본문은 없음.
+     */
+    public static List<String> sqlLines(analyzer.model.SqlRef q) {
+        if (q == null) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        String id = q.namespace != null && q.id != null ? q.namespace + "." + q.id : q.statementId;
+        String where = switch (q.xmlStatus == null ? "" : q.xmlStatus) {
+            case "FOUND" -> " · " + java.nio.file.Path.of(q.xmlFile).getFileName() + " <" + q.statementType + ">";
+            case "NOT_FOUND" -> " · XML 미발견";
+            case "AMBIGUOUS" -> " · XML 후보 " + q.candidates.size() + "개";
+            case "ANNOTATION" -> " · 어노테이션 SQL (XML 없음)";
+            case "SKIPPED" -> " · id 미확정";
+            default -> "";
+        };
+        out.add("SQL " + id + where);
+        if ("FOUND".equals(q.xmlStatus)) {
+            out.add("테이블 " + (q.tables.isEmpty() ? "(찾지 못함)" : String.join(", ", q.tables)));
+        }
+        return out;
+    }
+
     /** Request Parameter 1건 표시: status / [식](이름이 식이라 미확정) / (전체) / (body) */
     public static String parameterName(RequestParameterInfo p) {
         if ("UNKNOWN".equals(p.nameResolution)) {
