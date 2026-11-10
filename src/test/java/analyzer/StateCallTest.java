@@ -42,4 +42,18 @@ class StateCallTest {
                 .map(MermaidGraph::plain).anyMatch(l -> l.contains("normalizeId"))), lines.toString());
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
     }
+
+    /** 요청 읽기가 세부 호출 인자 안에 있으면(String k = middle(request.getParameter("k"))) 문장은 한 번 — 세부 호출은 호출식만 */
+    @ParameterizedTest
+    @ValueSource(strings = {"default", "external", "deep", "flat"})
+    void readInsideDetailCallIsNotDrawnTwice(String variant) {
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "inlineRepeats", FlowchartSweepTest.VARIANTS.get(variant));
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        List<String> lines = new ArrayList<>();
+        for (String id : g.nodeIds()) {
+            g.nodeById(id).lines().forEach(l -> lines.add(MermaidGraph.plain(l)));
+        }
+        assertEquals(1, lines.stream().filter(l -> l.contains("String k = middle(request.k)")).count(), lines.toString());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+    }
 }

@@ -1383,6 +1383,13 @@ public final class FlowchartGenerator {
         String var = assignedVar(s);
         StringBuilder code = new StringBuilder("#" + s.order + " ");
         boolean whole = showsStatement(s);
+        if (exprOnly.contains(s.id)) { // 같은 문장을 앞 노드가 이미 보였다 — 호출식만
+            code.append(Labels.codeValue(r, s.callerMethodId, s.location, s.expression));
+            if (s.deferred) {
+                code.append("  ⟨deferred⟩");
+            }
+            return code.toString();
+        }
         if (whole) {
             code.append(stripSemi(Labels.codeValue(r, s.callerMethodId, s.statementLocation, s.statement).trim()));
         } else {
@@ -1510,7 +1517,7 @@ public final class FlowchartGenerator {
                     continue;
                 }
                 String shownAt = s.statementLocation == null ? null : stmtShown.get(s.statementLocation);
-                if (shownAt != null && !FlowView.hidden(r, s) && !requestRead(s) && showsStatement(s)) {
+                if (shownAt != null && !FlowView.hidden(r, s) && !requestRead(s)) {
                     boolean apart = leadsToDetail(s) || s.targetMethodId != null && logicRoles.contains(r.classOf(r.method(s.targetMethodId)).role);
                     if (apart) {
                         exprOnly.add(s.id); // 세부·로직 호출은 따로 그리되 호출식만 (문장은 앞 노드에)
@@ -1524,6 +1531,10 @@ public final class FlowchartGenerator {
                     cur = p.set(s, cur);
                 } else if (requestRead(s)) {
                     cur = p.read(s, cur);
+                    // 변수에 바로 받지 않는 읽기 줄은 문장 전체를 보인다 (Labels.requestLine) — 같은 문장의 뒤 호출이 또 그리지 않게
+                    if (assignedVar(s) == null && s.statement != null && s.statementLocation != null) {
+                        stmtShown.putIfAbsent(s.statementLocation, p.nodeId);
+                    }
                 } else if (LogCalls.isLog(s) && !leadsToDetail(s)) {
                     cur = p.log(s, cur);
                 } else if (fetch(s) && s.resultUsage != null && s.resultUsage.startsWith("assigned:")) {
