@@ -91,6 +91,16 @@
     return unitList.length ? (unitList[0].group || unitList[0].id) : null;
   })();
 
+  // ---- 작은 세부 메서드 생략 (노드 수 ≤ 기준, 설정 output.flowchart-html-hide-nodes, 뷰어에서 바꿈) ----
+  const unitSize = new Map();
+  for (const [id] of nodes) unitSize.set(unitOf.get(id), (unitSize.get(unitOf.get(id)) || 0) + 1);
+  const forceShown = new Set(); // 생략 대상이지만 검색·이동으로 다시 보인 메서드
+  let hideNodes = FLOW.hideNodes || 0;
+  try { const v = localStorage.getItem('flowchart.hideNodes'); if (v !== null && v !== '') hideNodes = Math.max(0, parseInt(v, 10) || 0); } catch (e) { /* 저장소 없음 */ }
+  function hiddenUnit(uid) {
+    return hideNodes > 0 && uid !== entryUnit && groups.has(uid) && (unitSize.get(uid) || 0) <= hideNodes && !forceShown.has(uid);
+  }
+
   const ELK_OPTIONS = {
     'elk.algorithm': 'layered',
     'elk.direction': FLOW.direction === 'LR' ? 'RIGHT' : FLOW.direction === 'RL' ? 'LEFT' : FLOW.direction === 'BT' ? 'UP' : 'DOWN',
@@ -140,7 +150,7 @@
 
   /** 보이는 간선: 같은 단위 안(ELK 가 배치) / 단위 사이(연결선, 직접 그림) */
   function visibleEdges() {
-    const inner = new Map(), cross = [], seen = new Set();
+    const inner = new Map(), raw = [], seen = new Set();
     FLOW.edges.forEach((e, i) => {
       const a = visible(e.from), b = visible(e.to);
       if (a === b) return;
@@ -148,7 +158,7 @@
       if (seen.has(key)) return;
       seen.add(key);
       const ua = unitOf.get(a), ub = unitOf.get(b);
-      if (ua !== ub) { cross.push({ a: a, b: b, ua: ua, ub: ub, data: e }); return; }
+      if (ua !== ub) { raw.push({ a: a, b: b, ua: ua, ub: ub, data: e }); return; }
       if (e.style === 'call') return; // 같은 메서드 안 재귀 호출 — 상자 색으로
       // 뒤에서 앞으로 가는 간선(반복 ↻ 등)은 배치할 때만 뒤집어 흐름이 위→아래로 유지되게
       const rev = order.get(b) < order.get(a);
@@ -156,6 +166,22 @@
       inner.get(ua).push({ id: 'e' + i, sources: [rev ? b : a], targets: [rev ? a : b],
         labels: e.label.length ? [labelBox(e.label)] : [], data: e, rev: rev });
     });
+    // 생략한 메서드로 가는 선은 빼고, 생략한 메서드에서 나가는 선은 그 메서드를 부른 노드에서 나가게 (호출 줄기 유지)
+    const cross = [], seenCross = new Set();
+    for (const c of raw) {
+      if (hiddenUnit(c.ub)) continue;
+      let a = c.a, ua = c.ua, guard = 0;
+      while (hiddenUnit(ua) && guard++ < 50) {
+        const up = raw.find(x => x.ub === ua);
+        if (!up) { a = null; break; }
+        a = up.a; ua = up.ua;
+      }
+      if (!a || ua === c.ub) continue;
+      const key = a + '>' + c.b + '>' + c.data.style;
+      if (seenCross.has(key)) continue;
+      seenCross.add(key);
+      cross.push({ a: a, b: c.b, ua: ua, ub: c.ub, data: c.data });
+    }
     return { inner, cross };
   }
 
@@ -176,7 +202,7 @@
   function layoutAll() {
     const sizes = new Map();
     const { inner, cross } = visibleEdges();
-    const jobs = unitList.map(u => {
+    const jobs = unitList.filter(u => !hiddenUnit(u.group || u.id)).map(u => {
       const uid = u.group || u.id;
       return elk.layout({ id: 'root', layoutOptions: ELK_OPTIONS, children: elkItems([u], sizes), edges: inner.get(uid) || [] })
         .then(res => ({ uid: uid, node: res.children[0], edges: res.edges || [] }));
@@ -522,8 +548,10 @@
     if (collapsed.has(gid)) collapsed.delete(gid); else collapsed.add(gid);
     relayout(gid);
   }
-  function reveal(id) { // 접힌 조상 펴기
+  function reveal(id) { // 접힌 조상 펴기 · 생략한 메서드 다시 보이기
     let p = parent.get(id), changed = false;
+    const u = unitOf.get(id);
+    if (hiddenUnit(u)) { forceShown.add(u); changed = true; }
     while (p) { if (collapsed.delete(p)) changed = true; p = parent.get(p); }
     return changed;
   }
@@ -613,8 +641,24 @@
   function info() {
     const s = q.value.trim();
     document.getElementById('info').textContent = (s ? '검색 ' + (hits.length ? (hitAt + 1) + '/' + hits.length : '0건') + ' · ' : '')
-      + '노드 ' + nodes.size + ' · 상자 ' + groups.size + (collapsed.size ? ' · 접힘 ' + collapsed.size : '');
+      + '노드 ' + nodes.size + ' · 상자 ' + groups.size + (collapsed.size ? ' · 접힘 ' + collapsed.size : '')
+      + (hiddenCount() ? ' · 생략 ' + hiddenCount() : '');
   }
+
+  function hiddenCount() { return unitList.filter(u => hiddenUnit(u.group || u.id)).length; }
+  const hideBox = document.getElementById('hideOn'), hideNum = document.getElementById('hideNum');
+  let lastHide = hideNodes > 0 ? hideNodes : (FLOW.hideNodes > 0 ? FLOW.hideNodes : 10);
+  hideBox.checked = hideNodes > 0;
+  hideNum.value = lastHide;
+  function setHide() {
+    lastHide = Math.max(1, parseInt(hideNum.value, 10) || 1);
+    hideNodes = hideBox.checked ? lastHide : 0;
+    try { localStorage.setItem('flowchart.hideNodes', String(hideNodes)); } catch (e) { /* 저장소 없음 */ }
+    forceShown.clear();
+    relayout(entryUnit);
+  }
+  hideBox.addEventListener('change', setHide);
+  hideNum.addEventListener('change', () => { if (hideBox.checked) setHide(); });
 
   window.addEventListener('keydown', ev => {
     if (ev.target === q) return;

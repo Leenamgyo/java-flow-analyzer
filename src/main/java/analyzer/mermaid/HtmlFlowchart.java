@@ -44,7 +44,14 @@ public final class HtmlFlowchart {
      * @param direction TD | LR …
      */
     public static String render(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title) {
+        return render(r, g, classDefs, direction, title, 0);
+    }
+
+    /** hideNodes: 노드 수가 이 개수 이하인 세부 메서드 상자를 뷰어에서 생략 (0 = 생략 없음, output.flowchart-html-hide-nodes) */
+    public static String render(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title,
+                                int hideNodes) {
         Map<String, Object> data = data(r, g, classDefs, direction, title);
+        data.put("hideNodes", Math.max(0, hideNodes));
         String json;
         try {
             json = new ObjectMapper().writeValueAsString(data);

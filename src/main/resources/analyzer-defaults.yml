@@ -66,6 +66,9 @@ output:
   #   노란 세부 호출 상자 더블클릭 → 그 메서드로 이동. 배치 엔진(ELK)을 파일에 내장해 설치·인터넷 없이 열린다(파일 약 1.7MB~)
   mermaid: true
   flowchart-html: true
+  # flowchart.html: 노드 수가 이 개수 이하인 세부 메서드 상자는 생략 (부른 줄은 그대로, 진입 메서드 제외, 0 = 생략 없음)
+  #   뷰어 상단 '작은 세부 생략' 으로 즉석에서 끄고 켜고 개수 변경 (브라우저에 기억). 노란 상자 더블클릭·검색 이동 시 그 메서드는 다시 보임
+  flowchart-html-hide-nodes: 10
   direction: TD
   # Mermaid 레이아웃: dagre = Mermaid 기본 / elk = 직각 간선 (뷰어가 ELK 를 지원할 때)
   layout: dagre

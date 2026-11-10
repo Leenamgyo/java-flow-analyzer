@@ -116,6 +116,8 @@ public class AnalyzerConfig {
          * Mermaid 출력(mermaid: true — .mmd·구간·SVG)과 따로 켜고 끈다. 둘 다 같은 그래프에서 만든다.
          */
         public boolean flowchartHtml = true;
+        /** flowchart.html: 노드 수가 이 개수 이하인 세부 메서드 상자는 그리지 않음 (진입 메서드 제외, 0 = 생략 없음, 뷰어에서 바꿀 수 있음) */
+        public int flowchartHtmlHideNodes = 10;
         /** 흐름도 .mmd 를 flowchart-svg/ 에 SVG 로도 출력 (Mermaid CLI mmdc 필요, 없으면 경고 후 생략) */
         public boolean flowchartSvg = true;
         /** mmdc 실행 파일 경로 (비우면 PATH 의 mmdc) */

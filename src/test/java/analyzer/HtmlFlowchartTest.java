@@ -62,6 +62,7 @@ class HtmlFlowchartTest {
         new OutputWriter().write(r, cfg, dir);
         String html = Files.readString(dir.resolve("flowchart.html"));
         assertTrue(html.contains("ELK"), "배치 엔진 내장 (오프라인)");
+        assertEquals(10, ((Number) data(html).get("hideNodes")).intValue(), "작은 세부 메서드 생략 기준 (기본 10)");
         assertFalse(html.contains("cdn.") || html.contains("https://unpkg"), "외부 스크립트 없음");
         Map<String, Object> d = data(html);
         // 데이터 안에 '<' 가 그대로 없어야 <script> 가 깨지지 않는다
