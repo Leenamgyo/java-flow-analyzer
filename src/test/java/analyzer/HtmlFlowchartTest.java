@@ -97,6 +97,13 @@ class HtmlFlowchartTest {
             }
         }
         assertTrue(req);
+        // Service 호출에 넘기는 VO 와 set 코드 (값 출처를 거슬러 올라가지 않고 set 코드 그대로) — 반환값으로 받은 VO 는 만든 함수 안에서
+        List<Map<String, Object>> vo = nodes.stream().filter(n -> n.containsKey("voIn"))
+                .flatMap(n -> ((List<Map<String, Object>>) n.get("voIn")).stream()).toList();
+        assertEquals(1, vo.size(), vo.toString());
+        assertEquals("AppListCommand cmd", vo.get(0).get("title"));
+        assertTrue(((String) vo.get(0).get("via")).startsWith("createCommand("));
+        assertEquals(List.of("mcc = parseParameter(mcc)", "startNum = startNum"), vo.get(0).get("lines"));
         // 단계 보기도
         assertTrue(Files.exists(dir.resolve("phase-flowchart.html")));
     }

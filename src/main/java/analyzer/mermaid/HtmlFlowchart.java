@@ -6,6 +6,10 @@ import analyzer.mermaid.MermaidGraph.Node;
 import analyzer.mermaid.MermaidGraph.Subgraph;
 import analyzer.model.AnalysisResult;
 import analyzer.model.Binding;
+import analyzer.model.ClassRole;
+import analyzer.model.ObjectInfo;
+import analyzer.model.VariableInfo;
+import analyzer.serializer.Labels;
 import analyzer.model.CallSiteInfo;
 import analyzer.model.ControlBlock;
 import analyzer.model.MethodInfo;
@@ -50,7 +54,13 @@ public final class HtmlFlowchart {
     /** hideNodes: 노드 수가 이 개수 이하인 세부 메서드 상자를 뷰어에서 생략 (0 = 생략 없음, output.flowchart-html-hide-nodes) */
     public static String render(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title,
                                 int hideNodes) {
-        Map<String, Object> data = data(r, g, classDefs, direction, title);
+        return render(r, g, classDefs, direction, title, hideNodes, FlowchartGenerator.DEFAULT_LOGIC_ROLES);
+    }
+
+    /** logicRoles: VO 입력을 붙일 호출 대상 역할 (Service·Biz·DAO·Mapper·Repository — phases.logic-roles) */
+    public static String render(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title,
+                                int hideNodes, Set<ClassRole> logicRoles) {
+        Map<String, Object> data = data(r, g, classDefs, direction, title, logicRoles);
         data.put("hideNodes", Math.max(0, hideNodes));
         String json;
         try {
@@ -68,6 +78,11 @@ public final class HtmlFlowchart {
     }
 
     static Map<String, Object> data(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title) {
+        return data(r, g, classDefs, direction, title, FlowchartGenerator.DEFAULT_LOGIC_ROLES);
+    }
+
+    static Map<String, Object> data(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title,
+                                    Set<ClassRole> logicRoles) {
         Set<String> detail = g.detailNodes();
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("title", title);
@@ -88,7 +103,7 @@ public final class HtmlFlowchart {
                 callTarget.putIfAbsent(e.from(), e.to());
             }
         }
-        d.put("root", items(r, g, g.root().items, detail, classDefs, callTarget));
+        d.put("root", items(r, g, g.root().items, detail, classDefs, callTarget, logicRoles));
         List<Map<String, Object>> edges = new ArrayList<>();
         for (Edge e : g.edges()) {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -109,14 +124,14 @@ public final class HtmlFlowchart {
     }
 
     private static List<Object> items(AnalysisResult r, MermaidGraph g, List<Object> items, Set<String> detail,
-                                      Map<String, String> classDefs, Map<String, String> callTarget) {
+                                      Map<String, String> classDefs, Map<String, String> callTarget, Set<ClassRole> logicRoles) {
         List<Object> out = new ArrayList<>();
         for (Object o : items) {
             Map<String, Object> m = new LinkedHashMap<>();
             if (o instanceof Subgraph s) {
                 m.put("group", s.id);
                 m.put("label", MermaidGraph.wrap(s.label == null ? "" : s.label, g.maxLineLength()));
-                m.put("children", items(r, g, s.items, detail, classDefs, callTarget));
+                m.put("children", items(r, g, s.items, detail, classDefs, callTarget, logicRoles));
             } else {
                 Node n = (Node) o;
                 m.put("id", n.id());
@@ -135,6 +150,15 @@ public final class HtmlFlowchart {
                 m.put("locs", locs);
                 if (callTarget.containsKey(n.id())) {
                     m.put("goto", callTarget.get(n.id()));
+                }
+                List<Map<String, Object>> vo = new ArrayList<>();
+                for (String id : ids) {
+                    if (r.element(id).orElse(null) instanceof CallSiteInfo c) {
+                        vo.addAll(voInputs(r, c, logicRoles));
+                    }
+                }
+                if (!vo.isEmpty()) {
+                    m.put("voIn", vo);
                 }
             }
             out.add(m);
@@ -191,6 +215,85 @@ public final class HtmlFlowchart {
                 out.add(segs);
                 cursor = start + content.length();
             }
+        }
+        return out;
+    }
+
+    /**
+     * Service·DAO(로직 역할) 호출에 넘기는 VO 와 그 VO 에 set 하는 코드 (사용자: 어떤 VO 가 들어가고 어떻게 set 하는지만 —
+     * 값의 출처를 거슬러 올라가지 않는다). 인자 이름 = 호출한 메서드의 VO 객체 변수면 그 객체의 바인딩(같은 메서드면 호출 전 것만),
+     * 그 변수가 다른 함수의 반환값이면(cmd = createCommand(…)) 그 함수 안에서 같은 클래스 VO 에 set 하는 코드 — 반환값을 거친
+     * 객체 정체성은 모델이 추적하지 않으므로 "… 안에서" 로 밝혀 둔다.
+     */
+    static List<Map<String, Object>> voInputs(AnalysisResult r, CallSiteInfo s, Set<ClassRole> logicRoles) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        String target = s.implementationMethodId != null ? s.implementationMethodId : s.targetMethodId;
+        MethodInfo tm = target == null ? null : r.method(target);
+        if (tm == null || !logicRoles.contains(r.classOf(tm).role)) {
+            return out;
+        }
+        for (String arg : s.arguments) {
+            String a = arg.trim();
+            if (!a.matches("[A-Za-z_$][\\w$]*")) {
+                continue;
+            }
+            ObjectInfo o = r.objects.stream().filter(x -> s.callerMethodId.equals(x.methodId) && a.equals(x.variable)).findFirst().orElse(null);
+            String via = null;
+            List<Binding> bs = new ArrayList<>();
+            if (o != null) {
+                for (String bid : o.bindingIds) {
+                    Binding b = r.binding(bid);
+                    boolean after = b.methodId.equals(s.callerMethodId) && b.location != null && s.location != null
+                            && b.location.beginLine() > s.location.beginLine();
+                    if (!after) {
+                        bs.add(b);
+                    }
+                }
+            } else {
+                // 반환값으로 받은 VO: 그 값을 만든 함수 안에서 같은 클래스 VO 에 set 하는 코드
+                VariableInfo v = r.variableNamed(s.callerMethodId, a);
+                if (v == null || v.type == null) {
+                    continue;
+                }
+                String type = v.type.replaceAll("<.*", "");
+                for (String cid : v.changeIds) {
+                    VariableChange vc = r.variableChange(cid);
+                    for (String csId : vc.callSiteIds) {
+                        CallSiteInfo made = r.callSite(csId);
+                        if (made == null || !made.expression.equals(vc.valueExpression) || made.expansionTargetId() == null) {
+                            continue;
+                        }
+                        for (ObjectInfo x : r.objects) {
+                            if (made.expansionTargetId().equals(x.methodId) && type.equals(x.className) && !x.bindingIds.isEmpty()) {
+                                o = x;
+                                via = Labels.truncate(made.expression, 80) + " 안에서";
+                                x.bindingIds.forEach(id -> bs.add(r.binding(id)));
+                                break;
+                            }
+                        }
+                        if (o != null) {
+                            break;
+                        }
+                    }
+                    if (o != null) {
+                        break;
+                    }
+                }
+            }
+            if (o == null || bs.isEmpty()) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("title", o.className + " " + a);
+            if (via != null) {
+                m.put("via", via);
+            }
+            List<String> lines = new ArrayList<>();
+            for (Binding b : bs) {
+                lines.add(Labels.bindingLine(r, b, false) + (b.conditional() ? "  (조건부)" : ""));
+            }
+            m.put("lines", lines);
+            out.add(m);
         }
         return out;
     }

@@ -101,7 +101,8 @@ public final class OutputWriter {
             FlowchartGenerator gen = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
                     .maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines).exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme);
             Path html = dir.resolve("flowchart.html");
-            Files.writeString(html, HtmlFlowchart.render(r, gen.checked(r), gen.classDefinitions(), cfg.output.direction, chartTitle + " — 흐름도", cfg.output.flowchartHtmlHideNodes));
+            Files.writeString(html, HtmlFlowchart.render(r, gen.checked(r), gen.classDefinitions(), cfg.output.direction, chartTitle + " — 흐름도", cfg.output.flowchartHtmlHideNodes,
+                    FlowchartGenerator.roles(cfg.phases.logicRoles)));
             written.add(html);
         } else {
             Files.deleteIfExists(dir.resolve("flowchart.html"));
@@ -114,7 +115,8 @@ public final class OutputWriter {
                 try {
                     FlowchartGenerator pgen = new FlowchartGenerator(pm).maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines)
                             .exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme);
-                    Files.writeString(phtml, HtmlFlowchart.render(r, pgen.checked(r), pgen.classDefinitions(), cfg.output.direction, chartTitle + " — 단계 보기", cfg.output.flowchartHtmlHideNodes));
+                    Files.writeString(phtml, HtmlFlowchart.render(r, pgen.checked(r), pgen.classDefinitions(), cfg.output.direction, chartTitle + " — 단계 보기", cfg.output.flowchartHtmlHideNodes,
+                            FlowchartGenerator.roles(cfg.phases.logicRoles)));
                     written.add(phtml);
                 } catch (IllegalStateException e) {
                     System.err.println("[WARN] phase-flowchart.html 생략 — " + e.getMessage());
