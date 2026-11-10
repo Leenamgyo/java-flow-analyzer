@@ -137,7 +137,9 @@ public final class HtmlFlowchart {
                 m.put("id", n.id());
                 m.put("shape", n.shape().name());
                 m.put("cls", MermaidGraph.effectiveClass(n, detail, classDefs));
-                m.put("lines", lines(n.lines(), g));
+                List<Integer> cont = new ArrayList<>();
+                m.put("lines", lines(n.lines(), g, cont));
+                m.put("cont", cont); // 긴 줄을 끊어 이어진 화면 줄 (표시 없이 — 뷰어가 VO 줄 강조에 씀)
                 List<String> ids = g.modelIdsOf(n.id());
                 m.put("ids", ids);
                 List<String> locs = new ArrayList<>();
@@ -168,11 +170,19 @@ public final class HtmlFlowchart {
 
     /** 노드 줄 → 화면 줄(max-line-length 로 끊은 조각)마다 [글자, 색 키] 조각들. 색 규칙은 Mermaid 렌더링과 같다 */
     static List<List<List<String>>> lines(List<String> lines, MermaidGraph g) {
+        return lines(lines, g, new ArrayList<>());
+    }
+
+    /** cont: 이어지는 화면 줄(끊은 줄의 두 번째 조각부터)의 번호 */
+    static List<List<List<String>>> lines(List<String> lines, MermaidGraph g, List<Integer> cont) {
         List<List<List<String>>> out = new ArrayList<>();
         for (String l : lines) {
             String tc = MermaidGraph.textClass(l);
             String plain = MermaidGraph.plain(l);
             List<String> pieces = MermaidGraph.wrap(plain, g.maxLineLength());
+            for (int k = 1; k < pieces.size(); k++) {
+                cont.add(out.size() + k);
+            }
             if (!"req".equals(tc)) {
                 for (String p : pieces) {
                     out.add(List.of(List.of(p, tc == null ? "" : tc)));
@@ -183,14 +193,9 @@ public final class HtmlFlowchart {
             List<int[]> ranges = MermaidGraph.requestRanges(plain);
             int cursor = 0;
             for (int k = 0; k < pieces.size(); k++) {
-                String piece = pieces.get(k);
-                String prefix = k > 0 && piece.startsWith("> ") ? "> " : "";
-                String content = piece.substring(prefix.length());
+                String content = pieces.get(k);
                 int start = plain.indexOf(content, cursor);
                 List<List<String>> segs = new ArrayList<>();
-                if (!prefix.isEmpty()) {
-                    segs.add(List.of(prefix, ""));
-                }
                 if (start < 0) {
                     segs.add(List.of(content, ""));
                     out.add(segs);

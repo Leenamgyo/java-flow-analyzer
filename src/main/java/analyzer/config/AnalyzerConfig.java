@@ -122,7 +122,7 @@ public class AnalyzerConfig {
         public boolean flowchartSvg = true;
         /** mmdc 실행 파일 경로 (비우면 PATH 의 mmdc) */
         public String mermaidCli = "";
-        /** 흐름도 노드 한 줄 최대 길이 — 넘으면 쉼표·연산자·체인 앞에서 끊고 다음 줄은 "> " 로 시작. 0 = 끊지 않음 */
+        /** 흐름도 노드 한 줄 최대 길이 — 넘으면 쉼표·연산자·체인 앞에서 끊어 다음 줄로 (이어짐 표시 없음). 0 = 끊지 않음 */
         public int maxLineLength = 100;
         /** 메서드별 보기 ① 구간 분할 flowchart-sections/ (기본 켜짐) */
         public boolean flowchartSections = true;

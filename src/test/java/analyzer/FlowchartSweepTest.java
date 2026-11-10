@@ -171,7 +171,7 @@ class FlowchartSweepTest {
 
     static String normalize(String mmd) {
         String s = mmd.replaceAll("<font color='[^']*'>", "").replace("</font>", "")
-                .replace("<br/>#gt; ", "").replace("<br/>", "\n") // 이어지는 줄 표시 "> " 는 이스케이프되어 있다
+                .replace("<br/>", "\n") // 끊은 줄은 공백 제거(strip)로 다시 이어진다
                 .replace("#quot;", "\"").replace("#lt;", "<").replace("#gt;", ">").replace("#124;", "|")
                 .replace("#96;", "`").replace("#35;", "#");
         return strip(s);

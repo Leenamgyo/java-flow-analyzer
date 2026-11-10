@@ -104,18 +104,19 @@
   }
   /**
    * 노드 안에서 VO 에 set 하는 줄 (노드 전체가 아니라 그 줄만 강조 — 사용자: 주변 줄까지 켜져 이상함).
-   * 노드 줄은 '#n '·'│ '·'▸ ' 머리가 붙고 긴 줄은 '> ' 로 이어지므로 머리를 떼고 set 코드와 비교한다.
+   * 노드 줄은 '#n '·'│ '·'▸ ' 머리가 붙고 긴 줄은 다음 화면 줄로 이어지므로(node.cont) 머리를 떼고 set 코드와 비교한다.
    */
   function voRows(node, wanted) {
     const want = wanted.map(w => w.replace(/  \(조건부\)$/, ''));
     const out = [];
+    const cont = new Set(node.cont || []);
     for (let i = 0; i < node.lines.length; i++) {
       const text = lineText(node.lines[i]);
-      if (text.startsWith('> ')) continue;
+      if (cont.has(i)) continue;
       const norm = text.replace(/^[│ ]*/, '').replace(/^▸ /, '').replace(/^#\d+(–\d+)? /, '');
       if (want.some(w => norm === w || norm.startsWith(w + ' ') || norm.length > 8 && w.startsWith(norm))) {
         out.push(i);
-        for (let k = i + 1; k < node.lines.length && lineText(node.lines[k]).startsWith('> '); k++) out.push(k); // 이어지는 줄
+        for (let k = i + 1; k < node.lines.length && cont.has(k); k++) out.push(k); // 이어지는 줄
       }
     }
     return out;

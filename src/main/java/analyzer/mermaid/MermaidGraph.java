@@ -514,15 +514,13 @@ public final class MermaidGraph {
         List<String> out = new ArrayList<>();
         int cursor = 0;
         for (int k = 0; k < pieces.size(); k++) {
-            String piece = pieces.get(k);
-            String prefix = k > 0 && piece.startsWith("> ") ? "> " : "";
-            String content = piece.substring(prefix.length());
+            String content = pieces.get(k);
             int start = line.indexOf(content, cursor);
             if (start < 0) {
-                out.add(requestSpans(piece, color));
+                out.add(requestSpans(content, color));
                 continue;
             }
-            out.add(esc(prefix) + colored(content, start, ranges, color));
+            out.add(colored(content, start, ranges, color));
             cursor = start + content.length();
         }
         return out;
@@ -841,7 +839,7 @@ public final class MermaidGraph {
         }
     }
 
-    /** 노드 한 줄 최대 길이 (넘으면 끊고 다음 줄 앞에 "> "). 0 이하면 끊지 않음 */
+    /** 노드 한 줄 최대 길이 (넘으면 끊어 다음 줄로, 이어짐 표시 없음). 0 이하면 끊지 않음 */
     private int maxLineLength = 100;
 
     public MermaidGraph maxLineLength(int n) {
@@ -851,7 +849,8 @@ public final class MermaidGraph {
 
     /**
      * 긴 코드 줄을 끊기 좋은 자리에서 나눈다: 쉼표 뒤 > + / - 앞 > '.' 앞(메서드 체인) > '(' 뒤.
-     * 이어지는 줄은 "> " 로 시작. 길이는 화면 폭 기준({@link #width} — 한글·한자 등 전각 문자 = 2).
+     * 이어지는 줄에 표시를 붙이지 않는다(예전 "> " — 사용자: 괜히 더 오류 나는 것 같음, 연산자 > 와도 헷갈림).
+     * 길이는 화면 폭 기준({@link #width} — 한글·한자 등 전각 문자 = 2).
      * 방어: 마땅한 자리가 없어도 한 줄이 한도를 크게 넘지 않게 — 공백(문자열 리터럴 밖 → 안) → 강제 자르기 순으로
      * 끊는다 (긴 문자열 리터럴·식별자 한 덩어리가 노드 폭을 넘어 라벨이 잘리거나 겹쳐 보이던 문제).
      */
@@ -863,12 +862,10 @@ public final class MermaidGraph {
         }
         int limit = Math.max(max, MIN_WRAP);
         String rest = line;
-        boolean first = true;
         while (true) {
-            String prefix = first ? "" : "> ";
-            int room = limit - prefix.length();
+            int room = limit;
             if (width(rest) <= room) {
-                out.add(prefix + rest);
+                out.add(rest);
                 break;
             }
             int cut = breakAt(rest, room);
@@ -876,17 +873,16 @@ public final class MermaidGraph {
             if (head.isEmpty()) {           // 공백만 앞에 있던 경우 — 진행 보장
                 head = rest.substring(0, cut);
             }
-            out.add(prefix + head);
+            out.add(head);
             rest = rest.substring(cut).stripLeading();
             if (rest.isEmpty()) {
                 break;
             }
-            first = false;
         }
         return out;
     }
 
-    /** 이 폭보다 좁게는 끊지 않는다 ("> " 와 몇 글자만 남는 줄 방지) */
+    /** 이 폭보다 좁게는 끊지 않는다 (몇 글자만 남는 줄 방지) */
     private static final int MIN_WRAP = 20;
 
     /** 화면 폭: 전각(한글·CJK·전각 기호·이모지) 2, 나머지 1 */

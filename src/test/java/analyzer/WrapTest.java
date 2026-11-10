@@ -8,7 +8,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** 긴 코드 줄 나누기: 쉼표 뒤 / 연산자 앞 / ).체인 앞 / ( 뒤, 이어지는 줄은 "> " */
+/** 긴 코드 줄 나누기: 쉼표 뒤 / 연산자 앞 / ).체인 앞 / ( 뒤, 이어지는 줄에 표시 없음 (예전 "> " 제거 — 사용자 요구) */
 class WrapTest {
 
     @Test
@@ -21,23 +21,23 @@ class WrapTest {
     void breaksAfterCommaWithContinuationMarker() {
         String line = "#30 String newOrderNo = orderService.registerOrder(order, items, delivery, payment)";
         List<String> out = MermaidGraph.wrap(line, 60);
-        assertEquals(List.of("#30 String newOrderNo = orderService.registerOrder(order,", "> items, delivery, payment)"), out);
-        assertEquals(line.replace(" ", ""), String.join("", out).replace("> ", "").replace(" ", ""));
+        assertEquals(List.of("#30 String newOrderNo = orderService.registerOrder(order,", "items, delivery, payment)"), out);
+        assertEquals(line.replace(" ", ""), String.join("", out).replace(" ", ""));
     }
 
     @Test
     void breaksBeforeMethodChainAndOperator() {
         List<String> chain = MermaidGraph.wrap("result = OrderResultDTO.builder().orderNo(newOrderNo).totalAmount(total).build()", 40);
-        assertTrue(chain.stream().skip(1).allMatch(l -> l.startsWith("> .")), chain.toString()); // '(' 뒤보다 ).체인 앞 우선
+        assertTrue(chain.stream().skip(1).allMatch(l -> l.startsWith(".")), chain.toString()); // '(' 뒤보다 ).체인 앞 우선
         List<String> op = MermaidGraph.wrap("long total = calculateTotal(items) - couponService.discount(memberId, code, x)", 45);
-        assertTrue(op.stream().skip(1).allMatch(l -> l.startsWith("> ")), op.toString());
+        assertTrue(op.stream().noneMatch(l -> l.startsWith("> ")), op.toString());
         assertTrue(op.stream().allMatch(l -> l.length() <= 60), op.toString());
     }
 
     @Test
     void doesNotBreakInsideStringLiteralWhenItFits() {
         List<String> out = MermaidGraph.wrap("foo.bar(x, \"a, b, c, d, e, f, g, h, i, j, k\")", 40);
-        assertEquals(List.of("foo.bar(x,", "> \"a, b, c, d, e, f, g, h, i, j, k\")"), out);
+        assertEquals(List.of("foo.bar(x,", "\"a, b, c, d, e, f, g, h, i, j, k\")"), out);
     }
 
     /** 방어: 끊기 좋은 자리가 없는 긴 덩어리(문자열 리터럴·식별자)도 한도를 크게 넘지 않는다 */
@@ -79,7 +79,7 @@ class WrapTest {
         for (String l : out) {
             assertTrue(MermaidGraph.width(l) <= max + max / 3, MermaidGraph.width(l) + " > " + max + ": " + l);
         }
-        String joined = String.join("", out.stream().map(l -> l.startsWith("> ") ? l.substring(2) : l).toList());
+        String joined = String.join("", out);
         assertEquals(line.replace(" ", ""), joined.replace(" ", ""));
     }
 }
