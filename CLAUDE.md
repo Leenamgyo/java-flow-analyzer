@@ -61,7 +61,8 @@ analyzer/
 
 **Depth / 전개**
 - 본문 분석 조건: `대상 Depth < max-depth` **또는** (`expand-same-class-methods` && 호출자와 같은 클래스) **또는** 대상 클래스 역할 ∈ `expand-roles`. 진입 메서드 D0 는 항상 분석.
-  - `expand-classes`(* 패턴, 클래스 단순명·FQN·바깥 클래스 포함 이름 `XxxAction.ParamMgr`, 내장 기본 `["*Action.ParamMgr", "CountryUtil"]` — 사용자 요구: Action 안 요청 셋업 클래스·로직 많은 Util 추적)도 역할 전개처럼 어느 Depth 든 본문 분석. fixture `vas/AppDetailAction`·`util/CountryUtil`, `RequestSetupTest`.
+  - **Action/Controller 안에 선언된 클래스**(중첩·내부, 이름 무관 — 사용자: `ParamMgr` 하드코딩 말고 Action 안 public class 를 탐지, `FlowAnalyzer.insideAction`, 최상위 클래스 역할로 판정, 로컬·익명 제외)는 어느 Depth 든 메서드 본문 분석 + **생성자 호출 `new X(request)` 를 호출 위치(CALL, resolutionBasis CONSTRUCTOR, 대상 MethodInfo = 생성자 `X(…)`, 키 `#<init>(…)`)로 기록하고 생성자 본문 분석**(`CallSink.resolveNew`, 인자 수 같은 생성자가 정확히 1개일 때만). 그 밖의 new(VO·라이브러리)는 호출로 만들지 않는다. 그래서 `declarations`·`Work` 는 `CallableDeclaration<?>`(본문은 `Code.body`), `callExprs` 는 `Expression`(생성자면 ObjectCreationExpr).
+  - `expand-classes`(* 패턴, 클래스 단순명·FQN·바깥 클래스 포함 이름, 내장 기본 `["CountryUtil"]` — 로직 많은 Util)도 역할 전개처럼 어느 Depth 든 본문 분석(생성자 포함). fixture `vas/AppDetailAction`(ParamMgr 생성자·Paging.setup)·`util/CountryUtil`, `RequestSetupTest`.
   - `expand-roles`(예: Service·Biz·DAO·Repository·Mapper): Action→Service→Mapper 같은 데이터 접근 흐름은 끝까지, Util 등은 max-depth 에서 depth-limit. 역할은 분류 결과 기준(`@Service` 가 붙은 `*BizImpl` 은 Service).
   - 구현 후보 연결 시 `target-method-id` 는 선언 대상 그대로, `expansion` 은 구현 메서드 기준(`CallSiteInfo.expansionTargetId()`). relations 는 선언 대상 기준 집계. Mermaid 는 `declared` / `impl 후보` 호출 엣지 2개.
 - BFS 이므로 메서드 Depth = 최단 경로 Depth. 동일 클래스 확장으로 max-depth 를 넘어도 **실제 Depth 를 그대로** 기록(D2, D3…).
@@ -103,7 +104,7 @@ analyzer/
   Default 는 출처가 요청 파라미터 하나일 때만 그 기본값.
 - 객체 정체성: 지역변수 = (메서드, 변수). 메서드 파라미터는 분석된 호출 위치가 **정확히 1개**이고 인자가 변수일 때만 호출자 객체로 잇는다. 반환값으로 넘어간 객체는 잇지 않는다.
 - 필드 커버리지: 선언(소스 인스턴스 필드) / 할당 / 조건부로만 할당 / 초기값만 / 미할당 / 확인 불가(copyProperties 대상). 상속 정보는 `analysis.include-inheritance`(기본 false — 사용자 요구로 분석 내용에서 뺌)일 때만: 상위 클래스 필드(선언 목록)·`ClassInfo.extendsTypes`·extends 에서 온 역할 근거 SUPERTYPE(`FlowAnalyzer.shownClassification` — extends 없이 분류해도 역할이 같을 때만 근거에서 뺌, 상위 클래스로만 역할이 정해지면 유지). 역할 판정 자체(`classify`)는 항상 extends 포함. 쓰지 않는 상위 VO 는 출력 어디에도 안 나온다(`EdgeAction.inheritedUnused`). 상속 필드에 값을 넣는 바인딩(`vo.setRegId(…)`)은 설정과 무관하게 기록·할당 필드에 포함(fixture `EdgeAction.inheritedFields`, `NoticeVO extends BaseVO`).
-- 요청 셋업 클래스(`BindingCollector.selfAssign`): VO 가 아닌 클래스의 인스턴스 메서드 안 자기 필드 대입(`appId = request.getParameter(…)`·`this.mcc = …`, 람다·익명 클래스 안 제외)은 그 클래스 대입 중 하나라도 출처가 요청 값이면 **그 클래스 자기 필드 대입 전부**를 바인딩(FIELD)으로 — 요청 값 아닌 대입도 넣어야 커버리지가 '미할당'으로 잘못 나오지 않음. VO 는 setter 본문과 겹쳐 제외. 객체 = 메서드의 분석된 호출 위치가 정확히 1개이고 수신 객체가 변수면 호출자 쪽 그 변수(`pm`), 아니면 (클래스, this). 생성자 본문(`new Header(request)`)은 분석하지 않는다(미구현).
+- 요청 셋업 클래스(`BindingCollector.selfAssign`): VO 가 아닌 클래스의 인스턴스 메서드 안 자기 필드 대입(`appId = request.getParameter(…)`·`this.mcc = …`, 람다·익명 클래스 안 제외)은 그 클래스 대입 중 하나라도 출처가 요청 값이면 **그 클래스 자기 필드 대입 전부**를 바인딩(FIELD)으로 — 요청 값 아닌 대입도 넣어야 커버리지가 '미할당'으로 잘못 나오지 않음. VO 는 setter 본문과 겹쳐 제외. 객체 = 메서드의 분석된 호출 위치가 정확히 1개이고 수신 객체가 변수면 호출자 쪽 그 변수(`paging`), 생성자면 new 를 받는 변수(`ParamMgr pm = new ParamMgr(request)` → `pm`), 아니면 (클래스, this).
 - Lombok 등 생성 코드는 builder/생성자 resolution 을 `PARTIALLY_RESOLVED`/`UNRESOLVED` 로 낮추고 사유 기록.
 - JavaParser `Node.equals` 는 구조 비교라 AST 키 맵은 `IdentityHashMap`.
 
@@ -178,6 +179,7 @@ analyzer/
 - return/throw 식 안의 호출은 리프 노드에만(별도 호출 노드 없음, `inLeaf` + alias). 세부 박스로 가는 호출(`return errorView(…)`)도 노드를 따로 만들지 않고 리프 노드에서 `==>`(예전엔 같은 코드의 호출 노드 + 간선이 하나 더 생겨 사용자 지적). try 본문에 그릴 노드가 없으면(외부 호출뿐) `ControlBlock.bodyText`(try 본문 원문)를 `BODY_T*` 노드 하나로 그려 흐름이 try 를 지나가게.
 - 인자 안의 호출(`CallSiteInfo.inArgument`, 깊이 무관 — `log.error("…" + util.x(req))` 의 util.x, `svc.f(vo.getX())` 의 getX)은 바깥 호출 노드의 코드에 보이므로 따로 그리지 않음(`argumentOnly`). 예외: 세부 박스로 이어지는 호출(==>), 요청 읽기, **바깥 호출이 모델에 없을 때**(라이브러리 제외·생성자 인자 — 그리지 않으면 코드가 사라짐). 모델·트리·YAML(`inArgument`)에는 그대로. 예외로 따로 그린 인자 안 호출의 노드 코드는 **호출식만**(`callCode` 의 `nested` — 바깥 호출이 모델에 있을 때); 문장 전체를 쓰면 `getParameter(req, "x", VasUtil.f(id))` 문장이 두 줄 연속 그려졌다(사용자 지적, `InitialValueAndReaderTest`).
 - 조건 노드(`decision`): 조건식·반복 헤더·switch selector 안의 호출은 조건 텍스트에 이미 보이므로 노드로 그리지 않고 조건 노드에 alias(중복 방지, 사용자 지적). 세부 박스로 가는 호출만 ==> 를 위해 노드로 남김. 조건식 안 요청 읽기는 `Labels.blockHeaderLines(r, b)` 가 `request.이름` 으로.
+- 노드 줄 수: `output.max-node-lines`(기본 30, 사용자: 100줄 넘는 노드는 안 보임) — 이어 쌓은 코드 블록(`Pending.flush`)은 넘으면 `<id>_p2`, `_p3` … 노드로 이어 나누고(FLOW 로 연결, alias 는 첫 노드), 골격의 합친 노드(`MermaidGraph.collapse(…, maxLines)`)도 한도마다 조각. 줄은 빠지지 않는다. 호출 노드 하나(코드 + SQL·impl 부가 줄)는 쪼개지 않음.
 - 긴 줄: `MermaidGraph.wrap(line, output.max-line-length=100 — 사용자: 150·120 은 보기 힘듦, 100 이하)` — 길이는 화면 폭(`MermaidGraph.width`, 한글·CJK 전각 = 2). 강한 자리(쉼표 뒤·` + `/` - ` 앞·`).` 체인 앞) 우선, 없으면 `(` 뒤, 한도를 1/3 이내로 넘는 첫 자리, 리터럴 밖 공백, 앞쪽 리터럴 밖 자리, 리터럴 안 공백, 최후엔 강제 자르기 — 긴 문자열 리터럴·식별자 덩어리도 한 줄이 한도를 크게 넘지 않음(긴 글자로 라벨이 깨지는 문제 방어, `WrapTest`). subgraph 제목·간선 라벨도 같은 한도로 `<br/>`. 이어지는 줄 `> `. 렌더 단계에서만(모델·YAML 은 원문).
 - 예전 메서드별 분할(`flowchart/`·`flowchart.md`·`output.split-flowchart`·`renderSplit`)은 없앴다(사용자: 구간 분할·골격이 있으니 안 남겨도 됨). 이전 실행이 남긴 `flowchart/*.mmd`·`flowchart.md` 는 `OutputWriter` 가 지운다. 전체 한 장 `flowchart.mmd` 는 유지(검증 기준·SVG `flowchart.svg`).
 - 이름이 식인 요청 읽기·Map 키(모델 `?(식)`)는 표시에서 코드 그대로 `request[식]` / `[식] = 값`(`Labels.parameterName`·`mapKey`, 사용자 지적: `?(resultVOMap.getAppId())` 가 깨져 보임). 모델·YAML 은 그대로.

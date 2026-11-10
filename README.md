@@ -101,6 +101,27 @@ output:
 - 결과는 이 저장소의 `output/<클래스명>/` 에 생깁니다(`--output` 으로 변경). 출력 위치가 분석 대상 소스 루트 안이면 실행을 거부합니다.
 - 분석 대상 프로젝트는 읽기만 합니다(수정·빌드·실행 없음).
 
+## Action 안에 선언된 클래스 (ParamMgr 등)
+
+Action/Controller 클래스 **안에 선언된 클래스**는 이름과 상관없이 자동으로 따라갑니다 (설정 불필요).
+
+```java
+public class AppDetailAction {
+    public String execute(HttpServletRequest request) {
+        ParamMgr pm = new ParamMgr(request);   // 생성자 본문까지 분석
+        paging.setup(request);                 // 메서드 본문도 분석
+    }
+    public static class ParamMgr {
+        public ParamMgr(HttpServletRequest request) {
+            appId = request.getParameter("appId");   // → 요청 파라미터 appId, ParamMgr.appId 에 저장
+        }
+    }
+}
+```
+
+- 생성자 `new X(…)` 는 호출 트리·흐름도에 호출로 나오고, 안에서 읽는 요청 값은 Request Param 에, 필드에 넣는 값은 바인딩(`ParamMgr.appId`)으로 기록됩니다.
+- Action 밖의 클래스(Util 등)를 끝까지 따라가려면 `analysis.expand-classes` 에 이름을 넣습니다 (기본 `["CountryUtil"]`, `*` 패턴 가능).
+
 ## Response(JSP) 등록하기
 
 Action 이 응답으로 쓰는 JSP(XML 출력)의 **파일명만 주면** 분석기가 원본 프로젝트에서 그 파일을 찾아 분석하고,
@@ -180,6 +201,7 @@ include 된 JSP 는 그 자리에 펼치고, `c:set` 처럼 출력이 없는 태
 | 파일 | 내용 |
 |---|---|
 | `analysis.yaml` | 분석 결과 원본(Source of Truth). 나머지 파일은 모두 이 모델에서 생성 |
+| `flowchart-*` 노드 | 연속된 코드는 노드 하나에 쌓되 `output.max-node-lines`(기본 30줄)를 넘으면 다음 노드로 이어서 나눔 |
 | `spec.md` | 간결한 명세: 1. Request Param 정의(파라미터·타입·필수·기본값·설명), 2. Response 정의(JSP 지정 시) |
 | `response.md` | JSP 지정 시: XML 구조, 값마다 출처 사슬·JSP 위치, Action → JSP attribute 표 |
 | `call-tree.txt` | 진입 메서드부터의 호출 트리 (분기·예외·요청 파라미터·바인딩 요약 포함) |

@@ -17,7 +17,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** 요청 셋업 중첩 클래스(XxxAction.ParamMgr.setup(request)) · 로직 많은 Util(CountryUtil) 추적 · spec.md Request Param 정의 */
+/** Action 안에 선언한 클래스(이름 무관: 생성자 new ParamMgr(request) · 메서드 Paging.setup(request)) · CountryUtil 추적 · spec.md */
 class RequestSetupTest {
 
     private static AnalysisResult analyze(List<String> expandClasses) {
@@ -25,21 +25,27 @@ class RequestSetupTest {
     }
 
     @Test
-    void withoutExpandClassesParamMgrIsDepthLimit() {
-        AnalysisResult r = analyze(List.of());
-        assertTrue(r.parameters.isEmpty());
-        assertTrue(r.callSites.stream().filter(s -> s.methodName.equals("setup"))
+    void classesInsideActionAreTrackedWithoutConfig() {
+        AnalysisResult r = analyze(List.of()); // 설정 없이: Action 안 클래스는 이름과 무관하게 분석
+        assertEquals(List.of("appId", "lang", "startNum"), r.parameters.stream().map(p -> p.name).toList());
+        var ctor = r.callSites.stream().filter(s -> "new ParamMgr(request)".equals(s.expression)).findFirst().orElseThrow();
+        assertEquals(Expansion.EXPANDED, ctor.expansion);
+        assertEquals("ParamMgr(HttpServletRequest)", r.method(ctor.targetMethodId).signature);
+        assertTrue(r.callSites.stream().filter(s -> s.methodName.equals("setup")).allMatch(s -> s.expansion == Expansion.EXPANDED));
+        // Util 은 설정(expand-classes) 없으면 depth-limit
+        assertTrue(r.callSites.stream().filter(s -> s.methodName.equals("resolveCountry"))
                 .allMatch(s -> s.expansion == Expansion.DEPTH_LIMIT));
+        // Action 밖 클래스의 new 는 호출로 만들지 않는다
+        assertTrue(r.callSites.stream().noneMatch(s -> s.expression.startsWith("new ArrayList")));
     }
 
     @Test
-    void paramMgrAndCountryUtilAreTracked() {
-        AnalysisResult r = analyze(List.of("*Action.ParamMgr", "CountryUtil"));
-        assertEquals(List.of("appId", "lang"), r.parameters.stream().map(p -> p.name).toList());
+    void constructorAndMethodSetupBindFields() {
+        AnalysisResult r = analyze(List.of("CountryUtil"));
         assertTrue(Fixtures.method(r, "CountryUtil", "resolveCountry(String, String)").analyzed);
         assertTrue(Fixtures.method(r, "CountryUtil", "byLang(String)").analyzed); // 같은 클래스 확장
 
-        // ParamMgr 자기 필드 대입 = 바인딩, 객체는 호출자 변수 pm
+        // 생성자의 자기 필드 대입 = 바인딩, 객체는 new 를 받는 변수 pm
         ObjectInfo pm = r.objects.stream().filter(o -> "ParamMgr".equals(o.className)).findFirst().orElseThrow();
         assertEquals("pm", pm.variable);
         List<Binding> bs = r.bindingsOf(pm);
@@ -48,11 +54,16 @@ class RequestSetupTest {
         assertTrue(bs.get(3).conditional());
         assertEquals(List.of("unused"), pm.unassignedFields); // 요청 값이 아닌 대입(page·mcc)도 할당으로
         assertTrue(r.requestSpec.get(0).bindingIds.contains(bs.get(0).id));
+
+        // 메서드 setup(request) 쪽: 객체는 수신 변수 paging
+        ObjectInfo paging = r.objects.stream().filter(o -> "Paging".equals(o.className)).findFirst().orElseThrow();
+        assertEquals("paging", paging.variable);
+        assertEquals(List.of("startNum", "count"), r.bindingsOf(paging).stream().map(b -> b.field).toList());
     }
 
     @Test
     void specIsOneConciseTable() {
-        AnalysisResult r = analyze(List.of("*Action.ParamMgr", "CountryUtil"));
+        AnalysisResult r = analyze(List.of("CountryUtil"));
         assertEquals("""
                 # 명세: AppDetailAction.execute()
 
@@ -62,6 +73,7 @@ class RequestSetupTest {
                 |---|---|---|---|---|
                 | appId | String | N | - |  |
                 | lang | String | N | - | .trim() |
+                | startNum | String | N | - | Integer.parseInt() |
                 """, new SpecWriter().render(r));
     }
 
@@ -70,6 +82,6 @@ class RequestSetupTest {
         Path f = tmp.resolve("c.yml");
         Files.writeString(f, "target:\n  source-root: x\n  class: X\n");
         AnalyzerConfig cfg = ConfigLoader.load(f);
-        assertEquals(List.of("*Action.ParamMgr", "CountryUtil"), cfg.analysis.expandClasses);
+        assertEquals(List.of("CountryUtil"), cfg.analysis.expandClasses);
     }
 }

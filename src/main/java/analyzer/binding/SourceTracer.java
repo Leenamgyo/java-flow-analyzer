@@ -6,7 +6,7 @@ import analyzer.model.RequestParameterInfo;
 import analyzer.model.ValueSource;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.FieldDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.ArrayAccessExpr;
@@ -52,12 +52,12 @@ final class SourceTracer {
     }
 
     private final AnalysisResult r;
-    private final Map<String, MethodDeclaration> declarations;
+    private final Map<String, CallableDeclaration<?>> declarations;
     private final Map<MethodCallExpr, List<RequestParameterInfo>> paramsByCall;
-    private final Map<String, MethodCallExpr> callExprs;
+    private final Map<String, Expression> callExprs;
 
-    SourceTracer(AnalysisResult r, Map<String, MethodDeclaration> declarations,
-                 Map<MethodCallExpr, List<RequestParameterInfo>> paramsByCall, Map<String, MethodCallExpr> callExprs) {
+    SourceTracer(AnalysisResult r, Map<String, CallableDeclaration<?>> declarations,
+                 Map<MethodCallExpr, List<RequestParameterInfo>> paramsByCall, Map<String, Expression> callExprs) {
         this.r = r;
         this.declarations = declarations;
         this.paramsByCall = paramsByCall;
@@ -93,7 +93,7 @@ final class SourceTracer {
         while (e instanceof EnclosedExpr en) {
             e = en.getInner();
         }
-        MethodDeclaration md = declarations.get(methodId);
+        CallableDeclaration<?> md = declarations.get(methodId);
         if (e instanceof CastExpr c) {
             acc.transforms.add("(" + c.getType().asString() + ")");
             trace(c.getExpression(), methodId, via, literalIsSource, inExpr, hops, acc);
@@ -193,7 +193,7 @@ final class SourceTracer {
         acc.add(new ValueSource("CALL", ConditionText.text(mc), null, via)); // getter·서비스 호출 등: 반환값 내부는 추적하지 않음
     }
 
-    private void name(NameExpr n, MethodDeclaration md, String methodId, List<String> via, boolean literalIsSource,
+    private void name(NameExpr n, CallableDeclaration<?> md, String methodId, List<String> via, boolean literalIsSource,
                       boolean inExpr, int hops, Acc acc) {
         String name = n.getNameAsString();
         List<RequestParameterInfo> byVar = r.parameters.stream()
@@ -226,7 +226,7 @@ final class SourceTracer {
                 if (!(methodId.equals(s.targetMethodId) || methodId.equals(s.implementationMethodId))) {
                     continue;
                 }
-                MethodCallExpr call = callExprs.get(s.id);
+                var call = callExprs.get(s.id) instanceof com.github.javaparser.ast.nodeTypes.NodeWithArguments<?> a ? a : null;
                 if (call == null || call.getArguments().size() <= i) {
                     continue;
                 }
@@ -283,7 +283,7 @@ final class SourceTracer {
     }
 
     /** 지역 변수/파라미터에 들어가는 값: 선언 초기화식 + 단순 대입(=) 우변. 복합 대입(+= 등)도 값으로 포함 */
-    private static List<Expression> assignments(MethodDeclaration md, String name) {
+    private static List<Expression> assignments(CallableDeclaration<?> md, String name) {
         List<Node> nodes = new ArrayList<>();
         md.findAll(VariableDeclarator.class, v -> v.getNameAsString().equals(name) && v.getInitializer().isPresent())
                 .forEach(nodes::add);

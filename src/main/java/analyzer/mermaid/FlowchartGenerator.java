@@ -364,6 +364,14 @@ public final class FlowchartGenerator {
     }
 
     private int maxLineLength = 100;
+    /** 노드 하나의 최대 줄 수 (output.max-node-lines) — 넘으면 다음 노드로 이어서 */
+    private int maxNodeLines = 30;
+
+    public FlowchartGenerator maxNodeLines(int n) {
+        this.maxNodeLines = n;
+        return this;
+    }
+
     /** 사용자 설정 output.flowchart-exclude */
     private List<String> excludes = List.of();
     private Rules rules;
@@ -506,7 +514,7 @@ public final class FlowchartGenerator {
                         folded.add(chain.get(0).id());
                         return skeletonLabel(chain, n > 1 ? sectionNo.get(chain.get(0).id()) : 0);
                     },
-                    "codeline", 2);
+                    "codeline", 2, maxNodeLines);
             // 클릭 이동 (SVG): 접은 노드 → 상세 구간, ▶ 다른 메서드 → 그 메서드 골격, ⌂ → 전체 구조
             for (String id : sk.nodeIds()) {
                 if (folded.contains(id)) {
@@ -1185,9 +1193,16 @@ public final class FlowchartGenerator {
                 callNode(sg, cs.get(0));
                 return link(cur, id);
             }
+            // 줄이 많으면 output.max-node-lines 마다 다음 노드(id_p2, id_p3 …)로 이어서 나눈다 (사용자: 100줄 넘는 노드는 안 보임)
+            List<List<String>> parts = new ArrayList<>();
             List<String> out = new ArrayList<>();
             String last = null;
             for (Line l : lines) {
+                if (maxNodeLines > 0 && out.size() >= maxNodeLines) {
+                    parts.add(out);
+                    out = new ArrayList<>();
+                    last = null; // 다음 노드에서 객체 줄을 다시
+                }
                 // VO 값 설정 줄: 어느 객체의 줄인지 (객체가 바뀔 때마다 한 줄)
                 if (l.objectId() != null && !l.objectId().equals(last)) {
                     var o = r.object(l.objectId());
@@ -1196,7 +1211,12 @@ public final class FlowchartGenerator {
                 last = l.objectId() != null ? l.objectId() : last;
                 out.add(l.textClass() == null ? l.text() : MermaidGraph.styled(l.textClass(), l.text()));
             }
-            g.node(sg, id, out, Shape.RECT, "codeline");
+            parts.add(out);
+            for (int k = 0; k < parts.size(); k++) {
+                String nid = k == 0 ? id : id + "_p" + (k + 1);
+                g.node(sg, nid, parts.get(k), Shape.RECT, "codeline");
+                cur = link(cur, nid);
+            }
             for (String x : members) {
                 if (!x.equals(id) && !g.has(x)) {
                     g.alias(x, id);
@@ -1204,7 +1224,7 @@ public final class FlowchartGenerator {
             }
             lines.clear();
             members.clear();
-            return link(cur, id);
+            return cur;
         }
     }
 

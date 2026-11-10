@@ -13,6 +13,12 @@ public final class Code {
     private Code() {
     }
 
+    /** 메서드·생성자 본문 (추상 메서드면 없음) */
+    public static java.util.Optional<com.github.javaparser.ast.stmt.BlockStmt> body(com.github.javaparser.ast.body.CallableDeclaration<?> c) {
+        return c instanceof com.github.javaparser.ast.body.MethodDeclaration m ? m.getBody()
+                : java.util.Optional.of(((com.github.javaparser.ast.body.ConstructorDeclaration) c).getBody());
+    }
+
     public static String text(Node n) {
         return n.toString(NO_COMMENTS).replaceAll("\\s+", " ").trim();
     }

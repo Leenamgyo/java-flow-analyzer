@@ -18,7 +18,7 @@ import analyzer.resolver.TypeRef;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AssignExpr;
@@ -66,8 +66,8 @@ public final class BindingCollector {
     }
 
     private final AnalysisResult r;
-    private final Map<String, MethodDeclaration> declarations;
-    private final Map<String, MethodCallExpr> callExprs;
+    private final Map<String, CallableDeclaration<?>> declarations;
+    private final Map<String, Expression> callExprs;
     private final Map<MethodCallExpr, CallSiteInfo> siteByExpr = new IdentityHashMap<>();
     private final TypeLookup lookup;
     private final RequestParameterExtractor params;
@@ -79,9 +79,9 @@ public final class BindingCollector {
     private final Map<Key, ObjectInfo> objects = new LinkedHashMap<>();
     private final Map<String, TypeDeclaration<?>> objectTypes = new HashMap<>();
 
-    public BindingCollector(AnalysisResult r, Map<String, MethodDeclaration> declarations,
+    public BindingCollector(AnalysisResult r, Map<String, CallableDeclaration<?>> declarations,
                             Map<MethodCallExpr, List<RequestParameterInfo>> paramsByCall,
-                            Map<String, MethodCallExpr> callExprs, TypeLookup lookup, RequestParameterExtractor params,
+                            Map<String, Expression> callExprs, TypeLookup lookup, RequestParameterExtractor params,
                             Types types) {
         this.r = r;
         this.declarations = declarations;
@@ -90,7 +90,11 @@ public final class BindingCollector {
         this.params = params;
         this.types = types;
         this.tracer = new SourceTracer(r, declarations, paramsByCall, callExprs);
-        callExprs.forEach((id, e) -> siteByExpr.put(e, r.callSite(id)));
+        callExprs.forEach((id, e) -> {
+            if (e instanceof MethodCallExpr mc) {
+                siteByExpr.put(mc, r.callSite(id));
+            }
+        });
     }
 
     public BindingCollector inheritedFields(boolean include) {
@@ -100,18 +104,18 @@ public final class BindingCollector {
 
     public void collect() {
         for (MethodInfo m : r.methods()) {
-            MethodDeclaration md = declarations.get(m.id);
-            if (!m.analyzed || md == null || md.getBody().isEmpty()) {
+            CallableDeclaration<?> md = declarations.get(m.id);
+            if (!m.analyzed || md == null || analyzer.parser.Code.body(md).isEmpty()) {
                 continue;
             }
-            md.getBody().get().walk(Node.TreeTraversal.PREORDER, n -> visit(n, m, md));
+            analyzer.parser.Code.body(md).get().walk(Node.TreeTraversal.PREORDER, n -> visit(n, m, md));
         }
         flushSelfAssigns();
         objects.values().forEach(this::coverage);
         objects.values().forEach(this::fieldTypes);
     }
 
-    private void visit(Node n, MethodInfo m, MethodDeclaration md) {
+    private void visit(Node n, MethodInfo m, CallableDeclaration<?> md) {
         if (n instanceof MethodCallExpr mc) {
             String name = mc.getNameAsString();
             if (SETTER.matcher(name).matches() && mc.getArguments().size() == 1 && mc.getScope().isPresent()
@@ -139,7 +143,7 @@ public final class BindingCollector {
      * {@code this.x = x} 는 setter 호출 쪽 바인딩과 겹치므로 제외). 객체 = 그 메서드를 부른 분석된 호출 위치가 정확히 1개이고
      * 수신 객체가 변수면 호출자 쪽 변수(pm), 아니면 this.
      */
-    private void selfAssign(AssignExpr a, MethodInfo m, MethodDeclaration md) {
+    private void selfAssign(AssignExpr a, MethodInfo m, CallableDeclaration<?> md) {
         TypeDeclaration<?> owner = md.findAncestor(TypeDeclaration.class).map(x -> (TypeDeclaration<?>) x).orElse(null);
         if (owner == null || types.isVo(owner) || md.isStatic()) {
             return;
@@ -191,7 +195,7 @@ public final class BindingCollector {
         });
     }
 
-    private static boolean localOrParam(String name, MethodDeclaration md) {
+    private static boolean localOrParam(String name, CallableDeclaration<?> md) {
         return md.getParameters().stream().anyMatch(p -> p.getNameAsString().equals(name))
                 || !md.findAll(VariableDeclarator.class, v -> v.getNameAsString().equals(name)).isEmpty();
     }
@@ -202,10 +206,17 @@ public final class BindingCollector {
                 .filter(s -> m.id.equals(s.targetMethodId) || m.id.equals(s.implementationMethodId)).toList();
         if (callers.size() == 1) {
             CallSiteInfo s = callers.get(0);
-            MethodCallExpr call = callExprs.get(s.id);
-            MethodDeclaration callerDecl = declarations.get(s.callerMethodId);
-            if (call != null && callerDecl != null && call.getScope().orElse(null) instanceof NameExpr recv) {
+            Expression call = callExprs.get(s.id);
+            CallableDeclaration<?> callerDecl = declarations.get(s.callerMethodId);
+            if (call instanceof MethodCallExpr mc && callerDecl != null && mc.getScope().orElse(null) instanceof NameExpr recv) {
                 return object(recv, owner, r.method(s.callerMethodId), callerDecl);
+            }
+            // 생성자 new ParamMgr(request): 만든 객체를 받는 변수 (ParamMgr pm = new … / pm = new …)
+            if (call instanceof ObjectCreationExpr oc && callerDecl != null) {
+                Optional<Expression> target = assignedTarget(oc);
+                if (target.isPresent() && target.get() instanceof NameExpr recv) {
+                    return object(recv, owner, r.method(s.callerMethodId), callerDecl);
+                }
             }
         }
         Key k = new Key("field:" + m.classId, "this");
@@ -219,7 +230,7 @@ public final class BindingCollector {
 
     // ------------------------------------------------------------------ assignment kinds
 
-    private void setter(MethodCallExpr mc, MethodInfo m, MethodDeclaration md) {
+    private void setter(MethodCallExpr mc, MethodInfo m, CallableDeclaration<?> md) {
         Expression scope = mc.getScope().get();
         TypeDeclaration<?> td = typeOf(scope, md).orElse(null);
         CallSiteInfo site = siteByExpr.get(mc);
@@ -236,7 +247,7 @@ public final class BindingCollector {
         add(object(scope, td, m, md), b);
     }
 
-    private void builder(MethodCallExpr build, MethodInfo m, MethodDeclaration md) {
+    private void builder(MethodCallExpr build, MethodInfo m, CallableDeclaration<?> md) {
         List<MethodCallExpr> chain = new ArrayList<>();
         Expression cur = build.getScope().get();
         TypeDeclaration<?> td = null;
@@ -273,7 +284,7 @@ public final class BindingCollector {
         }
     }
 
-    private void constructor(ObjectCreationExpr oc, MethodInfo m, MethodDeclaration md) {
+    private void constructor(ObjectCreationExpr oc, MethodInfo m, CallableDeclaration<?> md) {
         TypeDeclaration<?> td = resolveType(oc.getType().getNameWithScope(), oc).orElse(null);
         if (td == null || !types.isVo(td)) {
             return;
@@ -311,7 +322,7 @@ public final class BindingCollector {
         }
     }
 
-    private void fieldAssign(AssignExpr a, FieldAccessExpr f, MethodInfo m, MethodDeclaration md) {
+    private void fieldAssign(AssignExpr a, FieldAccessExpr f, MethodInfo m, CallableDeclaration<?> md) {
         TypeDeclaration<?> td = typeOf(f.getScope(), md).orElse(null);
         if (td == null || !types.isVo(td)) {
             return;
@@ -324,7 +335,7 @@ public final class BindingCollector {
         add(object(f.getScope(), td, m, md), b);
     }
 
-    private void mapPut(MethodCallExpr mc, NameExpr scope, MethodInfo m, MethodDeclaration md) {
+    private void mapPut(MethodCallExpr mc, NameExpr scope, MethodInfo m, CallableDeclaration<?> md) {
         Optional<Type> t = lookup.findVariableType(scope.getNameAsString(), mc);
         if (t.isEmpty() || !t.get().isClassOrInterfaceType()
                 || !MAP_TYPES.contains(TypeNames.simple(TypeNames.erasure(t.get().asString())))) {
@@ -345,7 +356,7 @@ public final class BindingCollector {
         add(o, b);
     }
 
-    private void copy(MethodCallExpr mc, MethodInfo m, MethodDeclaration md) {
+    private void copy(MethodCallExpr mc, MethodInfo m, CallableDeclaration<?> md) {
         String scope = mc.getScope().map(Object::toString).orElse("");
         if (!scope.endsWith("BeanUtils") && !scope.endsWith("PropertyUtils")) {
             return;
@@ -419,11 +430,11 @@ public final class BindingCollector {
         r.index(b.id, b);
     }
 
-    private ObjectInfo object(Expression receiver, TypeDeclaration<?> td, MethodInfo m, MethodDeclaration md) {
+    private ObjectInfo object(Expression receiver, TypeDeclaration<?> td, MethodInfo m, CallableDeclaration<?> md) {
         return object(receiver, td, m, md, "expr@" + (receiver == null ? "?" : ConditionText.text(receiver)));
     }
 
-    private ObjectInfo object(Expression receiver, TypeDeclaration<?> td, MethodInfo m, MethodDeclaration md, String anon) {
+    private ObjectInfo object(Expression receiver, TypeDeclaration<?> td, MethodInfo m, CallableDeclaration<?> md, String anon) {
         Key k = receiver == null ? new Key(m.id, anon) : key(receiver, m, md, 0);
         return objects.computeIfAbsent(k, x -> {
             ClassInfo c = types.register(td);
@@ -450,7 +461,7 @@ public final class BindingCollector {
      * 객체 정체성: 지역 변수 → (메서드, 변수). 메서드 파라미터이고 분석된 호출 위치가 정확히 1개이며 그 인자가 변수면
      * 호출자 쪽 객체로 이어 붙인다. 필드 → (클래스, field:이름). 그 외 식 → (메서드, 식 원문).
      */
-    private Key key(Expression receiver, MethodInfo m, MethodDeclaration md, int hops) {
+    private Key key(Expression receiver, MethodInfo m, CallableDeclaration<?> md, int hops) {
         if (receiver instanceof FieldAccessExpr f && f.getScope() instanceof ThisExpr) {
             return new Key("field:" + m.classId, f.getNameAsString());
         }
@@ -467,8 +478,8 @@ public final class BindingCollector {
                     .filter(s -> m.id.equals(s.targetMethodId) || m.id.equals(s.implementationMethodId)).toList();
             if (callers.size() == 1 && hops < 8) {
                 CallSiteInfo s = callers.get(0);
-                MethodCallExpr call = callExprs.get(s.id);
-                MethodDeclaration callerDecl = declarations.get(s.callerMethodId);
+                var call = callExprs.get(s.id) instanceof com.github.javaparser.ast.nodeTypes.NodeWithArguments<?> a ? a : null;
+                CallableDeclaration<?> callerDecl = declarations.get(s.callerMethodId);
                 if (call != null && callerDecl != null && call.getArguments().size() > i
                         && call.getArgument(i) instanceof NameExpr) {
                     return key(call.getArgument(i), r.method(s.callerMethodId), callerDecl, hops + 1);
@@ -485,7 +496,7 @@ public final class BindingCollector {
         return new Key(m.id, name);
     }
 
-    private Optional<TypeDeclaration<?>> typeOf(Expression e, MethodDeclaration md) {
+    private Optional<TypeDeclaration<?>> typeOf(Expression e, CallableDeclaration<?> md) {
         Optional<Type> t = Optional.empty();
         if (e instanceof NameExpr n) {
             t = lookup.findVariableType(n.getNameAsString(), e);

@@ -61,7 +61,7 @@ import java.util.stream.Collectors;
  */
 public final class FlowAnalyzer {
 
-    private record Work(MethodInfo method, MethodDeclaration declaration, int depth) {
+    private record Work(MethodInfo method, com.github.javaparser.ast.body.CallableDeclaration<?> declaration, int depth) {
     }
 
     private final AnalyzerConfig cfg;
@@ -80,13 +80,13 @@ public final class FlowAnalyzer {
     /** 전개 트리 부모: methodId → 호출자 methodId */
     private final Map<String, String> expansionParent = new HashMap<>();
     /** methodId → 분석기 AST 상의 선언 (source 메서드만) */
-    private final Map<String, MethodDeclaration> declarations = new HashMap<>();
+    private final Map<String, com.github.javaparser.ast.body.CallableDeclaration<?>> declarations = new HashMap<>();
     /** 호출 표현식(노드 동일성) → 그 호출에서 읽은 Request Parameter. JavaParser Node.equals 는 구조 비교라 IdentityHashMap 사용 */
     private final Map<MethodCallExpr, List<analyzer.model.RequestParameterInfo>> paramsByCall = new java.util.IdentityHashMap<>();
     /** SqlSession 류 호출의 statement id (recorded 에서 호출 위치에 붙임) */
     private final Map<MethodCallExpr, analyzer.model.SqlRef> sqlByCall = new java.util.IdentityHashMap<>();
     /** callSiteId → 호출 표현식 (값 추적용) */
-    private final Map<String, MethodCallExpr> callExprs = new HashMap<>();
+    private final Map<String, com.github.javaparser.ast.expr.Expression> callExprs = new HashMap<>();
 
     public FlowAnalyzer(AnalyzerConfig cfg) {
         this.cfg = cfg;
@@ -242,7 +242,7 @@ public final class FlowAnalyzer {
         result.settings = s;
     }
 
-    private void schedule(MethodInfo m, MethodDeclaration md, int depth, CallSiteInfo site, MethodInfo caller) {
+    private void schedule(MethodInfo m, com.github.javaparser.ast.body.CallableDeclaration<?> md, int depth, CallSiteInfo site, MethodInfo caller) {
         Work w = new Work(m, md, depth);
         scheduled.put(m.id, w);
         queue.add(w);
@@ -256,11 +256,11 @@ public final class FlowAnalyzer {
 
     private void analyzeBody(Work w) {
         MethodInfo caller = w.method();
-        MethodDeclaration md = w.declaration();
+        com.github.javaparser.ast.body.CallableDeclaration<?> md = w.declaration();
         TypeDeclaration<?> callerType = md.findAncestor(TypeDeclaration.class).map(t -> (TypeDeclaration<?>) t).orElseThrow();
         String file = sources.relativeFile(md);
-        if (cfg.analysis.includeRequestParameters) {
-            params.fromAnnotations(md, caller, file);
+        if (cfg.analysis.includeRequestParameters && md instanceof MethodDeclaration method) {
+            params.fromAnnotations(method, caller, file);
         }
 
         MethodBodyWalker.CallSink sink = new MethodBodyWalker.CallSink() {
@@ -311,8 +311,49 @@ public final class FlowAnalyzer {
                 boolean byDepth = site.depth < cfg.analysis.maxDepth;
                 boolean sameClass = cfg.analysis.expandSameClassMethods && target.classId.equals(caller.classId);
                 boolean byRole = expandRoles.contains(result.clazz(target.classId).role);
-                boolean byClass = expandClass(result.clazz(target.classId));
+                boolean byClass = expandClass(result.clazz(target.classId)) || insideAction(declarations.get(target.id));
                 if (byDepth || sameClass || byRole || byClass) {
+                    schedule(target, declarations.get(target.id), site.depth, site, caller);
+                }
+            }
+
+            /**
+             * Action/Controller 안에 선언된 클래스의 생성자 new ParamMgr(request) = 호출로 기록하고 생성자 본문을 분석한다
+             * (요청 값을 생성자에서 필드로 옮기는 요청 셋업 클래스). 인자 수가 같은 생성자가 정확히 1개일 때만 (추측 금지).
+             * 그 밖의 new(VO·라이브러리 등)는 지금처럼 호출로 만들지 않는다.
+             */
+            @Override
+            public CallSiteInfo resolveNew(com.github.javaparser.ast.expr.ObjectCreationExpr oc, WalkContext ctx) {
+                TypeDeclaration<?> td = types.resolveTypeName(oc.getType().getNameWithScope(), oc)
+                        .filter(analyzer.resolver.TypeRef::inSource).map(analyzer.resolver.TypeRef::declaration).orElse(null);
+                if (td == null) {
+                    return null;
+                }
+                if (!(insideAction(td) || expandClass(sourceClass(td)))) {
+                    return null;
+                }
+                int argc = oc.getArguments().size();
+                List<com.github.javaparser.ast.body.ConstructorDeclaration> ctors = td.getConstructors().stream()
+                        .filter(c -> c.getParameters().size() == argc).toList();
+                if (ctors.size() != 1) {
+                    return null; // 기본 생성자(본문 없음)·오버로드 판정 불가
+                }
+                CallSiteInfo s = new CallSiteInfo();
+                s.resolution = ResolutionStatus.RESOLVED;
+                s.resolutionBasis = "CONSTRUCTOR";
+                s.receiverType = td.getNameAsString();
+                s.targetOrigin = Origin.SOURCE;
+                s.targetMethodId = constructorMethod(ctors.get(0)).id;
+                return s;
+            }
+
+            @Override
+            public void recordedNew(CallSiteInfo site, com.github.javaparser.ast.expr.ObjectCreationExpr oc) {
+                callExprs.put(site.id, oc);
+                site.depth = w.depth() + 1;
+                MethodInfo target = result.method(site.targetMethodId);
+                target.depth = Math.min(target.depth, site.depth);
+                if (!scheduled.containsKey(target.id)) {
                     schedule(target, declarations.get(target.id), site.depth, site, caller);
                 }
             }
@@ -320,6 +361,30 @@ public final class FlowAnalyzer {
         new MethodBodyWalker(result, caller, file,
                 new MethodBodyWalker.Options(cfg.analysis.includeConditions, cfg.analysis.includeExceptions),
                 sink, types).walk(md);
+    }
+
+    /**
+     * Action/Controller 클래스 안에 선언된 클래스(중첩·내부 클래스, 깊이 무관)의 멤버인지 — 이름과 무관한 일반 규칙
+     * (예: XxxAction.ParamMgr). 메서드 안 로컬·익명 클래스는 아님. 최상위 클래스 역할은 분류 결과 기준.
+     */
+    private boolean insideAction(com.github.javaparser.ast.Node member) {
+        if (member == null) {
+            return false;
+        }
+        TypeDeclaration<?> td = member instanceof TypeDeclaration<?> t ? t
+                : member.findAncestor(TypeDeclaration.class).map(x -> (TypeDeclaration<?>) x).orElse(null);
+        if (td == null || !(td.getParentNode().orElse(null) instanceof TypeDeclaration<?>)) {
+            return false; // 최상위 클래스 자체이거나 로컬 클래스
+        }
+        TypeDeclaration<?> top = td;
+        while (top.getParentNode().orElse(null) instanceof TypeDeclaration<?> p) {
+            top = p;
+        }
+        if (!(top.getParentNode().orElse(null) instanceof com.github.javaparser.ast.CompilationUnit)) {
+            return false;
+        }
+        ClassRole role = classify(top).role();
+        return role == ClassRole.ACTION || role == ClassRole.CONTROLLER;
     }
 
     /** analysis.expand-classes 패턴에 맞는 클래스 (단순명 · FQN · 패키지 뺀 바깥 클래스 포함 이름) */
@@ -516,6 +581,38 @@ public final class FlowAnalyzer {
         m.depth = Integer.MAX_VALUE;
         register(m, c);
         declarations.put(m.id, md);
+        return m;
+    }
+
+    /** 생성자 = 메서드 하나 (이름 = 클래스명, 키 #<init>(…)) */
+    private MethodInfo constructorMethod(com.github.javaparser.ast.body.ConstructorDeclaration cd) {
+        TypeDeclaration<?> td = cd.findAncestor(TypeDeclaration.class).map(t -> (TypeDeclaration<?>) t).orElseThrow();
+        ClassInfo c = sourceClass(td);
+        List<String> erased = cd.getParameters().stream().map(FlowAnalyzer::paramType).map(TypeNames::erasure).toList();
+        String key = c.key + "#<init>(" + String.join(",", erased) + ")";
+        MethodInfo existing = result.methodsByKey.get(key);
+        if (existing != null) {
+            return existing;
+        }
+        MethodInfo m = new MethodInfo();
+        m.key = key;
+        m.classId = c.id;
+        m.name = cd.getNameAsString();
+        m.signature = m.name + "(" + cd.getParameters().stream().map(FlowAnalyzer::paramType).collect(Collectors.joining(", ")) + ")";
+        m.signatureResolved = true;
+        m.visibility = Visibility.of(cd.getAccessSpecifier());
+        m.hasBody = true;
+        m.returnType = td.getNameAsString();
+        for (Parameter p : cd.getParameters()) {
+            m.parameters.add(new MethodParameter(p.getNameAsString(), paramType(p)));
+        }
+        cd.getThrownExceptions().forEach(t -> m.thrownTypes.add(t.asString()));
+        cd.getAnnotations().forEach(a -> m.annotations.add(a.getNameAsString()));
+        m.origin = Origin.SOURCE;
+        m.location = SourceLocation.of(cd, sources.relativeFile(cd));
+        m.depth = Integer.MAX_VALUE;
+        register(m, c);
+        declarations.put(m.id, cd);
         return m;
     }
 

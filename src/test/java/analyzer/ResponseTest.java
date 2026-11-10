@@ -18,7 +18,7 @@ class ResponseTest {
 
     private static AnalyzerConfig cfg(String... jsp) {
         AnalyzerConfig c = Fixtures.config("AppDetailAction", "execute");
-        c.analysis.expandClasses = List.of("*Action.ParamMgr", "CountryUtil");
+        c.analysis.expandClasses = List.of("CountryUtil");
         c.response.jsp = List.of(jsp);
         return c;
     }

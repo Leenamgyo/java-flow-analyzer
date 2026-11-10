@@ -10,7 +10,7 @@ import analyzer.model.ValueSource;
 import analyzer.model.VariableChange;
 import analyzer.model.VariableInfo;
 import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AssignExpr;
@@ -42,12 +42,12 @@ import java.util.Objects;
 public final class VariableStateCollector {
 
     private final AnalysisResult r;
-    private final Map<String, MethodDeclaration> declarations;
+    private final Map<String, CallableDeclaration<?>> declarations;
     private final SourceTracer tracer;
 
-    public VariableStateCollector(AnalysisResult r, Map<String, MethodDeclaration> declarations,
+    public VariableStateCollector(AnalysisResult r, Map<String, CallableDeclaration<?>> declarations,
                                   Map<MethodCallExpr, List<RequestParameterInfo>> paramsByCall,
-                                  Map<String, MethodCallExpr> callExprs) {
+                                  Map<String, Expression> callExprs) {
         this.r = r;
         this.declarations = declarations;
         this.tracer = new SourceTracer(r, declarations, paramsByCall, callExprs);
@@ -55,18 +55,18 @@ public final class VariableStateCollector {
 
     public void collect() {
         for (MethodInfo m : r.methods()) {
-            MethodDeclaration md = declarations.get(m.id);
-            if (!m.analyzed || md == null || md.getBody().isEmpty()) {
+            CallableDeclaration<?> md = declarations.get(m.id);
+            if (!m.analyzed || md == null || analyzer.parser.Code.body(md).isEmpty()) {
                 continue;
             }
             collect(m, md);
         }
     }
 
-    private void collect(MethodInfo m, MethodDeclaration md) {
+    private void collect(MethodInfo m, CallableDeclaration<?> md) {
         // 이름 → 변경 노드 (소스 순서)
         Map<String, List<Expression>> changes = new LinkedHashMap<>();
-        md.getBody().get().walk(Node.TreeTraversal.PREORDER, n -> {
+        analyzer.parser.Code.body(md).get().walk(Node.TreeTraversal.PREORDER, n -> {
             String name = null;
             if (n instanceof AssignExpr a && a.getTarget() instanceof NameExpr t) {
                 name = t.getNameAsString();
@@ -116,7 +116,7 @@ public final class VariableStateCollector {
             }
         }
         // 값이 바뀌지 않는 지역 변수도 선언(초기값)은 흐름에 보여야 한다 — boolean data = false, String label; …
-        for (VariableDeclarator d : md.getBody().get().findAll(VariableDeclarator.class)) {
+        for (VariableDeclarator d : analyzer.parser.Code.body(md).get().findAll(VariableDeclarator.class)) {
             if (!covered.contains(d) && ownLocal(d, md)) {
                 variable(m, d.getNameAsString(), d, null);
             }
@@ -156,7 +156,7 @@ public final class VariableStateCollector {
      * 이 메서드 자신의 지역 변수 선언인지: for 헤더·향상된 for 변수, 람다·익명/로컬 클래스 안 선언은 제외
      * (람다 본문은 나중에 실행되고, 익명 클래스 본문은 분석하지 않는다).
      */
-    private static boolean ownLocal(VariableDeclarator v, MethodDeclaration md) {
+    private static boolean ownLocal(VariableDeclarator v, CallableDeclaration<?> md) {
         Node gp = v.getParentNode().flatMap(Node::getParentNode).orElse(null);
         if (gp instanceof ForStmt || gp instanceof ForEachStmt) {
             return false;

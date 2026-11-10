@@ -69,6 +69,14 @@ public final class MethodBodyWalker {
 
         /** id/order/위치가 확정된 뒤 호출됨 */
         void recorded(CallSiteInfo site, MethodCallExpr call);
+
+        /** 생성자 호출 new X(…) — 호출로 기록할 것이면 해석 결과, 아니면 null (기본: 기록하지 않음) */
+        default CallSiteInfo resolveNew(ObjectCreationExpr creation, WalkContext ctx) {
+            return null;
+        }
+
+        default void recordedNew(CallSiteInfo site, ObjectCreationExpr creation) {
+        }
     }
 
     public record Options(boolean includeConditions, boolean includeExceptions) {
@@ -454,6 +462,8 @@ public final class MethodBodyWalker {
             oc.getArguments().forEach(a -> walkExpr(a, ctx));
             if (oc.getAnonymousClassBody().isPresent()) {
                 note(oc, "익명 클래스 본문은 분석하지 않음");
+            } else {
+                recordNew(oc, ctx);
             }
         } else {
             walkChildren(e, ctx);
@@ -465,12 +475,28 @@ public final class MethodBodyWalker {
         if (site == null) {
             return;
         }
+        fill(site, mc, mc.getNameAsString(), mc.getScope().map(MethodBodyWalker::text).orElse(null), mc.getArguments(), ctx);
+        sink.recorded(site, mc);
+    }
+
+    /** 생성자 호출 new X(…) — sink 가 호출로 보는 것만 (예: Action 안에 선언된 클래스의 생성자) */
+    private void recordNew(ObjectCreationExpr oc, WalkContext ctx) {
+        CallSiteInfo site = sink.resolveNew(oc, ctx);
+        if (site == null) {
+            return;
+        }
+        fill(site, oc, oc.getType().getNameAsString(), null, oc.getArguments(), ctx);
+        sink.recordedNew(site, oc);
+    }
+
+    private void fill(CallSiteInfo site, Expression mc, String name, String scope,
+                      com.github.javaparser.ast.NodeList<Expression> args, WalkContext ctx) {
         site.id = result.nextId("CALL");
         site.callerMethodId = method.id;
-        site.methodName = mc.getNameAsString();
-        site.argumentCount = mc.getArguments().size();
+        site.methodName = name;
+        site.argumentCount = args.size();
         site.expression = text(mc);
-        site.scopeExpression = mc.getScope().map(MethodBodyWalker::text).orElse(null);
+        site.scopeExpression = scope;
         site.order = ++callOrder;
         site.seq = ++seq;
         site.controlBlockId = ctx.block() == null ? null : ctx.block().id;
@@ -479,7 +505,7 @@ public final class MethodBodyWalker {
         site.conditions.addAll(ctx.guards());
         site.deferred = ctx.deferred();
         site.location = SourceLocation.of(mc, file);
-        mc.getArguments().forEach(a -> site.arguments.add(text(a)));
+        args.forEach(a -> site.arguments.add(text(a)));
         site.resultUsage = resultUsage(mc);
         site.resultType = declaredType(mc);
         enclosingStatement(mc, site);
@@ -489,7 +515,6 @@ public final class MethodBodyWalker {
         if (ctx.block() != null) {
             ctx.block().callIds.add(site.id);
         }
-        sink.recorded(site, mc);
     }
 
     // ------------------------------------------------------------------ post-processing
@@ -621,7 +646,7 @@ public final class MethodBodyWalker {
     }
 
     /** 다른 호출·객체 생성의 인자 안(깊이 무관)에 있는지 — 수신 객체 체인(a.b().c())은 인자가 아님 */
-    private static boolean inArgument(MethodCallExpr mc) {
+    private static boolean inArgument(Expression mc) {
         Node child = mc;
         for (Node p = mc.getParentNode().orElse(null); p != null && !(p instanceof com.github.javaparser.ast.stmt.Statement)
                 && !(p instanceof LambdaExpr); p = p.getParentNode().orElse(null)) {
@@ -636,7 +661,7 @@ public final class MethodBodyWalker {
     }
 
     /** 호출이 들어 있는 변수 선언/대입 문장 (람다·다른 문장 경계에서 멈춤) */
-    private void enclosingStatement(MethodCallExpr mc, CallSiteInfo site) {
+    private void enclosingStatement(Expression mc, CallSiteInfo site) {
         for (Node p = mc.getParentNode().orElse(null); p != null; p = p.getParentNode().orElse(null)) {
             if (p instanceof LambdaExpr || p instanceof CallableDeclaration<?>) {
                 return;
@@ -657,7 +682,7 @@ public final class MethodBodyWalker {
     }
 
     /** T x = call() 이면 T (괄호·캐스트 건너뜀), 아니면 null */
-    private static String declaredType(MethodCallExpr mc) {
+    private static String declaredType(Expression mc) {
         Node cur = mc;
         Node p = cur.getParentNode().orElse(null);
         while (p instanceof com.github.javaparser.ast.expr.EnclosedExpr || p instanceof com.github.javaparser.ast.expr.CastExpr) {
@@ -668,7 +693,7 @@ public final class MethodBodyWalker {
     }
 
     /** 호출 결과가 어떻게 쓰이는지 (괄호·캐스트는 건너뜀) */
-    private static String resultUsage(MethodCallExpr mc) {
+    private static String resultUsage(Expression mc) {
         Node cur = mc;
         Node p = cur.getParentNode().orElse(null);
         while (p instanceof com.github.javaparser.ast.expr.EnclosedExpr || p instanceof com.github.javaparser.ast.expr.CastExpr) {

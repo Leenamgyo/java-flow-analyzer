@@ -640,6 +640,13 @@ public final class MermaidGraph {
      */
     public MermaidGraph collapse(java.util.function.Predicate<Node> keep,
                                  java.util.function.Function<List<Node>, List<String>> label, String css, int minLines) {
+        return collapse(keep, label, css, minLines, 0);
+    }
+
+    /** maxLines &gt; 0 이면 합친 노드 하나가 그 줄 수를 넘지 않게 사슬을 나눈다 (노드 하나는 쪼개지 않음) */
+    public MermaidGraph collapse(java.util.function.Predicate<Node> keep,
+                                 java.util.function.Function<List<Node>, List<String>> label, String css, int minLines,
+                                 int maxLines) {
         Map<String, Subgraph> parent = new LinkedHashMap<>();
         parents(root, parent);
         Map<String, Integer> flowOut = new java.util.HashMap<>();
@@ -671,15 +678,32 @@ public final class MermaidGraph {
             if (!foldable.test(id) || hasPrev.contains(id)) {
                 continue;
             }
-            List<Node> chain = new ArrayList<>();
+            List<Node> whole = new ArrayList<>();
             Set<String> seen = new java.util.HashSet<>();
             for (String c = id; c != null && seen.add(c); c = next.get(c)) {
-                chain.add((Node) ids.get(c));
-                repOf.put(c, id);
+                whole.add((Node) ids.get(c));
             }
-            int lines = chain.stream().mapToInt(n -> n.lines().size()).sum();
-            if (chain.size() > 1 || lines > minLines) {
-                chains.put(id, chain);
+            // 줄 수 한도로 나눈 조각마다 노드 하나
+            List<List<Node>> pieces = new ArrayList<>();
+            List<Node> piece = new ArrayList<>();
+            int pieceLines = 0;
+            for (Node n : whole) {
+                if (maxLines > 0 && !piece.isEmpty() && pieceLines + n.lines().size() > maxLines) {
+                    pieces.add(piece);
+                    piece = new ArrayList<>();
+                    pieceLines = 0;
+                }
+                piece.add(n);
+                pieceLines += n.lines().size();
+            }
+            pieces.add(piece);
+            for (List<Node> chain : pieces) {
+                String rep = chain.get(0).id();
+                chain.forEach(n -> repOf.put(n.id(), rep));
+                int lines = chain.stream().mapToInt(n -> n.lines().size()).sum();
+                if (chain.size() > 1 || lines > minLines) {
+                    chains.put(rep, chain);
+                }
             }
         }
         MermaidGraph out = new MermaidGraph();

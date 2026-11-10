@@ -106,4 +106,45 @@ class FlowchartSectionsTest {
         assertTrue(sk.contains("click nav_overview href \"00-overview.svg\""), sk);
         assertTrue(sec.skeletons().get(0).mermaid().contains("click M1 href \"" + base + "-skeleton.svg\""));
     }
+
+    /** 노드 하나의 줄 수 한도(output.max-node-lines): 이어 쌓은 코드 블록·골격의 합친 노드 모두 — 줄은 빠지지 않는다 */
+    @Test
+    void nodesAreSplitAtMaxNodeLines() {
+        AnalysisResult r = Fixtures.analyze("ScpAppListAction", "execute");
+        int max = 3;
+        FlowchartGenerator gen = new FlowchartGenerator().maxNodeLines(max).maxLineLength(0);
+        MermaidGraph g = gen.build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        for (String id : g.nodeIds()) {
+            MermaidGraph.Node n = g.nodeById(id);
+            if (n != null && "codeline".equals(n.cssClass()) && n.lines().size() > max) {
+                // 호출 노드 하나(코드 한 줄 + SQL·impl 등 부가 줄)는 쪼개지 않는다 — 이어 쌓은 블록만 해당
+                assertTrue(n.lines().stream().filter(l -> MermaidGraph.plain(l).startsWith("#")).count() <= 1, id + " " + n.lines());
+            }
+        }
+        String full = new FlowchartGenerator().maxLineLength(0).render(r, "TD");
+        String split = gen.render(r, "TD");
+        assertTrue(split.contains("_p2[\""), split);
+        // 나눠도 코드 줄은 그대로 (#n 번호 집합 동일)
+        java.util.function.Function<String, java.util.Set<String>> nums = t -> {
+            java.util.Set<String> out = new java.util.TreeSet<>();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("#35;(\\d+) ").matcher(t);
+            while (m.find()) {
+                out.add(m.group(1));
+            }
+            return out;
+        };
+        assertEquals(nums.apply(full), nums.apply(split));
+        FlowchartGenerator.Sectioned sec = gen.renderSectioned(r, "TD", "dagre", 20);
+        for (FlowchartGenerator.Part p : sec.skeletons()) {
+            for (String line : p.mermaid().split("\n")) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^\\s*\\w+\\[\"(.*)\"\\]$").matcher(line);
+                if (m.find()) {
+                    long codeLines = java.util.Arrays.stream(m.group(1).split("<br/>")).filter(x -> x.contains("#35;")).count();
+                    assertTrue(codeLines <= max || !line.contains("codeline"), p.file() + ": " + line);
+                }
+            }
+        }
+    }
 }

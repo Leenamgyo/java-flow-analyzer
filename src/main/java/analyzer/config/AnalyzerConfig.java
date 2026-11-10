@@ -121,6 +121,8 @@ public class AnalyzerConfig {
         public boolean flowchartSections = true;
         /** 구간 하나의 크기 — 노드 라벨 줄 수 기준 (블록이 이보다 크면 안에서 나눈다) */
         public int sectionSize = 60;
+        /** 노드 하나의 최대 줄 수 — 이어 쌓은 코드 블록·골격의 합친 노드가 넘으면 다음 노드로 이어서 나눈다 (줄 생략 없음) */
+        public int maxNodeLines = 30;
         /**
          * 흐름도에서 뺄 호출·메서드 (사용자 관리). 기본은 비어 있고 흐름도는 분석한 코드를 빠짐없이 그린다.
          * 패턴(* 와일드카드)은 호출 대상 "클래스.메서드"(단순명·FQN), 호출 원문 "수신객체.메서드" 와 비교한다.

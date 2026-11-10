@@ -43,7 +43,7 @@ public final class OutputWriter {
         if (cfg.output.mermaid) {
             Path mmd = dir.resolve("flowchart.mmd");
             mermaid = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
-                    .maxLineLength(cfg.output.maxLineLength).exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme)
+                    .maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines).exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme)
                     .render(r, cfg.output.direction, cfg.output.layout);
             Files.writeString(mmd, mermaid);
             written.add(mmd);
@@ -69,7 +69,7 @@ public final class OutputWriter {
             if (cfg.output.flowchartSections) {
                 // 긴 메서드 보기: 구간 분할 + 골격 (기존 출력과 별도)
                 FlowchartGenerator.Sectioned sec = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
-                        .maxLineLength(cfg.output.maxLineLength).exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme)
+                        .maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines).exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme)
                         .renderSectioned(r, cfg.output.direction, cfg.output.layout, cfg.output.sectionSize);
                 var entry = r.method(r.entryMethodId);
                 String title = r.classOf(entry).name + "." + entry.name + "()";
@@ -86,7 +86,7 @@ public final class OutputWriter {
             if (cfg.output.mermaid) {
                 Path pmmd = dir.resolve("phase-flowchart.mmd");
                 try {
-                    Files.writeString(pmmd, new FlowchartGenerator(pm).maxLineLength(cfg.output.maxLineLength).exclude(cfg.output.flowchartExclude)
+                    Files.writeString(pmmd, new FlowchartGenerator(pm).maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines).exclude(cfg.output.flowchartExclude)
                             .theme(cfg.output.colorTheme).render(r, cfg.output.direction, cfg.output.layout));
                     written.add(pmmd);
                     charts.add(pmmd);
