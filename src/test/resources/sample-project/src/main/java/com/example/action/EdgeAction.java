@@ -390,4 +390,20 @@ public class EdgeAction {
         vo.setTitle(request.getParameter("title"));
         noticeWriteBiz.write(vo, request.getParameter("body"));
     }
+
+    // ---- VO 연결의 실행 순서: 호출 전 헬퍼의 set 은 넣고, 호출 뒤 헬퍼의 set 은 빼기 (BizVoTest) ----
+    public void bizVoOrder(HttpServletRequest request) {
+        NoticeVO vo = new NoticeVO();
+        fillTitle(vo, request);
+        noticeWriteBiz.write(vo, "b");
+        fillBodyLater(vo);
+    }
+
+    private void fillTitle(NoticeVO vo, HttpServletRequest request) {
+        vo.setTitle(request.getParameter("t"));
+    }
+
+    private void fillBodyLater(NoticeVO vo) {
+        vo.setBody("late");
+    }
 }

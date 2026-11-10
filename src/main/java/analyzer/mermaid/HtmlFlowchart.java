@@ -247,13 +247,24 @@ public final class HtmlFlowchart {
             String made0 = null; // VO 를 만든 함수 호출 (반환값으로 받은 경우)
             List<Binding> bs = new ArrayList<>();
             if (o != null) {
-                Set<String> inside = reachable(r, s); // 이 호출이 부르는 쪽(그 안의 set 은 호출 뒤)
+                // 실행 순서: 지나온 메서드(path)에서는 이 흐름으로 들어오는 호출 줄 앞의 set 만, 다른 메서드의 set 은 그 메서드를
+                // 지나온 메서드가 그 호출 줄보다 앞에서 (전이적으로) 부를 때만 — 뒤에서 부르는 헬퍼·이 호출이 부르는 쪽 안의 set 은 아직 안 일어남
+                Set<String> before = new java.util.HashSet<>();
+                for (Map.Entry<String, CallSiteInfo> e : pathCall.entrySet()) {
+                    for (CallSiteInfo c : r.callSitesOf(e.getKey())) {
+                        if (c != e.getValue() && c.location != null && e.getValue().location != null
+                                && c.location.beginLine() < e.getValue().location.beginLine()) {
+                            before.addAll(reachable(r, c));
+                        }
+                    }
+                }
                 for (String bid : o.bindingIds) {
                     Binding b = r.binding(bid);
                     CallSiteInfo at = pathCall.get(b.methodId);
-                    boolean after = at != null && b.location != null && at.location != null
-                            && b.location.beginLine() > at.location.beginLine();
-                    if (!after && !inside.contains(b.methodId)) {
+                    boolean ok = at != null
+                            ? b.location == null || at.location == null || b.location.beginLine() <= at.location.beginLine()
+                            : before.contains(b.methodId);
+                    if (ok) {
                         bs.add(b);
                     }
                 }

@@ -61,4 +61,14 @@ class BizVoTest {
         assertEquals("NoticeVO history", hist.get(0).get("title"));
         assertEquals(List.of("title = vo.getTitle()", "body = \"written\""), hist.get(0).get("lines"));
     }
+
+    /** 실행 순서: Biz 호출 전에 부른 헬퍼의 set 만 — 뒤에서 부르는 헬퍼·Biz 안의 set 은 아직 안 일어남 */
+    @Test
+    void onlySetsBeforeTheCallInExecutionOrder() {
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "bizVoOrder",
+                c -> c.analysis.expandRoles = List.of("Service", "Biz", "DAO", "Repository", "Mapper"));
+        List<Map<String, Object>> toBiz = vo(r, "noticeWriteBiz.write(");
+        assertEquals(1, toBiz.size(), toBiz.toString());
+        assertEquals(List.of("title = request.t"), toBiz.get(0).get("lines"));
+    }
 }

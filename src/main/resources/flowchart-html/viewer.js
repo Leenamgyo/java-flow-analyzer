@@ -120,6 +120,41 @@
     }
     return out;
   }
+  /**
+   * 실행 순서대로 VO 를 따라가는 경로: set 하는 노드(src) → … → 호출 노드(dst) 를 흐름도의 실제 간선(흐름·예외·호출 ==>)을
+   * dst 에서 거꾸로 따라가 찾는다(가장 짧은 경로). 선을 새로 긋지 않고 이 경로의 간선을 강조 (사용자: 이전 걸 타지 않고
+   * 주변 선을 탄다 — 순서대로). 상자(try 등)에서 나가는 간선은 상자 안 노드에서 온 것으로 본다.
+   */
+  const revAdj = new Map();
+  for (const e of FLOW.edges) { if (!revAdj.has(e.to)) revAdj.set(e.to, []); revAdj.get(e.to).push(e); }
+  const descendants = new Map(); // 상자 id → 안의 노드 id
+  for (const [gid] of groups) { const out = []; (function walk(items) { for (const it of items) { if (it.group) walk(it.children); else out.push(it.id); } })(groups.get(gid).children); descendants.set(gid, out); }
+  const groupOfEdgeTarget = new Map(); // 노드 → 그 노드를 품은 상자들 (상자에서 나가는 간선을 타려고)
+  for (const [gid, ids] of descendants) for (const x of ids) { if (!groupOfEdgeTarget.has(x)) groupOfEdgeTarget.set(x, []); groupOfEdgeTarget.get(x).push(gid); }
+  function flowPath(src, dst) {
+    const prev = new Map([[dst, null]]);
+    const queue = [dst];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur === src) break;
+      for (const e of revAdj.get(cur) || []) {
+        const froms = groups.has(e.from) ? descendants.get(e.from) : [e.from];
+        for (const f of froms) if (!prev.has(f)) { prev.set(f, { at: cur, e: e }); queue.push(f); }
+      }
+    }
+    if (!prev.has(src)) return null;
+    const out = { nodes: [], edges: [] };
+    for (let x = src; x !== dst && x !== undefined; ) {
+      const p = prev.get(x);
+      if (!p) break;
+      out.nodes.push(x); out.edges.push(p.e);
+      x = p.at;
+    }
+    out.nodes.push(dst);
+    return out;
+  }
+  for (const list of voEdges.values()) for (const d of list) d.path = flowPath(d.from, d.to);
+
   function voText(n) {
     const out = [];
     for (const v of n.voIn) {
@@ -359,6 +394,7 @@
           const t = pos.get(visible(id));
           if (!t) continue;
           for (const d of list) {
+            if (d.path) continue; // 흐름 간선으로 이어지면 그 간선을 강조 (덧그리지 않음)
             const f = pos.get(visible(d.from));
             if (!f || f === t) continue;
             const mx = Math.max(f.x + f.width, t.x + t.width) + 18;
@@ -578,7 +614,14 @@
       for (const id of voStarts) {
         hl.nodes.add(id); hl.units.add(unitOf.get(id));
         for (const d of voEdges.get(id) || []) {
-          hl.edges.add(d); hl.nodes.add(d.from);
+          hl.nodes.add(d.from);
+          if (d.path) { // 실행 순서대로 이어지는 실제 간선·노드
+            d.path.edges.forEach(e => hl.edges.add(e));
+            hl.voPath = hl.voPath || new Set();
+            d.path.nodes.forEach(x => { hl.nodes.add(x); hl.voPath.add(visible(x)); hl.units.add(unitOf.get(x)); });
+          } else {
+            hl.edges.add(d); // 흐름으로 이어지지 않으면 덧그린 선
+          }
           if (d.rows.length) { hl.rows = hl.rows || new Map(); hl.rows.set(d.from, [...(hl.rows.get(d.from) || []), ...d.rows]); }
         }
       }
@@ -602,7 +645,7 @@
       if (groupEls.has(id)) continue;
       const lit = on && vis.has(id);
       b.el.classList.toggle('dim', on && !lit);
-      b.el.classList.toggle('path', lit && (pathNodes.has(id) || !(hl.rows && hl.rows.has(id))));
+      b.el.classList.toggle('path', lit && (pathNodes.has(id) || !(hl.rows && hl.rows.has(id)) && !(hl.voPath && hl.voPath.has(id))));
       b.el.querySelectorAll('.rowhl').forEach(x => x.remove());
       const rows = on && hl.rows ? hl.rows.get(id) : null;
       if (rows && b.textTop !== undefined) {
