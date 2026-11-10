@@ -82,6 +82,10 @@ class RequestSetupTest {
                 | appId | String | N | - |  |
                 | lang | String | N | - | .trim() |
                 | startNum | String | N | - | Integer.parseInt() |
+
+                ## 2. VO 정의
+
+                없음.
                 """, new SpecWriter().render(r));
     }
 
@@ -105,5 +109,18 @@ class RequestSetupTest {
         assertEquals(List.of("id", "name"), r.parameters.stream().map(p -> p.name).toList());
         ObjectInfo holder = r.objects.stream().filter(o -> "EdgeAction.Holder".equals(o.className)).findFirst().orElseThrow();
         assertEquals(List.of("id", "name"), r.bindingsOf(holder).stream().map(b -> b.field).toList());
+    }
+
+    /** spec.md VO 정의: VO 클래스 · 변수명 · 사용 위치 클래스 (역할 VO 만 — ParamMgr 같은 셋업 클래스·Map 은 제외) */
+    @Test
+    void specVoDefinition() {
+        String md = new SpecWriter().render(Fixtures.analyze("CaseAction", "variableState"));
+        assertTrue(md.contains("""
+                ## 2. VO 정의
+
+                | VO 클래스 | 변수명 | 사용 위치 클래스 |
+                |---|---|---|
+                | SearchVO | vo | CaseAction |
+                """), md);
     }
 }
