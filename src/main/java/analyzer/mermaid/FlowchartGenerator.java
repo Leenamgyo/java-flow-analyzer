@@ -331,7 +331,11 @@ public final class FlowchartGenerator {
             if (!drawnApart) {
                 continue;
             }
-            inStmt.stream().filter(x -> !FlowView.hidden(r, x) && !requestRead(x) && !argumentOnly(r, skip, x) && showsStatement(x))
+            // 꼬리표를 붙일 호출은 반드시 호출 줄(callCode)로 그려지는 것만 — 아니면 변경이 어디에도 안 들어가 '변수 변경 노드 누락'
+            inStmt.stream().filter(x -> !FlowView.hidden(r, x) && !requestRead(x) && !argumentOnly(r, skip, x) && showsStatement(x)
+                            && !excludedCall(r, excludes, x) && !bindingCall(x) && !bindingFnCall(x)
+                            && (x.position == null || !HEADER_POSITIONS.contains(x.position))
+                            && !holdsBinding(r.method(x.callerMethodId), x.controlBlockId, x))
                     .min(java.util.Comparator.comparingInt(x -> x.order))
                     .ifPresent(x -> assignedBy.computeIfAbsent(x.id, k -> new ArrayList<>()).add(c));
         }
@@ -360,6 +364,14 @@ public final class FlowchartGenerator {
                 emit(ms, m, null, List.of(new End(m.id)));
             }
         }
+        // 안전망: 호출 줄에 맡긴 변수 변경이 그 호출이 다른 경로(바인딩 줄·합친 노드 등)로 그려져 빠졌으면 호출이 든 노드에 합친다
+        assignedBy.forEach((callId, list) -> {
+            for (VariableChange c : list) {
+                if (!g.has(c.id) && g.has(callId)) {
+                    g.alias(c.id, g.nodeOf(callId));
+                }
+            }
+        });
         return g;
     }
 
@@ -1442,6 +1454,9 @@ public final class FlowchartGenerator {
         return !nested;
     }
 
+    /** 제어 블록 머리(조건식·for 초기화·for-each 대상·switch selector) 위치 — 그 안의 호출은 조건 노드에 합쳐진다 */
+    private static final Set<String> HEADER_POSITIONS = Set.of("CONDITION", "INITIALIZER", "ITERABLE", "SELECTOR");
+
     /** 같은 문장을 이미 다른 노드가 보여서 호출식만 쓰는 호출 */
     private final Set<String> exprOnly = new java.util.HashSet<>();
 
@@ -1526,6 +1541,11 @@ public final class FlowchartGenerator {
                         exprOnly.add(s.id); // 세부·로직 호출은 따로 그리되 호출식만 (문장은 앞 노드에)
                     } else {
                         g.alias(s.id, shownAt); // 같은 문장 — 앞 노드가 이미 코드를 보인다
+                        for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) {
+                            if (!g.has(c.id)) {
+                                g.alias(c.id, shownAt); // 그 호출에 걸린 변수 변경도 (문장 줄에 보임)
+                            }
+                        }
                         continue;
                     }
                 }
