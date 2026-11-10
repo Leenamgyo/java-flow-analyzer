@@ -111,6 +111,11 @@ public class AnalyzerConfig {
         public String layout = "dagre";
         /** 흐름도 색 테마: light(기본 — 흰 바탕) | dark(어두운 노드 바탕·밝은 글자, Mermaid dark 테마) */
         public String colorTheme = "light";
+        /**
+         * 흐름도 HTML 뷰어 flowchart.html (+ phases 켜면 phase-flowchart.html) — 무한 캔버스·접기/펴기·검색, 브라우저로 열기만.
+         * Mermaid 출력(mermaid: true — .mmd·구간·SVG)과 따로 켜고 끈다. 둘 다 같은 그래프에서 만든다.
+         */
+        public boolean flowchartHtml = true;
         /** 흐름도 .mmd 를 flowchart-svg/ 에 SVG 로도 출력 (Mermaid CLI mmdc 필요, 없으면 경고 후 생략) */
         public boolean flowchartSvg = true;
         /** mmdc 실행 파일 경로 (비우면 PATH 의 mmdc) */

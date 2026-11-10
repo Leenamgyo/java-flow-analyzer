@@ -110,7 +110,7 @@ public final class MermaidGraph {
         return line;
     }
 
-    private static String textClass(String line) {
+    static String textClass(String line) {
         if (line != null && !line.isEmpty() && line.charAt(0) == STYLE_START) {
             return line.substring(1, line.indexOf(STYLE_END));
         }
@@ -130,12 +130,43 @@ public final class MermaidGraph {
     /** 세부 호출 노드 (떼어 낸 그래프에서 밖으로 나가는 ==> 를 뺀 경우도 기억) */
     private final Set<String> detail = new java.util.LinkedHashSet<>();
     /** detail 색으로 바꿔 칠하는 코드 상자 class (모양이 다른 return·throw·분기는 그대로) */
-    private static final Set<String> BOX_CLASSES = Set.of("codeline", "external", "depth", "unresolved", "cycle", "req",
+    static final Set<String> BOX_CLASSES = Set.of("codeline", "external", "depth", "unresolved", "cycle", "req",
             "bind", "var", "state", "log");
 
     public MermaidGraph showCallEdges(boolean show) {
         this.callEdges = show;
         return this;
+    }
+
+    boolean callEdges() {
+        return callEdges;
+    }
+
+    /** 세부 호출 노드 (detail 색 후보): 기억해 둔 것 + 그리지 않는 ==> 의 출발 노드 — Mermaid·HTML 렌더링 공용 */
+    Set<String> detailNodes() {
+        Set<String> out = new java.util.HashSet<>(detail);
+        if (!callEdges) {
+            edges.stream().filter(e -> e.style() == EdgeStyle.CALL).forEach(e -> out.add(e.from()));
+        }
+        return out;
+    }
+
+    /** 칠할 class: 세부 호출이고 코드 상자면 detail (classDefs 에 detail 이 있을 때) */
+    static String effectiveClass(Node n, Set<String> detailNodes, Map<String, String> classDefs) {
+        return detailNodes.contains(n.id()) && BOX_CLASSES.contains(n.cssClass()) && classDefs.containsKey("detail")
+                ? "detail" : n.cssClass();
+    }
+
+    String theme() {
+        return theme;
+    }
+
+    int maxLineLength() {
+        return maxLineLength;
+    }
+
+    List<String> comments() {
+        return comments;
     }
 
     public record Edge(String from, String to, String label, EdgeStyle style) {
@@ -298,11 +329,10 @@ public final class MermaidGraph {
             renderItem(sb, o, "    ");
         }
         List<String> loopEdges = new ArrayList<>();
-        Set<String> detailNodes = new java.util.HashSet<>(detail);
+        Set<String> detailNodes = detailNodes();
         int index = 0;
         for (Edge e : edges) {
             if (e.style() == EdgeStyle.CALL && !callEdges) {
-                detailNodes.add(e.from());
                 continue;
             }
             int i = index++;
@@ -325,8 +355,7 @@ public final class MermaidGraph {
         Map<String, List<String>> byClass = new LinkedHashMap<>();
         ids.forEach((k, v) -> {
             if (v instanceof Node n && n.cssClass() != null && n.id().equals(k)) {
-                String css = detailNodes.contains(k) && BOX_CLASSES.contains(n.cssClass()) && classDefs.containsKey("detail")
-                        ? "detail" : n.cssClass();
+                String css = effectiveClass(n, detailNodes, classDefs);
                 byClass.computeIfAbsent(css, x -> new ArrayList<>()).add(k);
             }
         });

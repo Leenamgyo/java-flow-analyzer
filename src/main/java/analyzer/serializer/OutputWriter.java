@@ -2,6 +2,7 @@ package analyzer.serializer;
 
 import analyzer.config.AnalyzerConfig;
 import analyzer.mermaid.FlowchartGenerator;
+import analyzer.mermaid.HtmlFlowchart;
 import analyzer.mermaid.MermaidCli;
 import analyzer.model.AnalysisResult;
 
@@ -13,7 +14,7 @@ import java.util.List;
 
 /**
  * 동일 모델로 모든 출력 파일을 생성한다.
- * analysis.yaml(원본 데이터, 스키마 검증) · flowchart.mmd · mapping.md · analysis.md · call-tree.txt
+ * analysis.yaml(원본 데이터, 스키마 검증) · flowchart.mmd · flowchart.html(뷰어) · mapping.md · analysis.md · call-tree.txt
  * (+ phases.enabled: phase-flowchart.mmd · phase-summary.md — 바인딩 › 체크 › 로직 › 후처리 보기)
  */
 public final class OutputWriter {
@@ -93,8 +94,32 @@ public final class OutputWriter {
                 removeParts(dir, "flowchart-skeleton");
             }
         }
+        // 흐름도 HTML 뷰어 — Mermaid 와 같은 그래프(검증 포함)를 브라우저 배치·무한 캔버스로 (output.flowchart-html)
+        var entryMethod = r.method(r.entryMethodId);
+        String chartTitle = Labels.methodName(r, entryMethod) + "()";
+        if (cfg.output.flowchartHtml) {
+            FlowchartGenerator gen = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
+                    .maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines).exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme);
+            Path html = dir.resolve("flowchart.html");
+            Files.writeString(html, HtmlFlowchart.render(r, gen.checked(r), gen.classDefinitions(), cfg.output.direction, chartTitle + " — 흐름도"));
+            written.add(html);
+        } else {
+            Files.deleteIfExists(dir.resolve("flowchart.html"));
+        }
+        Files.deleteIfExists(dir.resolve("phase-flowchart.html")); // 이번 실행에서 만들 때만 남김
         if (cfg.phases.enabled) {
             analyzer.phase.PhaseModel pm = analyzer.phase.PhaseAnalyzer.analyze(r, cfg.phases);
+            if (cfg.output.flowchartHtml) {
+                Path phtml = dir.resolve("phase-flowchart.html");
+                try {
+                    FlowchartGenerator pgen = new FlowchartGenerator(pm).maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines)
+                            .exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme);
+                    Files.writeString(phtml, HtmlFlowchart.render(r, pgen.checked(r), pgen.classDefinitions(), cfg.output.direction, chartTitle + " — 단계 보기"));
+                    written.add(phtml);
+                } catch (IllegalStateException e) {
+                    System.err.println("[WARN] phase-flowchart.html 생략 — " + e.getMessage());
+                }
+            }
             if (cfg.output.mermaid) {
                 Path pmmd = dir.resolve("phase-flowchart.mmd");
                 try {

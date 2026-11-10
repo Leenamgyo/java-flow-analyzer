@@ -198,9 +198,20 @@ include 된 JSP 는 그 자리에 펼치고, `c:set` 처럼 출력이 없는 태
 
 `<output>/<클래스명>/` 아래에 생성됩니다.
 
+흐름도 형식은 따로 켜고 끕니다 (같은 그래프에서 만듦):
+
+```yaml
+output:
+  mermaid: true          # flowchart.mmd · flowchart-sections/ · flowchart-skeleton/ · flowchart-svg/ (mmdc)
+  flowchart-html: true   # flowchart.html 뷰어 (+ phases 켜면 phase-flowchart.html)
+```
+
+HTML 만 쓰려면 `mermaid: false`, Mermaid 만 쓰려면 `flowchart-html: false`.
+
 | 파일 | 내용 |
 |---|---|
 | `analysis.yaml` | 분석 결과 원본(Source of Truth). 나머지 파일은 모두 이 모델에서 생성 |
+| `flowchart.html` · `phase-flowchart.html` | **흐름도 뷰어** (`output.flowchart-html`, 기본 true) — 브라우저로 열기만 하면 됨(설치·인터넷 불필요, 배치 엔진 ELK 내장). 무한 캔버스(휠 확대·끌어 이동·`f` 화면 맞춤), 상자 제목 클릭 = 메서드·try·반복 접기/펴기(접힌 메서드끼리는 호출 선 표시), `메서드 접기` = 호출 구조만, 검색(`/`, Enter 다음), 노드 클릭 = 코드 전체·파일:라인·모델 ID, 노란 세부 호출 더블클릭 = 그 메서드로 이동. Mermaid 흐름도와 같은 그래프(같은 노드·색·규칙) |
 | `flowchart-sections/` · `flowchart-skeleton/` | 메서드별 보기 — 구간 분할(`output.flowchart-sections`, 기본 true) · 골격(`output.flowchart-skeleton`, 기본 false, 용량 때문에 꺼 둠) |
 | `flowchart-*` 노드 | 연속된 코드는 노드 하나에 쌓되 `output.max-node-lines`(기본 30줄)를 넘으면 다음 노드로 이어서 나눔 |
 | `spec.md` | 간결한 명세: 1. Request Param 정의(파라미터·타입·필수·기본값·설명), 2. Response 정의(JSP 지정 시) |

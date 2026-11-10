@@ -350,13 +350,26 @@ public final class FlowchartGenerator {
 
     /** layout: dagre(기본, Mermaid 기본) | elk */
     public String render(AnalysisResult result, String direction, String layout) {
+        return checked(result).render(direction, layout, classDefs());
+    }
+
+    /**
+     * 검증을 마친 흐름도 그래프 (렌더링 형식과 무관한 중간 표현) — Mermaid 문법(render)·HTML 뷰어(HtmlFlowchart) 공용.
+     * 검증(그래프 구조 + 모델 대응 check) 실패 시 예외.
+     */
+    public MermaidGraph checked(AnalysisResult result) {
         MermaidGraph graph = build(result);
         List<String> errors = new ArrayList<>(graph.validate());
         errors.addAll(check(result, graph, rules));
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Mermaid 검증 실패:\n" + String.join("\n", errors));
         }
-        return graph.maxLineLength(maxLineLength).theme(theme).render(direction, layout, classDefs());
+        return graph.maxLineLength(maxLineLength).theme(theme);
+    }
+
+    /** 이 생성기의 class 색 정의 (테마·단계 보기에 맞는 것) */
+    public Map<String, String> classDefinitions() {
+        return classDefs();
     }
 
     /** 색 테마 (설정 output.color-theme): light(기본, 흰 바탕) | dark */

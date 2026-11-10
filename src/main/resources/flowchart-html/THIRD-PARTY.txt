@@ -1,0 +1,2 @@
+elk.bundled.js = elkjs 0.11.1 (https://github.com/kieler/elkjs), Eclipse Public License 2.0.
+flowchart.html 에 그대로 내장해 오프라인에서 배치를 계산한다 (수정하지 않음).
