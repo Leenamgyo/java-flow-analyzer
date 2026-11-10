@@ -80,7 +80,8 @@ output:
   #   flowchart-skeleton/ = 00-overview(메서드 호출 관계) + 메서드마다 골격 1장(분기·return/throw·catch·세부 호출만,
   #   사이 코드 노드들은 코드 줄을 모두 담은 노드 하나로 합침 — 줄 생략 없음). 합본 flowchart-sections.md · flowchart-skeleton.md.
   #   SVG(flowchart-svg/sections·skeleton)는 노드를 클릭하면 이동: 골격의 합친 코드 노드 → 상세 구간, ▶/◀ → 다음·이전 구간·다른 메서드, ⌂ → 골격·전체 구조
-  flowchart-sections: true
+  flowchart-sections: true    # 구간 분할 flowchart-sections/
+  flowchart-skeleton: false   # 골격·전체 구조 flowchart-skeleton/ (기본 꺼짐 — 용량)
   section-size: 60
   # 흐름도에서 뺄 호출·메서드 (사용자 관리, 기본 없음 = 분석한 코드를 빠짐없이 그림). * 와일드카드
   #   호출 대상 "클래스.메서드"(단순명·FQN) 또는 호출 원문 "수신객체.메서드" 와 비교 — 맞는 메서드는 본문 상자도 생략

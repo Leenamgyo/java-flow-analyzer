@@ -73,7 +73,7 @@ public final class PhaseReportWriter {
                 rows.add(new String[]{o.id, "`" + o.className + "`", "`" + o.variable + "`",
                         String.valueOf(bs.stream().map(b -> b.field).distinct().count()),
                         String.valueOf(bs.stream().filter(Binding::conditional).count()),
-                        r.method(o.methodId).name, regionTitle(rg)});
+                        o.methodId == null ? "(필드)" : r.method(o.methodId).name, regionTitle(rg)});
             }
         }
         table(sb, new String[]{"Object", "Class", "변수", "할당 필드", "조건부 할당", "소유 메서드", "단계"}, rows);

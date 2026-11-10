@@ -184,7 +184,10 @@ public final class MappingReportWriter {
     }
 
     static String method(AnalysisResult r, String methodId) {
-        MethodInfo m = r.method(methodId);
+        MethodInfo m = methodId == null ? null : r.method(methodId);
+        if (m == null) {
+            return "(필드)"; // 소유 메서드 없는 객체 (this·필드)
+        }
         return "`" + Labels.methodName(r, m) + "` (" + m.id + ")";
     }
 

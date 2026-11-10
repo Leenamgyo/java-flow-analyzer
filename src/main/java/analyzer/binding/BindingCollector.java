@@ -202,6 +202,10 @@ public final class BindingCollector {
 
     /** this 객체: 분석된 호출 위치가 정확히 1개이고 수신 객체가 변수면 호출자 쪽 그 변수(같은 객체), 아니면 (클래스, this) */
     private ObjectInfo thisObject(TypeDeclaration<?> owner, MethodInfo m) {
+        return thisObject(owner, m, 0);
+    }
+
+    private ObjectInfo thisObject(TypeDeclaration<?> owner, MethodInfo m, int hops) {
         List<CallSiteInfo> callers = r.callSites.stream()
                 .filter(s -> m.id.equals(s.targetMethodId) || m.id.equals(s.implementationMethodId)).toList();
         if (callers.size() == 1) {
@@ -210,6 +214,13 @@ public final class BindingCollector {
             CallableDeclaration<?> callerDecl = declarations.get(s.callerMethodId);
             if (call instanceof MethodCallExpr mc && callerDecl != null && mc.getScope().orElse(null) instanceof NameExpr recv) {
                 return object(recv, owner, r.method(s.callerMethodId), callerDecl);
+            }
+            // 같은 객체 안에서 부른 경우(생성자에서 setup(request), this.setup(…)) — 부른 메서드의 this 를 따라간다
+            MethodInfo callerM = r.method(s.callerMethodId);
+            if (call instanceof MethodCallExpr mc && callerDecl != null && hops < 8 && callerM != null
+                    && callerM.classId.equals(m.classId) && !callerDecl.isStatic()
+                    && (mc.getScope().isEmpty() || mc.getScope().get() instanceof ThisExpr)) {
+                return thisObject(owner, callerM, hops + 1);
             }
             // 생성자 new ParamMgr(request): 만든 객체를 받는 변수 (ParamMgr pm = new … / pm = new …)
             if (call instanceof ObjectCreationExpr oc && callerDecl != null) {

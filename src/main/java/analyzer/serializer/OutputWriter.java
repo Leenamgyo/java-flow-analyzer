@@ -66,19 +66,31 @@ public final class OutputWriter {
                 }
             }
             Files.deleteIfExists(dir.resolve("flowchart.md"));
-            if (cfg.output.flowchartSections) {
-                // 긴 메서드 보기: 구간 분할 + 골격 (기존 출력과 별도)
+            // 메서드별 보기: 구간 분할(flowchart-sections, 기본 켜짐) · 골격(flowchart-skeleton, 기본 꺼짐) — 각각 켜고 끔
+            if (cfg.output.flowchartSections || cfg.output.flowchartSkeleton) {
                 FlowchartGenerator.Sectioned sec = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
                         .maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines).exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme)
+                        .skeleton(cfg.output.flowchartSkeleton)
                         .renderSectioned(r, cfg.output.direction, cfg.output.layout, cfg.output.sectionSize);
                 var entry = r.method(r.entryMethodId);
                 String title = r.classOf(entry).name + "." + entry.name + "()";
-                writeParts(dir, "flowchart-sections", sec.sections(), charts, written);
-                Files.writeString(dir.resolve("flowchart-sections.md"), FlowchartGenerator.combinedMarkdown(title + " — 구간 분할", "flowchart-sections", sec.sections()));
-                writeParts(dir, "flowchart-skeleton", sec.skeletons(), charts, written);
-                Files.writeString(dir.resolve("flowchart-skeleton.md"), FlowchartGenerator.combinedMarkdown(title + " — 골격", "flowchart-skeleton", sec.skeletons()));
-                written.add(dir.resolve("flowchart-sections.md"));
-                written.add(dir.resolve("flowchart-skeleton.md"));
+                if (cfg.output.flowchartSections) {
+                    writeParts(dir, "flowchart-sections", sec.sections(), charts, written);
+                    Files.writeString(dir.resolve("flowchart-sections.md"), FlowchartGenerator.combinedMarkdown(title + " — 구간 분할", "flowchart-sections", sec.sections()));
+                    written.add(dir.resolve("flowchart-sections.md"));
+                }
+                if (cfg.output.flowchartSkeleton) {
+                    writeParts(dir, "flowchart-skeleton", sec.skeletons(), charts, written);
+                    Files.writeString(dir.resolve("flowchart-skeleton.md"), FlowchartGenerator.combinedMarkdown(title + " — 골격", "flowchart-skeleton", sec.skeletons()));
+                    written.add(dir.resolve("flowchart-skeleton.md"));
+                }
+            }
+            // 끈 보기는 이전 실행 결과도 지운다 (용량)
+            if (!cfg.output.flowchartSections) {
+                removeParts(dir, "flowchart-sections");
+            }
+            if (!cfg.output.flowchartSkeleton) {
+                removeParts(dir, "flowchart-skeleton");
             }
         }
         if (cfg.phases.enabled) {
@@ -118,6 +130,24 @@ public final class OutputWriter {
     }
 
     /** 파트들을 dir/sub/ 에 (이전 실행의 .mmd 는 지운다) */
+    /** 끈 보기의 이전 결과: 폴더의 .mmd, 빈 폴더, 합본 .md */
+    private static void removeParts(Path dir, String sub) throws IOException {
+        Path d = dir.resolve(sub);
+        if (Files.isDirectory(d)) {
+            try (var old = Files.list(d)) {
+                for (Path f : old.filter(f -> f.toString().endsWith(".mmd")).toList()) {
+                    Files.delete(f);
+                }
+            }
+            try (var rest = Files.list(d)) {
+                if (rest.findAny().isEmpty()) {
+                    Files.delete(d);
+                }
+            }
+        }
+        Files.deleteIfExists(dir.resolve(sub + ".md"));
+    }
+
     private static void writeParts(Path dir, String sub, List<FlowchartGenerator.Part> parts, List<Path> charts, List<Path> written)
             throws IOException {
         Path d = dir.resolve(sub);

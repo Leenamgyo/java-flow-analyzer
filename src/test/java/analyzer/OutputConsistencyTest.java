@@ -43,6 +43,17 @@ class OutputConsistencyTest {
         cfg.output.mermaidCli = tmp.resolve("no-mmdc").toString(); // mmdc 없음 → SVG 생략 (테스트 환경과 무관하게)
         AnalysisResult r = Main.analyze(cfg);
         Path dir = Main.outputDir(cfg, "ScpAppListAction");
+        // 기본: 구간 분할만, 골격은 꺼짐 (용량)
+        new OutputWriter().write(r, cfg, dir);
+        assertTrue(Files.exists(dir.resolve("flowchart-sections.md")));
+        assertFalse(Files.exists(dir.resolve("flowchart-skeleton")) || Files.exists(dir.resolve("flowchart-skeleton.md")));
+        try (var fs = Files.list(dir.resolve("flowchart-sections"))) {
+            for (Path f : fs.toList()) {
+                assertFalse(Files.readString(f).contains("nav_skeleton"), f.toString()); // 골격이 없으면 ⌂ 골격 링크도 없음
+            }
+        }
+        // 골격 켬 → 둘 다
+        cfg.output.flowchartSkeleton = true;
         new OutputWriter().write(r, cfg, dir);
         // flowchart-svg: mmdc 가 없으면 만들지 않고 분석서에 생략 사유
         assertFalse(Files.exists(dir.resolve("flowchart-svg")));
@@ -57,6 +68,13 @@ class OutputConsistencyTest {
             }
             assertTrue(Files.readString(dir.resolve(sub + ".md")).contains("`" + sub + "/"), sub);
         }
+        // 구간 분할 끔 → 이전 결과도 지움
+        cfg.output.flowchartSections = false;
+        new OutputWriter().write(r, cfg, dir);
+        assertFalse(Files.exists(dir.resolve("flowchart-sections")) || Files.exists(dir.resolve("flowchart-sections.md")));
+        assertTrue(Files.exists(dir.resolve("flowchart-skeleton.md")));
+        cfg.output.flowchartSections = true;
+        new OutputWriter().write(r, cfg, dir);
 
         for (String f : List.of("analysis.yaml", "call-tree.txt", "flowchart.mmd", "mapping.md", "analysis.md")) {
             assertTrue(Files.exists(dir.resolve(f)), f);

@@ -164,6 +164,31 @@ public class EdgeAction {
     }
 
     // ---- 조건식 안 호출을 노드로 그리는 while (반복할 때 조건 호출부터 다시)
+    /** Action 안 클래스 변형: new 를 변수에 받지 않음 · 생성자 두 곳 · 생성자 안에서 자기 메서드 load(request) */
+    public String holderVariants(HttpServletRequest request) {
+        String a = describe(new Holder(request));
+        Holder h = new Holder(request);
+        return a + h.id;
+    }
+
+    String describe(Holder holder) {
+        return holder.id;
+    }
+
+    public static class Holder {
+        String id;
+        String name;
+
+        public Holder(HttpServletRequest request) {
+            load(request);
+        }
+
+        void load(HttpServletRequest request) {
+            id = request.getParameter("id");
+            this.name = request.getParameter("name");
+        }
+    }
+
     /** for-each 안: 첫 문장이 list.add(…) 이고 그 뒤 if / else if (사용자 보고: 흐름도가 이상해짐) */
     public List<String> loopAddThenIfElse(List<NoticeVO> resultList) {
         List<String> list = new ArrayList<>();

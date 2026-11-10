@@ -376,6 +376,14 @@ public final class FlowchartGenerator {
     /** 노드 하나의 최대 줄 수 (output.max-node-lines) — 넘으면 다음 노드로 이어서 */
     private int maxNodeLines = 30;
 
+    /** 골격(skeleton) 보기도 만들지 — false 면 구간 파일에 ⌂ 골격 링크도 없음 */
+    private boolean skeleton = true;
+
+    public FlowchartGenerator skeleton(boolean on) {
+        this.skeleton = on;
+        return this;
+    }
+
     public FlowchartGenerator maxNodeLines(int n) {
         this.maxNodeLines = n;
         return this;
@@ -505,15 +513,20 @@ public final class FlowchartGenerator {
                         part.link(e.from(), base.get(e.to()) + (sectionsOf.get(e.to()).size() > 1 ? "-s1" : "") + ".svg", "세부");
                     }
                 }
+                if (skeleton) {
                 part.node(part.root(), "nav_skeleton", List.of("⌂ 골격 · " + m.id + " " + Labels.methodName(r, m) + "()"
                         + (secs.size() > 1 ? " · 구간 " + no + "/" + secs.size() : "")), Shape.SUBROUTINE, "golink");
                 part.link("nav_skeleton", "../skeleton/" + base.get(m.id) + "-skeleton.svg", "골격");
+                }
                 String file = base.get(m.id) + (secs.size() > 1 ? "-s" + no : "") + ".mmd";
                 String title = m.id + " " + Labels.methodName(r, m) + "()" + (secs.size() > 1 ? " — 구간 " + no + "/" + secs.size() : "");
                 sections.add(new Part(file, title, part.theme(theme).render(direction, layout, classDefs)));
             }
         }
         List<Part> skeletons = new ArrayList<>();
+        if (!skeleton) {
+            return new Sectioned(sections, skeletons);
+        }
         skeletons.add(new Part("00-overview.mmd", "전체 구조 (메서드 호출 관계)",
                 overview(full, drawn, owner, base).theme(theme).render(direction, layout, classDefs)));
         for (MethodInfo m : drawn) {

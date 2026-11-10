@@ -201,6 +201,7 @@ include 된 JSP 는 그 자리에 펼치고, `c:set` 처럼 출력이 없는 태
 | 파일 | 내용 |
 |---|---|
 | `analysis.yaml` | 분석 결과 원본(Source of Truth). 나머지 파일은 모두 이 모델에서 생성 |
+| `flowchart-sections/` · `flowchart-skeleton/` | 메서드별 보기 — 구간 분할(`output.flowchart-sections`, 기본 true) · 골격(`output.flowchart-skeleton`, 기본 false, 용량 때문에 꺼 둠) |
 | `flowchart-*` 노드 | 연속된 코드는 노드 하나에 쌓되 `output.max-node-lines`(기본 30줄)를 넘으면 다음 노드로 이어서 나눔 |
 | `spec.md` | 간결한 명세: 1. Request Param 정의(파라미터·타입·필수·기본값·설명), 2. Response 정의(JSP 지정 시) |
 | `response.md` | JSP 지정 시: XML 구조, 값마다 출처 사슬·JSP 위치, Action → JSP attribute 표 |

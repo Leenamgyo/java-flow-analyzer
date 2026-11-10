@@ -92,4 +92,18 @@ class RequestSetupTest {
         AnalyzerConfig cfg = ConfigLoader.load(f);
         assertEquals(List.of("CountryUtil", "ODAction"), cfg.analysis.expandClasses);
     }
+
+    /** 셋업 객체를 호출자 변수로 잇지 못하는 경우(new 를 변수에 안 받음·생성자 두 곳·생성자 안 자기 메서드)도 출력까지 예외 없음 */
+    @Test
+    void holderWithoutCallerVariableWritesAllOutputs(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) throws Exception {
+        AnalyzerConfig c = Fixtures.config("EdgeAction", "holderVariants");
+        c.output.directory = tmp.toString();
+        c.output.mermaidCli = tmp.resolve("no-mmdc").toString();
+        c.output.flowchartSkeleton = true;
+        AnalysisResult r = Main.analyze(c);
+        new analyzer.serializer.OutputWriter().write(r, c, Main.outputDir(c, "EdgeAction"));
+        assertEquals(List.of("id", "name"), r.parameters.stream().map(p -> p.name).toList());
+        ObjectInfo holder = r.objects.stream().filter(o -> "EdgeAction.Holder".equals(o.className)).findFirst().orElseThrow();
+        assertEquals(List.of("id", "name"), r.bindingsOf(holder).stream().map(b -> b.field).toList());
+    }
 }
