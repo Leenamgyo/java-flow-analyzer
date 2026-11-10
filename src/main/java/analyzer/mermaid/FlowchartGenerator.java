@@ -324,9 +324,9 @@ public final class FlowchartGenerator {
             String cls = r.classOf(m).name;
             Subgraph parent = phases == null ? g.root() : layer(m);
             methodParents.put(m.id, parent);
-            Subgraph ms = g.subgraph(parent, "sg_" + m.id, cls + "." + m.name + "() «" + r.classOf(m).role.label() + "»");
+            Subgraph ms = g.subgraph(parent, "sg_" + m.id, Labels.methodName(r, m) + "() «" + r.classOf(m).role.label() + "»");
             methodGraphs.put(m.id, ms);
-            List<String> lines = new ArrayList<>(List.of(cls + "." + m.signature, m.visibility.text() + " · D" + m.depth));
+            List<String> lines = new ArrayList<>(List.of(Labels.methodSignature(r, m), m.visibility.text() + " · D" + m.depth));
             String req = Labels.methodRequestTag(r, m);
             if (req != null) {
                 lines.add(Labels.truncate(req, 120));
@@ -401,7 +401,7 @@ public final class FlowchartGenerator {
     private MermaidGraph overview(MermaidGraph full, List<MethodInfo> drawn, Map<String, String> owner, Map<String, String> base) {
         MermaidGraph ov = new MermaidGraph().maxLineLength(maxLineLength).showCallEdges(true); // 메서드 호출 관계는 선으로
         for (MethodInfo m : drawn) {
-            ov.node(ov.root(), m.id, List.of(m.id + " " + r.classOf(m).name + "." + m.name + "()",
+            ov.node(ov.root(), m.id, List.of(m.id + " " + Labels.methodName(r, m) + "()",
                     "«" + r.classOf(m).role.label() + "» · " + base.get(m.id) + "-skeleton"), Shape.STADIUM,
                     m.id.equals(r.entryMethodId) ? "entry" : "method");
             ov.link(m.id, base.get(m.id) + "-skeleton.svg", "골격");
@@ -465,7 +465,7 @@ public final class FlowchartGenerator {
         Map<String, String> base = new LinkedHashMap<>();
         int i = 1;
         for (MethodInfo m : drawn) {
-            base.put(m.id, String.format("%02d-%s-%s.%s", i++, m.id, r.classOf(m).name, m.name));
+            base.put(m.id, String.format("%02d-%s-%s", i++, m.id, Labels.methodName(r, m)));
         }
         // 노드가 든 구간 파일 이름 (확장자 없음) — 링크·안내 공용
         java.util.function.Function<String, String> sectionFile = id -> {
@@ -505,11 +505,11 @@ public final class FlowchartGenerator {
                         part.link(e.from(), base.get(e.to()) + (sectionsOf.get(e.to()).size() > 1 ? "-s1" : "") + ".svg", "세부");
                     }
                 }
-                part.node(part.root(), "nav_skeleton", List.of("⌂ 골격 · " + m.id + " " + r.classOf(m).name + "." + m.name + "()"
+                part.node(part.root(), "nav_skeleton", List.of("⌂ 골격 · " + m.id + " " + Labels.methodName(r, m) + "()"
                         + (secs.size() > 1 ? " · 구간 " + no + "/" + secs.size() : "")), Shape.SUBROUTINE, "golink");
                 part.link("nav_skeleton", "../skeleton/" + base.get(m.id) + "-skeleton.svg", "골격");
                 String file = base.get(m.id) + (secs.size() > 1 ? "-s" + no : "") + ".mmd";
-                String title = m.id + " " + r.classOf(m).name + "." + m.name + "()" + (secs.size() > 1 ? " — 구간 " + no + "/" + secs.size() : "");
+                String title = m.id + " " + Labels.methodName(r, m) + "()" + (secs.size() > 1 ? " — 구간 " + no + "/" + secs.size() : "");
                 sections.add(new Part(file, title, part.theme(theme).render(direction, layout, classDefs)));
             }
         }
@@ -545,7 +545,7 @@ public final class FlowchartGenerator {
             }
             sk.node(sk.root(), "nav_overview", List.of("⌂ 전체 구조 (메서드 호출 관계)"), Shape.SUBROUTINE, "golink");
             sk.link("nav_overview", "00-overview.svg", "전체 구조");
-            skeletons.add(new Part(base.get(m.id) + "-skeleton.mmd", m.id + " " + r.classOf(m).name + "." + m.name + "() — 골격",
+            skeletons.add(new Part(base.get(m.id) + "-skeleton.mmd", m.id + " " + Labels.methodName(r, m) + "() — 골격",
                     sk.theme(theme).render(direction, layout, classDefs)));
         }
         return new Sectioned(sections, skeletons);

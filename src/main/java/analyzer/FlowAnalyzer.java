@@ -392,7 +392,7 @@ public final class FlowAnalyzer {
         if (cfg.analysis.expandClasses.isEmpty()) {
             return false;
         }
-        List<String> names = new java.util.ArrayList<>(List.of(c.name));
+        List<String> names = new java.util.ArrayList<>(List.of(c.name, c.name.substring(c.name.lastIndexOf('.') + 1)));
         if (c.qualifiedName != null) {
             names.add(c.qualifiedName);
             String pkg = c.packageName == null || c.packageName.isEmpty() ? "" : c.packageName + ".";
@@ -444,10 +444,12 @@ public final class FlowAnalyzer {
         }
         ClassInfo c = new ClassInfo();
         c.key = key;
-        c.name = td.getNameAsString();
         c.qualifiedName = key;
         c.packageName = td.findCompilationUnit().flatMap(cu -> cu.getPackageDeclaration())
                 .map(p -> p.getNameAsString()).orElse("");
+        // 중첩 클래스는 바깥 클래스를 포함한 이름 (사용자: AppDetailAction.ParamMgr / AppDetailAction.ParamMgr.method)
+        c.name = !c.packageName.isEmpty() && key.startsWith(c.packageName + ".") ? key.substring(c.packageName.length() + 1)
+                : td.getNameAsString();
         c.origin = Origin.SOURCE;
         c.scope = "REFERENCED";
         if (td instanceof ClassOrInterfaceDeclaration ci) {

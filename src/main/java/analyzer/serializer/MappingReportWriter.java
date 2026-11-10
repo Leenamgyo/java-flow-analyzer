@@ -185,7 +185,7 @@ public final class MappingReportWriter {
 
     static String method(AnalysisResult r, String methodId) {
         MethodInfo m = r.method(methodId);
-        return "`" + r.classOf(m).name + "." + m.name + "` (" + m.id + ")";
+        return "`" + Labels.methodName(r, m) + "` (" + m.id + ")";
     }
 
     static String md(String s) {

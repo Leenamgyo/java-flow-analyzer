@@ -31,6 +31,25 @@ public final class Labels {
         return s; // 줄임(…) 없이 전체 — 사용자 요구. max 는 호출부 호환용으로만 남김
     }
 
+    /** 생성자 메서드 (키 #&lt;init&gt;(…)) */
+    public static boolean isConstructor(MethodInfo m) {
+        return m.key != null && m.key.contains("#<init>(");
+    }
+
+    /**
+     * 메서드 표시 이름: Class.method — 생성자는 Class (사용자: 중첩 클래스는 Action.ParamMgr / Action.ParamMgr.method).
+     * 클래스 이름은 중첩 클래스면 바깥 클래스를 포함한다 (ClassInfo.name).
+     */
+    public static String methodName(AnalysisResult r, MethodInfo m) {
+        return isConstructor(m) ? r.classOf(m).name : r.classOf(m).name + "." + m.name;
+    }
+
+    /** Class.method(타입…) — 생성자는 Class(타입…) */
+    public static String methodSignature(AnalysisResult r, MethodInfo m) {
+        return isConstructor(m) ? r.classOf(m).name + m.signature.substring(m.name.length())
+                : r.classOf(m).name + "." + m.signature;
+    }
+
     /** 호출 대상 표시: 같은 클래스면 signature, 다른 클래스면 Class.signature, 미해결이면 원문 */
     public static String callTarget(AnalysisResult r, CallSiteInfo s) {
         if (s.targetMethodId == null) {
@@ -38,10 +57,10 @@ public final class Labels {
         }
         MethodInfo t = r.method(s.targetMethodId);
         MethodInfo caller = r.method(s.callerMethodId);
-        if (t.classId.equals(caller.classId)) {
+        if (t.classId.equals(caller.classId) && !isConstructor(t)) {
             return t.signature;
         }
-        return r.classOf(t).name + "." + t.signature;
+        return methodSignature(r, t);
     }
 
     /** 구현 후보 연결 대상 표시: Class.signature (연결이 없으면 null) */
@@ -50,7 +69,7 @@ public final class Labels {
             return null;
         }
         MethodInfo impl = r.method(s.implementationMethodId);
-        return r.classOf(impl).name + "." + impl.signature + " [" + r.classOf(impl).role.label() + "]";
+        return methodSignature(r, impl) + " [" + r.classOf(impl).role.label() + "]";
     }
 
     /** 구현 탐색은 했지만 연결하지 않은 사유의 짧은 표시 (해당 없으면 null) */

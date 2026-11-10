@@ -39,6 +39,9 @@ public final class Excludes {
     private static List<String> methodNames(AnalysisResult r, MethodInfo m) {
         var c = r.classOf(m);
         List<String> out = new ArrayList<>(List.of(c.name + "." + m.name));
+        if (c.name.contains(".")) {
+            out.add(c.name.substring(c.name.lastIndexOf('.') + 1) + "." + m.name); // 중첩 클래스 단순명 (ParamMgr.setup)
+        }
         if (c.qualifiedName != null) {
             out.add(c.qualifiedName + "." + m.name);
         }

@@ -689,7 +689,7 @@ public final class PhaseAnalyzer {
             if (checkCall && !expanded(s) && st.fetchVariable == null) {
                 st.checks.add(new CheckItem(Labels.truncate(s.expression, 80),
                         "본문 미분석 (" + s.expansion.name().toLowerCase().replace('_', '-') + ")",
-                        prefix + r.classOf(t).name + "." + t.name + "()", s.callerMethodId, null, s.location));
+                        prefix + analyzer.serializer.Labels.methodName(r, t) + "()", s.callerMethodId, null, s.location));
             }
         }
         for (String m : st.reachedMethods) {
@@ -697,7 +697,7 @@ public final class PhaseAnalyzer {
             if (logicRoles.contains(r.classOf(mi).role) && st.phase != Phase.LOGIC) {
                 continue;
             }
-            guards(m, null, prefix + r.classOf(mi).name + "." + mi.name + "()", st.checks);
+            guards(m, null, prefix + analyzer.serializer.Labels.methodName(r, mi) + "()", st.checks);
         }
     }
 

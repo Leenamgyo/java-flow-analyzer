@@ -46,7 +46,7 @@ class RequestSetupTest {
         assertTrue(Fixtures.method(r, "CountryUtil", "byLang(String)").analyzed); // 같은 클래스 확장
 
         // 생성자의 자기 필드 대입 = 바인딩, 객체는 new 를 받는 변수 pm
-        ObjectInfo pm = r.objects.stream().filter(o -> "ParamMgr".equals(o.className)).findFirst().orElseThrow();
+        ObjectInfo pm = r.objects.stream().filter(o -> "AppDetailAction.ParamMgr".equals(o.className)).findFirst().orElseThrow();
         assertEquals("pm", pm.variable);
         List<Binding> bs = r.bindingsOf(pm);
         assertEquals(List.of("appId", "page", "mcc", "lang"), bs.stream().map(b -> b.field).toList());
@@ -56,9 +56,17 @@ class RequestSetupTest {
         assertTrue(r.requestSpec.get(0).bindingIds.contains(bs.get(0).id));
 
         // 메서드 setup(request) 쪽: 객체는 수신 변수 paging
-        ObjectInfo paging = r.objects.stream().filter(o -> "Paging".equals(o.className)).findFirst().orElseThrow();
+        ObjectInfo paging = r.objects.stream().filter(o -> "AppDetailAction.Paging".equals(o.className)).findFirst().orElseThrow();
         assertEquals("paging", paging.variable);
         assertEquals(List.of("startNum", "count"), r.bindingsOf(paging).stream().map(b -> b.field).toList());
+
+        // 표시: 중첩 클래스 = 바깥 클래스 포함, 생성자 = 클래스 이름 (Action.ParamMgr / Action.ParamMgr.method)
+        String tree = new analyzer.serializer.CallTreeWriter(true).render(r);
+        assertTrue(tree.contains("AppDetailAction.ParamMgr(HttpServletRequest) ["), tree);
+        assertTrue(tree.contains("✎ AppDetailAction.Paging (paging)"), tree);
+        String mmd = new analyzer.mermaid.FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("[\"AppDetailAction.ParamMgr() «Other»\"]"), mmd);
+        assertTrue(mmd.contains("[\"AppDetailAction.Paging.setup() «Other»\"]") || !mmd.contains("Paging.setup()"), mmd);
     }
 
     @Test

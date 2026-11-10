@@ -205,7 +205,7 @@ public final class AnalysisReportWriter {
 
     private static String usageKey(AnalysisResult r, CallSiteInfo s, MethodInfo target) {
         MethodInfo caller = r.method(s.callerMethodId);
-        return "`" + r.classOf(caller).name + "." + caller.name + "` → `" + r.classOf(target).name + "." + target.name + "()`";
+        return "`" + Labels.methodName(r, caller) + "` → `" + Labels.methodName(r, target) + "()`";
     }
 
     private static String usageRef(CallSiteInfo s) {
