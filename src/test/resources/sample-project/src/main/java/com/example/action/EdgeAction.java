@@ -164,6 +164,20 @@ public class EdgeAction {
     }
 
     // ---- 조건식 안 호출을 노드로 그리는 while (반복할 때 조건 호출부터 다시)
+    /** for-each 안: 첫 문장이 list.add(…) 이고 그 뒤 if / else if (사용자 보고: 흐름도가 이상해짐) */
+    public List<String> loopAddThenIfElse(List<NoticeVO> resultList) {
+        List<String> list = new ArrayList<>();
+        for (NoticeVO vo : resultList) {
+            list.add(vo.getTitle());
+            if (vo.getTitle() == null) {
+                touch();
+            } else if (vo.getTitle().isEmpty()) {
+                log.info("empty");
+            }
+        }
+        return list;
+    }
+
     public void whileWithCall() {
         while (check()) {
             touch();

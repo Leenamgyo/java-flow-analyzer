@@ -78,6 +78,25 @@ class FlowchartEdgeCaseTest {
         r.methods().stream().filter(m -> fns.contains(m.id)).forEach(m -> assertFalse(g.has("sg_" + m.id), m.name));
     }
 
+    /** for 안 list.add(…) 다음 if / else if — 본문 끝 여러 개는 합류 노드 ↻ 하나로 모아 조건으로 한 번만 (사용자 보고) */
+    @Test
+    void loopWithIfElseJoinsBeforeNextIteration() {
+        AnalysisResult r = Fixtures.analyze("EdgeAction", "loopAddThenIfElse");
+        MermaidGraph g = new FlowchartGenerator().build(r);
+        assertEquals(List.of(), g.validate());
+        assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        ControlBlock loop = block(r, BlockType.FOREACH);
+        String join = "NEXT_" + loop.id;
+        assertTrue(mmd.contains(join + "(\"↻\")"), mmd);
+        // 조건으로 들어오는 선 = 반복 앞에서 1개 + 합류 노드에서 1개
+        assertEquals(2, mmd.lines().filter(l -> l.strip().endsWith("--> " + loop.id) || l.strip().endsWith("| " + loop.id)).count(), mmd);
+        assertTrue(FlowchartRulesTest.loopEdge(mmd, join + " --> " + loop.id), mmd);
+        // 본문 끝 3곳(touch() · log.info · else if 의 No) → 합류 노드, 모두 반복 색
+        assertEquals(3, mmd.lines().filter(l -> l.strip().endsWith(" " + join)).count(), mmd);
+        assertFalse(mmd.contains("반복"), mmd);
+    }
+
     @Test
     void loopsReenterThroughConditionCalls() {
         // while (check()) { touch(); } — 반복할 때 check() 를 다시 부른다 (기존: 조건 노드로 바로 돌아가 check() 를 건너뜀)
@@ -87,16 +106,16 @@ class FlowchartEdgeCaseTest {
         CallSiteInfo check = call(r, "check()");
         CallSiteInfo touch = call(r, "touch()");
         assertTrue(mmd.contains(check.id + " --> " + w.id), mmd);
-        assertTrue(mmd.contains(w.id + " -->|\"반복\"| " + touch.id), mmd);
-        assertTrue(mmd.contains(touch.id + " -->|\"↻ 다음 반복\"| " + check.id), mmd);
+        assertTrue(FlowchartRulesTest.loopEdge(mmd, w.id + " --> " + touch.id), mmd);
+        assertTrue(FlowchartRulesTest.loopEdge(mmd, touch.id + " -->|\"↻\"| " + check.id), mmd);
         // do {} while (check()) — 빈 본문: loop 는 check() 로, check() 를 건너뛰는 간선 없음
         AnalysisResult e = Fixtures.analyze("EdgeAction", "emptyLoops");
         String m2 = new FlowchartGenerator().render(e, "TD");
         ControlBlock d = block(e, BlockType.DO_WHILE);
         CallSiteInfo cond = e.callSites.stream().filter(c -> d.id.equals(c.controlBlockId)).findFirst().orElseThrow();
-        assertTrue(m2.contains(d.id + " -->|\"↻ 다시\"| " + cond.id), m2);
+        assertTrue(FlowchartRulesTest.loopEdge(m2, d.id + " -->|\"↻\"| " + cond.id), m2);
         ControlBlock wh = block(e, BlockType.WHILE);
-        assertFalse(m2.contains(wh.id + " -->|\"반복 끝\"| " + d.id), m2);
+        assertFalse(m2.contains(wh.id + " --> " + d.id + "\n"), m2);
     }
 
     @Test

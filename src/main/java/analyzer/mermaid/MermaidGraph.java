@@ -117,6 +117,27 @@ public final class MermaidGraph {
         return null;
     }
 
+    /** 간선 라벨 앞에 붙이면 반복 안 간선 — 렌더링에서 떼고 반복 색(linkStyle)으로 칠한다 (라벨에 남아 복사·추출에도 유지) */
+    public static final String LOOP_MARK = "\u0001loop\u0001";
+    static final String LOOP_EDGE = "stroke:#2563eb,stroke-width:2px,color:#2563eb";
+    static final String LOOP_EDGE_DARK = "stroke:#60a5fa,stroke-width:2px,color:#60a5fa";
+
+    /**
+     * 세부 메서드로 가는 호출 간선(==>)을 그릴지 (사용자: 세부 로직이 있으면 밑으로 선을 긋지 말고 상자 색만 다르게).
+     * false(기본) = 간선은 모델·검증에만 두고 렌더링에서 빼며, 그 호출 노드를 "detail" 색 상자로. 00-overview 만 true.
+     */
+    private boolean callEdges;
+    /** 세부 호출 노드 (떼어 낸 그래프에서 밖으로 나가는 ==> 를 뺀 경우도 기억) */
+    private final Set<String> detail = new java.util.LinkedHashSet<>();
+    /** detail 색으로 바꿔 칠하는 코드 상자 class (모양이 다른 return·throw·분기는 그대로) */
+    private static final Set<String> BOX_CLASSES = Set.of("codeline", "external", "depth", "unresolved", "cycle", "req",
+            "bind", "var", "state", "log");
+
+    public MermaidGraph showCallEdges(boolean show) {
+        this.callEdges = show;
+        return this;
+    }
+
     public record Edge(String from, String to, String label, EdgeStyle style) {
     }
 
@@ -276,18 +297,37 @@ public final class MermaidGraph {
         for (Object o : root.items) {
             renderItem(sb, o, "    ");
         }
+        List<String> loopEdges = new ArrayList<>();
+        Set<String> detailNodes = new java.util.HashSet<>(detail);
+        int index = 0;
         for (Edge e : edges) {
+            if (e.style() == EdgeStyle.CALL && !callEdges) {
+                detailNodes.add(e.from());
+                continue;
+            }
+            int i = index++;
+            String label = e.label();
+            if (label != null && label.startsWith(LOOP_MARK)) {
+                loopEdges.add(String.valueOf(i));
+                label = label.substring(LOOP_MARK.length());
+            }
             sb.append("    ").append(e.from()).append(' ').append(e.style().arrow);
-            if (e.label() != null && !e.label().isBlank()) {
-                sb.append("|\"").append(wrapped(e.label())).append("\"|");
+            if (label != null && !label.isBlank()) {
+                sb.append("|\"").append(wrapped(label)).append("\"|");
             }
             sb.append(' ').append(e.to()).append('\n');
+        }
+        if (!loopEdges.isEmpty()) {
+            sb.append("    linkStyle ").append(String.join(",", loopEdges)).append(' ')
+                    .append("dark".equals(theme) ? LOOP_EDGE_DARK : LOOP_EDGE).append('\n');
         }
         classDefs.forEach((k, v) -> sb.append("    classDef ").append(k).append(' ').append(v).append('\n'));
         Map<String, List<String>> byClass = new LinkedHashMap<>();
         ids.forEach((k, v) -> {
-            if (v instanceof Node n && n.cssClass() != null) {
-                byClass.computeIfAbsent(n.cssClass(), x -> new ArrayList<>()).add(k);
+            if (v instanceof Node n && n.cssClass() != null && n.id().equals(k)) {
+                String css = detailNodes.contains(k) && BOX_CLASSES.contains(n.cssClass()) && classDefs.containsKey("detail")
+                        ? "detail" : n.cssClass();
+                byClass.computeIfAbsent(css, x -> new ArrayList<>()).add(k);
             }
         });
         byClass.forEach((css, list) -> sb.append("    class ").append(String.join(",", list)).append(' ').append(css).append('\n'));
@@ -537,6 +577,8 @@ public final class MermaidGraph {
         MermaidGraph out = new MermaidGraph();
         out.maxLineLength = this.maxLineLength;
         out.comments.addAll(comments);
+        out.detail.addAll(detail);
+        out.callEdges = callEdges;
         Subgraph sg = (Subgraph) ids.get(subgraphId);
         out.root.items.add(sg);
         Set<String> inside = idsUnder(subgraphId);
@@ -549,6 +591,8 @@ public final class MermaidGraph {
             }
             if (inside.contains(e.to())) {
                 out.edges.add(e);
+            } else if (e.style() == EdgeStyle.CALL && !callEdges) {
+                out.detail.add(e.from()); // 세부 호출: 선·안내 노드 없이 상자 색만
             } else {
                 String stub = "go_" + e.to();
                 if (!out.has(stub)) {
@@ -590,12 +634,16 @@ public final class MermaidGraph {
         MermaidGraph out = new MermaidGraph();
         out.maxLineLength = this.maxLineLength;
         out.comments.addAll(comments);
+        out.detail.addAll(detail);
+        out.callEdges = callEdges;
         copyInto(root, out.root, keep, out);
         for (Edge e : edges) {
             boolean from = out.ids.containsKey(e.from());
             boolean to = out.ids.containsKey(e.to());
             if (from && to) {
                 out.edges.add(e);
+            } else if (from && e.style() == EdgeStyle.CALL && !callEdges) {
+                out.detail.add(e.from());
             } else if (from) {
                 String stub = "go_" + e.to();
                 if (!out.has(stub)) {
@@ -709,6 +757,8 @@ public final class MermaidGraph {
         MermaidGraph out = new MermaidGraph();
         out.maxLineLength = this.maxLineLength;
         out.comments.addAll(comments);
+        out.detail.addAll(detail);
+        out.callEdges = callEdges;
         collapseInto(root, out.root, chains, repOf, label, css, out);
         Set<String> seenEdges = new java.util.HashSet<>();
         for (Edge e : edges) {

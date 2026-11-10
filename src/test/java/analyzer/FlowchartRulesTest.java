@@ -100,7 +100,8 @@ class FlowchartRulesTest {
         ControlBlock w = block(r, analyzer.model.BlockType.WHILE);
         ControlBlock d = block(r, analyzer.model.BlockType.DO_WHILE);
         for (ControlBlock b : List.of(w, d)) {
-            assertTrue(mmd.contains("subgraph sg_" + b.id + "[\"↻ 반복 ("), mmd);
+            assertTrue(mmd.contains("subgraph sg_" + b.id + "[\"↻ "), mmd);
+            assertFalse(mmd.contains("반복"), mmd); // "반복" 글자 없음 — 색으로 구분
             assertTrue(mmd.contains("    " + b.id + "{{\"") || mmd.contains(b.id + "{{\""), mmd); // 조건 노드 = 육각형 (if 는 마름모)
             assertTrue(g.idsUnder("sg_" + b.id).contains(b.id));
         }
@@ -108,14 +109,13 @@ class FlowchartRulesTest {
         String inDo = g.nodeOf(r.callSites.stream().filter(c -> d.id.equals(c.controlBlockId)).findFirst().orElseThrow().id);
         assertTrue(g.idsUnder("sg_" + w.id).contains(inWhile));
         // while: 조건 → loop → 본문 → next → 조건, 조건 → done
-        assertTrue(mmd.contains(w.id + " -->|\"반복\"| " + inWhile), mmd);
+        assertTrue(loopEdge(mmd, w.id + " --> " + inWhile), mmd);
         String whileLast = g.nodeOf(r.callSites.stream().filter(c -> w.id.equals(c.controlBlockId)).reduce((a, b) -> b).orElseThrow().id);
-        assertTrue(mmd.contains(whileLast + " -->|\"↻ 다음 반복\"| " + w.id), mmd);
-        assertTrue(mmd.contains(w.id + " -->|\"반복 끝\"| "), mmd);
-        // do-while: 본문이 먼저 → 조건 → loop 이면 본문으로
-        assertTrue(mmd.contains(w.id + " -->|\"반복 끝\"| " + inDo), mmd);
+        assertTrue(loopEdge(mmd, whileLast + " -->|\"↻\"| " + w.id), mmd);
+        // 빠져나가는 선 = 일반 선 (라벨·색 없음) / do-while: 본문이 먼저 → 조건 → loop 이면 본문으로
+        assertTrue(mmd.contains("    " + w.id + " --> " + inDo + "\n") && !loopEdge(mmd, w.id + " --> " + inDo), mmd);
         assertTrue(mmd.contains(inDo + " --> " + d.id), mmd);
-        assertTrue(mmd.contains(d.id + " -->|\"↻ 다시\"| " + inDo), mmd);
+        assertTrue(loopEdge(mmd, d.id + " -->|\"↻\"| " + inDo), mmd);
     }
 
     @Test
@@ -190,5 +190,13 @@ class FlowchartRulesTest {
         // 설정 키 output.color-theme, 잘못된 값은 오류
         assertEquals("light", new AnalyzerConfig().output.colorTheme);
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> new FlowchartGenerator().theme("blue"));
+    }
+
+    /** 렌더링된 간선 줄(edge)이 있고 반복 색(linkStyle 목록)에 들어 있는지 — 간선 번호 = 간선 줄 순서 */
+    static boolean loopEdge(String mmd, String edge) {
+        List<String> edges = mmd.lines().filter(l -> l.matches("\\s+\\S+ (-->|==>|-\\.->).*")).map(String::strip).toList();
+        int idx = edges.indexOf(edge);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("linkStyle ([\\d,]+) stroke").matcher(mmd);
+        return idx >= 0 && m.find() && java.util.Arrays.asList(m.group(1).split(",")).contains(String.valueOf(idx));
     }
 }

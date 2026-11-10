@@ -76,6 +76,9 @@ public final class FlowchartGenerator {
         CLASS_DEFS.put("fin", "fill:#f1f5f9,stroke:#475569,stroke-dasharray:3 3");
         CLASS_DEFS.put("state", BOX);
         CLASS_DEFS.put("log", BOX);
+        CLASS_DEFS.put("loopnext", "fill:#eff6ff,stroke:#2563eb,color:#2563eb");
+        // 세부 로직이 있는 호출 (본문을 그린 메서드로 가는 호출) — 선(==>) 대신 상자 색 (사용자 요구)
+        CLASS_DEFS.put("detail", "fill:#fef3c7,stroke:#b45309,stroke-width:2px");
         PHASE_CLASS_DEFS.putAll(CLASS_DEFS);
         PHASE_CLASS_DEFS.put("check", "fill:#fefce8,stroke:#a16207");
         PHASE_CLASS_DEFS.put("post", "fill:#f5f3ff,stroke:#6d28d9");
@@ -97,6 +100,8 @@ public final class FlowchartGenerator {
         DARK_CLASS_DEFS.put("fin", "fill:#1e293b,stroke:#94a3b8,color:#e2e8f0,stroke-dasharray:3 3");
         DARK_CLASS_DEFS.put("state", DARK_BOX);
         DARK_CLASS_DEFS.put("log", DARK_BOX);
+        DARK_CLASS_DEFS.put("loopnext", "fill:#172554,stroke:#60a5fa,color:#bfdbfe");
+        DARK_CLASS_DEFS.put("detail", "fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7");
         DARK_PHASE_CLASS_DEFS.putAll(DARK_CLASS_DEFS);
         DARK_PHASE_CLASS_DEFS.put("check", "fill:#422006,stroke:#eab308,color:#fef9c3");
         DARK_PHASE_CLASS_DEFS.put("post", "fill:#2e1065,stroke:#a78bfa,color:#ede9fe");
@@ -200,11 +205,15 @@ public final class FlowchartGenerator {
     private final Set<String> inLeaf = new java.util.HashSet<>();
 
     /** 반복문 표시 (if 와 구분 — 조건 노드 육각형과 함께) */
-    static final String LOOP_TITLE = "↻ 반복";
-    static final String LOOP_ENTER = "반복";
-    static final String LOOP_NEXT = "↻ 다음 반복";
-    static final String LOOP_AGAIN = "↻ 다시";
-    static final String LOOP_DONE = "반복 끝";
+    /**
+     * 반복 표시 — "반복" 글자 없이 (사용자: 반복 글자가 어색할 때가 있어 빼고 색으로 구분). 반복 안 간선(본문으로 들어가는 선·
+     * 되돌아가는 선 ↻)은 MermaidGraph.LOOP_MARK 로 표시해 반복 색(linkStyle)으로, 빠져나가는 선은 일반 선.
+     */
+    static final String LOOP_TITLE = "↻";
+    static final String LOOP_ENTER = MermaidGraph.LOOP_MARK;
+    static final String LOOP_NEXT = MermaidGraph.LOOP_MARK + "↻";
+    static final String LOOP_AGAIN = MermaidGraph.LOOP_MARK + "↻";
+    static final String LOOP_DONE = null;
 
     /** 세부 박스(그리는 메서드)로 이어지는 호출 — ==> 간선이 필요해 노드로 남긴다 */
     private boolean leadsToDetail(CallSiteInfo c) {
@@ -390,7 +399,7 @@ public final class FlowchartGenerator {
 
     /** 00-overview: 메서드 노드 + 메서드 간 호출(==>) 집계. 노드를 누르면 그 메서드 골격 SVG 로 */
     private MermaidGraph overview(MermaidGraph full, List<MethodInfo> drawn, Map<String, String> owner, Map<String, String> base) {
-        MermaidGraph ov = new MermaidGraph().maxLineLength(maxLineLength);
+        MermaidGraph ov = new MermaidGraph().maxLineLength(maxLineLength).showCallEdges(true); // 메서드 호출 관계는 선으로
         for (MethodInfo m : drawn) {
             ov.node(ov.root(), m.id, List.of(m.id + " " + r.classOf(m).name + "." + m.name + "()",
                     "«" + r.classOf(m).role.label() + "» · " + base.get(m.id) + "-skeleton"), Shape.STADIUM,
@@ -490,6 +499,12 @@ public final class FlowchartGenerator {
                         part.link(id, f + ".svg", f);
                     }
                 }
+                // 세부 호출 노드 → 그 메서드 흐름도 (선 대신 클릭 이동)
+                for (var e : full.edges()) {
+                    if (e.style() == EdgeStyle.CALL && part.has(e.from()) && part.nodeById(e.from()) != null && base.containsKey(e.to())) {
+                        part.link(e.from(), base.get(e.to()) + (sectionsOf.get(e.to()).size() > 1 ? "-s1" : "") + ".svg", "세부");
+                    }
+                }
                 part.node(part.root(), "nav_skeleton", List.of("⌂ 골격 · " + m.id + " " + r.classOf(m).name + "." + m.name + "()"
                         + (secs.size() > 1 ? " · 구간 " + no + "/" + secs.size() : "")), Shape.SUBROUTINE, "golink");
                 part.link("nav_skeleton", "../skeleton/" + base.get(m.id) + "-skeleton.svg", "골격");
@@ -504,7 +519,7 @@ public final class FlowchartGenerator {
         for (MethodInfo m : drawn) {
             MermaidGraph one = full.extract("sg_" + m.id, to -> List.of("▶ " + full.labelOf(to), where.apply(to)));
             Set<String> calls = new java.util.HashSet<>();
-            one.edges().stream().filter(e -> e.style() == EdgeStyle.CALL).forEach(e -> calls.add(e.from()));
+            full.edges().stream().filter(e -> e.style() == EdgeStyle.CALL).forEach(e -> calls.add(e.from()));
             int n = sectionsOf.get(m.id).size();
             Set<String> folded = new java.util.HashSet<>();
             MermaidGraph sk = one.collapse(
@@ -521,6 +536,11 @@ public final class FlowchartGenerator {
                     sk.link(id, "../sections/" + sectionFile.apply(id) + ".svg", "상세");
                 } else if (id.startsWith("go_") && owner.get(id.substring(3)) != null) {
                     sk.link(id, base.get(owner.get(id.substring(3))) + "-skeleton.svg", "골격");
+                }
+            }
+            for (var e : full.edges()) {
+                if (e.style() == EdgeStyle.CALL && sk.nodeById(e.from()) != null && base.containsKey(e.to()) && !folded.contains(e.from())) {
+                    sk.link(e.from(), base.get(e.to()) + "-skeleton.svg", "세부");
                 }
             }
             sk.node(sk.root(), "nav_overview", List.of("⌂ 전체 구조 (메서드 호출 관계)"), Shape.SUBROUTINE, "golink");
@@ -1599,12 +1619,12 @@ public final class FlowchartGenerator {
                 // 반복문 = 반복 영역(subgraph) 하나: 조건 노드 + 본문, 본문 끝에서 조건으로 되돌아간다.
                 // if 와 구분: 조건 노드는 육각형(순서도의 반복 기호, if/switch 는 마름모), 되돌아가는 간선 "↻ 다음 반복",
                 // 빠져나가는 간선 "반복 끝", 영역 제목 "↻ 반복 (for)" (사용자: 화살표만으로는 if 와 차이가 없음)
-                Subgraph ls = g.subgraph(sg, "sg_" + b.id, LOOP_TITLE + " (" + switch (b.type) {
+                Subgraph ls = g.subgraph(sg, "sg_" + b.id, LOOP_TITLE + " " + switch (b.type) {
                     case FOR -> "for";
                     case FOREACH -> "for-each";
                     case WHILE -> "while";
                     default -> "do-while";
-                } + ")");
+                });
                 if (b.type == BlockType.DO_WHILE) {
                     // do-while: 본문을 먼저 지나고 조건 → loop 이면 본문 첫 노드로, done 이면 밖으로
                     Set<String> before = new java.util.LinkedHashSet<>(g.nodeIds());
@@ -1618,8 +1638,19 @@ public final class FlowchartGenerator {
                 decision(ls, b, in);
                 List<End> back = emit(ls, m, b, List.of(new End(b.id, LOOP_ENTER, EdgeStyle.FLOW)));
                 String reentry = loopReentry(b);
-                for (End e : back) {
-                    g.edge(e.node(), reentry, e.label() == null ? LOOP_NEXT : e.label(), e.style());
+                if (back.size() > 1) {
+                    // 본문 끝이 여럿(if / else if …)이면 반복 영역 안 합류 노드 ↻ 하나로 모아 조건으로 한 번만 되돌아간다
+                    // (사용자: for 안 if/else if 에서 되돌아가는 선이 여러 개라 이상해 보임)
+                    String join = "NEXT_" + b.id;
+                    g.node(ls, join, List.of("↻"), Shape.ROUND, "loopnext");
+                    for (End e : back) {
+                        g.edge(e.node(), join, e.label() == null ? LOOP_ENTER : MermaidGraph.LOOP_MARK + e.label(), e.style());
+                    }
+                    g.edge(join, reentry, LOOP_ENTER, EdgeStyle.FLOW);
+                } else {
+                    for (End e : back) {
+                        g.edge(e.node(), reentry, e.label() == null ? LOOP_NEXT : MermaidGraph.LOOP_MARK + e.label(), e.style());
+                    }
                 }
                 return List.of(new End(b.id, LOOP_DONE, EdgeStyle.FLOW));
             }

@@ -63,7 +63,7 @@ class FlowchartSectionsTest {
         assertEquals("00-overview.mmd", sec.skeletons().get(0).file());
         String sk = sec.skeletons().get(1).mermaid();
         assertTrue(sec.skeletons().get(1).file().endsWith("-skeleton.mmd"));
-        // 분기·세부 호출(==>) 은 남는다
+        // 분기·세부 호출 노드는 남는다 (세부 호출은 선 없이 detail 색 + 클릭하면 그 메서드 골격)
         for (String id : full.idsUnder("sg_" + r.entryMethodId)) {
             MermaidGraph.Node n = full.nodeById(id);
             if (n != null && n.shape() == MermaidGraph.Shape.DIAMOND) {
@@ -72,7 +72,11 @@ class FlowchartSectionsTest {
         }
         long calls = full.edges().stream().filter(e -> e.style() == MermaidGraph.EdgeStyle.CALL
                 && full.idsUnder("sg_" + r.entryMethodId).contains(e.from())).count();
-        assertEquals(calls, sk.lines().filter(l -> l.contains(" ==> ")).count());
+        assertEquals(0, sk.lines().filter(l -> l.contains(" ==> ")).count());
+        long callNodes = full.edges().stream().filter(e -> e.style() == MermaidGraph.EdgeStyle.CALL
+                && full.idsUnder("sg_" + r.entryMethodId).contains(e.from())).map(MermaidGraph.Edge::from).distinct().count();
+        assertEquals(callNodes, sk.lines().filter(l -> l.startsWith("    click ") && l.contains("-skeleton.svg\" \"세부\"")).count(), sk);
+        assertTrue(sk.contains(" detail\n"), sk);
         // 코드 사슬은 노드 하나로 합치되 코드 줄은 생략하지 않는다 ("⋯ 코드 n줄" 없음)
         assertFalse(sk.contains("⋯ 코드 "), sk);
         assertTrue(defs(sk).size() < full.idsUnder("sg_" + r.entryMethodId).size());

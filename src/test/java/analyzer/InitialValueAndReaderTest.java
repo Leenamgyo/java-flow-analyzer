@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -129,7 +130,9 @@ class InitialValueAndReaderTest {
         assertEquals(1, mmd.split(java.util.regex.Pattern.quote(stmt), -1).length - 1, mmd);
         var inner = r.callSites.stream().filter(c -> c.expression.equals("VasUtil.getExceptionScVersion(appId)")).findFirst().orElseThrow();
         assertTrue(mmd.contains(inner.id + "[\"#35;" + inner.order + " VasUtil.getExceptionScVersion(appId)\"]"), mmd);
-        assertTrue(mmd.contains(inner.id + " ==> "), mmd); // 세부 상자로는 그대로 이어짐
+        // 세부 상자로 가는 호출: 선(==>) 대신 detail 색 상자
+        assertFalse(mmd.contains(" ==> "), mmd);
+        assertTrue(mmd.matches("(?s).*\\n    class [^\\n]*\\b" + inner.id + "\\b[^\\n]* detail\\n.*"), mmd);
     }
 
     @Test
