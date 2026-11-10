@@ -1074,6 +1074,11 @@ public final class FlowchartGenerator {
         /** 일반 호출 블록의 호출들 */
         final List<CallSiteInfo> codeCalls = new ArrayList<>();
         final Set<String> seenBindings = new java.util.HashSet<>();
+        /**
+         * 이 노드에서 이미 본문을 펼친 바인딩 함수 → 처음 펼친 호출 표시(#n). 같은 함수를 다시 부르면 본문을 또 펼치지 않고
+         * "위 #n 와 같은 본문" 한 줄 (사용자 보고: 함수가 내재된 경우 노드 안에 같은 선언이 여러 번 생김 — outer() 두 번 호출 등)
+         */
+        final Map<String, String> expandedFns = new HashMap<>();
 
         Pending(Subgraph sg, MethodInfo m, String container) {
             this.sg = sg;
@@ -1147,7 +1152,7 @@ public final class FlowchartGenerator {
 
         List<End> function(CallSiteInfo s, List<End> cur) {
             cur = start("bind", cur, s.id);
-            functionLines(s, "", true, new java.util.HashSet<>(), lines);
+            functionLines(s, "", true, new java.util.HashSet<>(), expandedFns, lines);
             members.add(s.id);
             return cur;
         }
@@ -1229,6 +1234,7 @@ public final class FlowchartGenerator {
             if (id == null || lines.isEmpty()) {
                 lines.clear();
                 members.clear();
+                expandedFns.clear();
                 return cur;
             }
             // 호출 하나뿐이면 예전 호출 노드 그대로
@@ -1236,6 +1242,7 @@ public final class FlowchartGenerator {
                     || assignedBy.getOrDefault(cs.get(0).id, List.of()).stream().anyMatch(v -> v.id.equals(x)))) {
                 lines.clear();
                 members.clear();
+                expandedFns.clear();
                 callNode(sg, cs.get(0));
                 return link(cur, id);
             }
@@ -1270,6 +1277,7 @@ public final class FlowchartGenerator {
             }
             lines.clear();
             members.clear();
+            expandedFns.clear();
             return cur;
         }
     }
@@ -1278,7 +1286,8 @@ public final class FlowchartGenerator {
      * 바인딩 함수 호출 → 바인딩 블록 안의 줄들 (글자색 fn). 함수 본문(바인딩·요청 읽기·안쪽 바인딩 함수·return)을
      * 소스 순서대로 │ 들여쓰기로 중첩한다.
      */
-    private void functionLines(CallSiteInfo s, String indent, boolean numbered, Set<String> visiting, List<Line> out) {
+    private void functionLines(CallSiteInfo s, String indent, boolean numbered, Set<String> visiting,
+                               Map<String, String> expanded, List<Line> out) {
         String code = numbered ? callCode(s) : callCode(s).replaceFirst("^#\\d+ ", "");
         out.add(new Line(indent + "▸ " + code, "fn", null));
         String fid = s.expansionTargetId();
@@ -1287,9 +1296,27 @@ public final class FlowchartGenerator {
             out.add(new Line(in + "↺ cycle", null, null));
             return;
         }
+        String first = expanded.get(fid);
+        if (first != null) { // 같은 노드에서 이미 펼친 함수 — 본문은 위에 한 번만
+            out.add(new Line(in + "(" + first + " 와 같은 본문)", null, null));
+            visiting.remove(fid);
+            return;
+        }
+        expanded.put(fid, numbered ? "위 #" + s.order : "위 " + s.methodName + "()");
         List<Object> items = new ArrayList<>();
-        r.bindings.stream().filter(b -> b.methodId.equals(fid)).forEach(items::add);
+        Set<String> assignCalls = new java.util.HashSet<>(); // 바인딩 줄이 이미 보이는 할당 호출(setter·put …)
+        r.bindings.stream().filter(b -> b.methodId.equals(fid)).forEach(b -> {
+            items.add(b);
+            if (b.callSiteId != null) {
+                assignCalls.add(b.callSiteId);
+            }
+        });
         for (CallSiteInfo c : r.callSitesOf(fid)) {
+            // 깊게 분석한 setter 호출은 바인딩 줄(keyword = …)로 이미 보인다 — ▸ vo.setKeyword(…) 로 또 펼치지 않음 (최상위 흐름과 같은 규칙,
+            // 사용자 보고: 함수가 내재된 경우 노드 안에 같은 선언이 여러 번)
+            if (assignCalls.contains(c.id)) {
+                continue;
+            }
             if (fnCall(r, bindingFns, c) || readCall(r, c) && !FlowView.hidden(r, c)) {
                 items.add(c);
             }
@@ -1300,7 +1327,7 @@ public final class FlowchartGenerator {
             if (o instanceof Binding b) {
                 out.add(new Line(in + Labels.bindingLine(r, b, false), null, null));
             } else if (o instanceof CallSiteInfo c && fnCall(r, bindingFns, c)) {
-                functionLines(c, in, false, visiting, out);
+                functionLines(c, in, false, visiting, expanded, out);
             } else if (o instanceof CallSiteInfo c) {
                 r.parametersAt(c.id).forEach(p -> out.add(new Line(in + Labels.requestLine(r, c, p).replaceFirst("^#\\d+ ", ""), "req", null)));
             } else if (o instanceof ControlBlock b) {

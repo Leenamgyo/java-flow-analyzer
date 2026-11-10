@@ -53,7 +53,9 @@ class FlowchartSweepTest {
             new String[]{"EdgeAction", "bindingChain"}, new String[]{"EdgeAction", "stateTargets"},
             new String[]{"EdgeAction", "logVariants"}, new String[]{"EdgeAction", "tryInLoop"},
             new String[]{"EdgeAction", "multiReadStatement"}, new String[]{"EdgeAction", "emptyLoops"},
-            new String[]{"EdgeAction", "whileWithCall"});
+            new String[]{"EdgeAction", "whileWithCall"}, new String[]{"EdgeAction", "bindingChain"},
+            new String[]{"EdgeAction", "holderVariants"}, new String[]{"EdgeAction", "inlineRepeats"},
+            new String[]{"EdgeAction", "inlineNested"});
 
     static final Map<String, Consumer<AnalyzerConfig>> VARIANTS = Map.of(
             "default", c -> {
@@ -87,6 +89,7 @@ class FlowchartSweepTest {
         MermaidGraph g = new FlowchartGenerator().build(r);
         assertEquals(List.of(), g.validate());
         assertEquals(List.of(), FlowchartGenerator.checkMapping(r, g));
+        assertEquals(List.of(), repeatedExpansions(g));
         FlowchartGenerator.Sectioned sec = new FlowchartGenerator().renderSectioned(r, "TD", "dagre", 20);
         List<FlowchartGenerator.Part> parts = new java.util.ArrayList<>(sec.skeletons());
         parts.addAll(sec.sections());
@@ -131,6 +134,40 @@ class FlowchartSweepTest {
     // ------------------------------------------------------------------ 텍스트 오라클
 
     /** 렌더링된 흐름도 텍스트를 사람이 보는 글자로 되돌리고 공백을 모두 뺀다 (줄바꿈 위치와 무관하게 비교) */
+    /**
+     * 노드 하나 안에서 같은 바인딩 함수 본문을 두 번 펼치지 않는다 (사용자 보고: 함수가 내재된 경우 같은 선언이 여러 번) —
+     * 같은 ▸ 호출 줄이 다시 나오면 바로 다음 줄은 "같은 본문"/"cycle" 이어야 하고, 바인딩 줄로 보이는 setter 호출을
+     * ▸ 로 또 펼치지 않는다.
+     */
+    static List<String> repeatedExpansions(MermaidGraph g) {
+        List<String> out = new ArrayList<>();
+        for (String id : g.nodeIds()) {
+            List<String> lines = g.nodeById(id).lines().stream().map(MermaidGraph::plain).toList();
+            Set<String> seen = new java.util.HashSet<>();
+            for (int i = 0; i < lines.size(); i++) {
+                String l = lines.get(i).replaceFirst("▸ #\\d+ ", "▸ ");
+                if (!l.trim().startsWith("│") && !l.startsWith("▸")) {
+                    continue;
+                }
+                if (l.matches(".*▸ \\w+\\.set[A-Z]\\w*\\(.*")) {
+                    out.add(id + ": setter 를 ▸ 로 펼침 — " + l);
+                }
+                int at = l.indexOf("▸ ");
+                if (at < 0) {
+                    continue;
+                }
+                String call = l.substring(at).replaceFirst("^▸ (?:[\\w<>\\[\\], ]+ )?\\w+ = ", "▸ ");
+                if (!seen.add(call)) {
+                    String next = i + 1 < lines.size() ? lines.get(i + 1) : "";
+                    if (!next.contains("같은 본문") && !next.contains("cycle")) {
+                        out.add(id + ": 같은 함수 본문을 다시 펼침 — " + l);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     static String normalize(String mmd) {
         String s = mmd.replaceAll("<font color='[^']*'>", "").replace("</font>", "")
                 .replace("<br/>#gt; ", "").replace("<br/>", "\n") // 이어지는 줄 표시 "> " 는 이스케이프되어 있다

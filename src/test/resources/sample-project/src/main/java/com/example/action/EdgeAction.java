@@ -315,4 +315,44 @@ public class EdgeAction {
     }
 
     private static final int MAX_ROWS = 100;
+
+    // ---- 함수가 내재된(펼쳐지는) 바인딩 함수의 중복 펼침 경우들 (DupInlineTest) ----
+
+    /** 같은 함수 안에서 같은 도우미를 여러 번 + 다른 바인딩 함수도 같은 도우미 */
+    public void inlineRepeats(HttpServletRequest request) {
+        SearchVO a = twice(request);
+        SearchVO b = withMode(request);
+        String k = middle(request.getParameter("k"));
+        touch();
+    }
+
+    private SearchVO twice(HttpServletRequest request) {
+        SearchVO vo = new SearchVO();
+        vo.setKeyword(middle(request.getParameter("q")));
+        vo.setSort(middle(request.getParameter("sort")));
+        vo.setMode(inner(request.getParameter("mode")));
+        return vo;
+    }
+
+    private SearchVO withMode(HttpServletRequest request) {
+        SearchVO vo = twice(request);
+        vo.setMode(middle(request.getParameter("m2")));
+        return vo;
+    }
+
+    /** 인자 안에 바인딩 함수, 반복 안에서 같은 함수, 분기마다 같은 함수 */
+    public void inlineNested(HttpServletRequest request, List<String> keys) {
+        String v = middle(inner(request.getParameter("x")));
+        for (String key : keys) {
+            String w = middle(request.getParameter(key));
+            touch();
+        }
+        if (v.isEmpty()) {
+            SearchVO a = outer(request);
+        } else {
+            SearchVO b = outer(request);
+            SearchVO c = outer(request);
+        }
+        touch();
+    }
 }
