@@ -349,7 +349,7 @@ public final class FlowchartGenerator {
             methodParents.put(m.id, parent);
             Subgraph ms = g.subgraph(parent, "sg_" + m.id, Labels.methodName(r, m) + "() «" + r.classOf(m).role.label() + "»");
             methodGraphs.put(m.id, ms);
-            List<String> lines = new ArrayList<>(List.of(Labels.methodSignature(r, m), m.visibility.text() + " · D" + m.depth));
+            List<String> lines = new ArrayList<>(List.of(Labels.methodDeclaration(r, m), m.visibility.text() + " · D" + m.depth));
             String req = Labels.methodRequestTag(r, m);
             if (req != null) {
                 lines.add(Labels.truncate(req, 120));

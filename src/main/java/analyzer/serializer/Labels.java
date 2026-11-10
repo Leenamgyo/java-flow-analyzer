@@ -50,6 +50,19 @@ public final class Labels {
                 : r.classOf(m).name + "." + m.signature;
     }
 
+    /**
+     * 메서드 시작 노드 표시: 파라미터 이름까지 — NoticeWriteBiz.write(NoticeVO vo, String body) (사용자: 타입만 보여 인자가 지워진 것 같음,
+     * Biz 파라미터로 VO 를 따라갈 때 이름이 필요). 파라미터 이름을 모르면(소스 밖) 타입만인 methodSignature.
+     */
+    public static String methodDeclaration(AnalysisResult r, MethodInfo m) {
+        if (m.parameters.isEmpty() || m.parameters.stream().anyMatch(p -> p.name() == null || p.name().isBlank())) {
+            return methodSignature(r, m);
+        }
+        String params = String.join(", ", m.parameters.stream().map(p -> (p.type() == null ? "" : p.type() + " ") + p.name()).toList());
+        String owner = isConstructor(m) ? r.classOf(m).name : r.classOf(m).name + "." + m.name;
+        return owner + "(" + params + ")";
+    }
+
     /** 호출 대상 표시: 같은 클래스면 signature, 다른 클래스면 Class.signature, 미해결이면 원문 */
     public static String callTarget(AnalysisResult r, CallSiteInfo s) {
         if (s.targetMethodId == null) {
