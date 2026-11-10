@@ -355,4 +355,30 @@ public class EdgeAction {
         }
         touch();
     }
+
+    // ---- 상태 변화(다시 대입) + 메서드 호출이 엮인 경우 (StateCallTest) ----
+    public String stateWithCalls(HttpServletRequest request) {
+        String userId = request.getParameter("userId");
+        userId = normalizeId(userId);
+        userId = normalizeId(userId) + "_x";
+        userId = userId.trim();
+        userId = pickId(request);
+        int count = 0;
+        count += normalizeId(userId).length();
+        if (userId.isEmpty()) {
+            userId = normalizeId("guest");
+        }
+        return userId + count;
+    }
+
+    private String normalizeId(String v) {
+        if (v == null) {
+            return "";
+        }
+        return v.toLowerCase();
+    }
+
+    private String pickId(HttpServletRequest request) {
+        return request.getParameter("uid");
+    }
 }

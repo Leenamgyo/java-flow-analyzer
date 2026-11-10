@@ -316,6 +316,25 @@ public final class FlowchartGenerator {
         }
         drawnMethods.clear();
         r.methods().stream().filter(m -> m.analyzed && !skip.contains(m.id)).forEach(m -> drawnMethods.add(m.id));
+        exprOnly.clear();
+        // 값 식이 호출을 품은 변경(userId = normalizeId(userId) + "_x", count += f().length())에서 그 문장을 통째로 보이는
+        // 세부·로직 호출 노드가 있으면 별도 '값 변경' 노드 대신 그 호출 줄에 버전 꼬리표만 (사용자: 상태 변화가 메서드와 엮이면
+        // 노드가 하나 더 생김 — 노드 말고 글자로). 로직·세부 호출이 없는 문장은 문장 줄(statementGroup)이 이미 흡수한다.
+        for (VariableChange c : r.variableChanges) {
+            if (!c.isChange() || assignedBy.values().stream().anyMatch(l -> l.contains(c))) {
+                continue;
+            }
+            List<CallSiteInfo> inStmt = c.callSiteIds.stream().map(r::callSite)
+                    .filter(x -> x.statementLocation != null && contains(x.statementLocation, c.location)).toList();
+            boolean drawnApart = inStmt.stream().anyMatch(x -> leadsToDetail(x) || x.targetMethodId != null
+                    && logicRoles.contains(r.classOf(r.method(x.targetMethodId)).role));
+            if (!drawnApart) {
+                continue;
+            }
+            inStmt.stream().filter(x -> !FlowView.hidden(r, x) && !requestRead(x) && !argumentOnly(r, skip, x) && showsStatement(x))
+                    .min(java.util.Comparator.comparingInt(x -> x.order))
+                    .ifPresent(x -> assignedBy.computeIfAbsent(x.id, k -> new ArrayList<>()).add(c));
+        }
         layers.clear();
         for (MethodInfo m : r.methods()) {
             if (!m.analyzed || skip.contains(m.id)) {
@@ -1361,14 +1380,10 @@ public final class FlowchartGenerator {
      * 람다 본문 등 나중에 실행되는 호출은 ⟨deferred⟩.
      */
     private String callCode(CallSiteInfo s) {
-        String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
+        String var = assignedVar(s);
         StringBuilder code = new StringBuilder("#" + s.order + " ");
-        // 인자 안의 호출(세부 상자로 가서 따로 그리는 기본값 함수 등)은 호출만 — 문장 전체는 바깥 호출 노드가 보인다.
-        // 문장 전체를 쓰면 getParameter(req, "x", VasUtil.f(id)) 의 문장이 두 번 그려졌다 (사용자 지적).
-        // 바깥 호출이 모델에 없으면(라이브러리 제외 등) 문장 전체를 써야 코드가 사라지지 않는다.
-        boolean nested = s.inArgument && r.callSitesOf(s.callerMethodId).stream()
-                .anyMatch(o -> o != s && contains(o.location, s.location));
-        if (var == null && !nested && s.statement != null && s.statementLocation != null) {
+        boolean whole = showsStatement(s);
+        if (whole) {
             code.append(stripSemi(Labels.codeValue(r, s.callerMethodId, s.statementLocation, s.statement).trim()));
         } else {
             if (var != null) {
@@ -1381,12 +1396,44 @@ public final class FlowchartGenerator {
         }
         for (VariableChange c : assignedBy.getOrDefault(s.id, List.of())) {
             VariableInfo v = r.variable(c.variableId);
-            if (c.isChange() || !v.name.equals(var)) {
+            if (whole) { // 문장 전체가 보이면 대상 변수도 보인다 — 버전 꼬리표만
+                if (c.isChange()) {
+                    code.append(Labels.historySuffix(r, c));
+                }
+            } else if (c.isChange() || !v.name.equals(var)) {
                 code.append(v.name.equals(var) ? "" : " → " + v.name).append(Labels.historySuffix(r, c));
             }
         }
         return code.toString();
     }
+
+    /** 결과를 바로 받는 변수 (x = call()) — 복합 대입(count += call().length())은 = 로 바꿔 쓰면 틀리므로 null (문장 그대로) */
+    private static String assignedVar(CallSiteInfo s) {
+        String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
+        if (var != null && s.statement != null
+                && stripSemi(s.statement.trim()).matches("(?s)" + java.util.regex.Pattern.quote(var) + "\\s*(?:>>>|>>|<<|[-+*/%&|^])=.*")) {
+            return null;
+        }
+        return var;
+    }
+
+    /**
+     * 호출 줄이 문장 전체를 보이는지 (결과를 바로 받지 않는 선언/대입 문장 안의 호출). 인자 안의 호출(세부 상자로 가서 따로
+     * 그리는 기본값 함수 등)은 호출만 — 문장 전체는 바깥 호출 노드가 보인다(문장 전체를 쓰면 getParameter(req, "x", VasUtil.f(id))
+     * 의 문장이 두 번 그려졌다, 사용자 지적). 바깥 호출이 모델에 없으면 문장 전체를 써야 코드가 사라지지 않는다.
+     * 같은 문장을 이미 다른 노드가 보였으면(exprOnly) 호출만.
+     */
+    private boolean showsStatement(CallSiteInfo s) {
+        if (assignedVar(s) != null || s.statement == null || s.statementLocation == null || exprOnly.contains(s.id)) {
+            return false;
+        }
+        boolean nested = s.inArgument && r.callSitesOf(s.callerMethodId).stream()
+                .anyMatch(o -> o != s && contains(o.location, s.location));
+        return !nested;
+    }
+
+    /** 같은 문장을 이미 다른 노드가 보여서 호출식만 쓰는 호출 */
+    private final Set<String> exprOnly = new java.util.HashSet<>();
 
     /**
      * 바인딩을 품은 호출 — builder 체인 끝 .build() 처럼 호출 위치 안에 같은 메서드·블록의 바인딩이 있는 호출
@@ -1431,6 +1478,7 @@ public final class FlowchartGenerator {
         List<VariableChange> decls = new ArrayList<>(r.declarationsIn(m.id, container).stream()
                 .filter(c -> !supCalls.contains(c.id)).toList());
         java.util.Set<String> done = new java.util.HashSet<>(); // 문장 줄로 이미 그린 호출
+        Map<SourceLocation, String> stmtShown = new HashMap<>(); // 문장 전체를 이미 보인 노드 (같은 문장을 두 번 그리지 않게)
         for (Object o : elems) {
             if (o instanceof CallSiteInfo cs && (done.contains(cs.id) || inLeaf.contains(cs.id))) {
                 continue;
@@ -1461,6 +1509,17 @@ public final class FlowchartGenerator {
                 if (argumentOnly(r, skipSet, s)) { // 인자 안의 호출은 그리지 않음 (바깥 호출·문장이 대표)
                     continue;
                 }
+                String shownAt = s.statementLocation == null ? null : stmtShown.get(s.statementLocation);
+                if (shownAt != null && !FlowView.hidden(r, s) && !requestRead(s) && showsStatement(s)) {
+                    boolean apart = leadsToDetail(s) || s.targetMethodId != null && logicRoles.contains(r.classOf(r.method(s.targetMethodId)).role);
+                    if (apart) {
+                        exprOnly.add(s.id); // 세부·로직 호출은 따로 그리되 호출식만 (문장은 앞 노드에)
+                    } else {
+                        g.alias(s.id, shownAt); // 같은 문장 — 앞 노드가 이미 코드를 보인다
+                        continue;
+                    }
+                }
+                boolean whole = showsStatement(s) && !FlowView.hidden(r, s) && !requestRead(s);
                 if (FlowView.hidden(r, s) || holdsBinding(m, container, s)) { // 바인딩 코드(setter/builder/put·build(), 그 인자 속 호출)
                     cur = p.set(s, cur);
                 } else if (requestRead(s)) {
@@ -1471,10 +1530,16 @@ public final class FlowchartGenerator {
                     cur = p.fetch(s, cur);
                 } else if (plainCall(s)) { // 일반 호출: 이어지는 것끼리 노드 1개 (기본 블록처럼)
                     cur = p.code(s, cur);
+                    if (whole && s.statementLocation != null) {
+                        stmtShown.putIfAbsent(s.statementLocation, p.nodeId);
+                    }
                 } else {
                     cur = p.flush(cur);
                     callNode(sg, s);
                     cur = link(cur, s.id);
+                    if (whole && s.statementLocation != null) {
+                        stmtShown.putIfAbsent(s.statementLocation, s.id);
+                    }
                 }
             } else {
                 cur = p.flush(cur);

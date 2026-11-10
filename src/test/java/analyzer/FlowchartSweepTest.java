@@ -55,7 +55,7 @@ class FlowchartSweepTest {
             new String[]{"EdgeAction", "multiReadStatement"}, new String[]{"EdgeAction", "emptyLoops"},
             new String[]{"EdgeAction", "whileWithCall"}, new String[]{"EdgeAction", "bindingChain"},
             new String[]{"EdgeAction", "holderVariants"}, new String[]{"EdgeAction", "inlineRepeats"},
-            new String[]{"EdgeAction", "inlineNested"});
+            new String[]{"EdgeAction", "inlineNested"}, new String[]{"EdgeAction", "stateWithCalls"});
 
     static final Map<String, Consumer<AnalyzerConfig>> VARIANTS = Map.of(
             "default", c -> {
