@@ -90,7 +90,7 @@ class RequestSetupTest {
         Path f = tmp.resolve("c.yml");
         Files.writeString(f, "target:\n  source-root: x\n  class: X\n");
         AnalyzerConfig cfg = ConfigLoader.load(f);
-        assertEquals(List.of("CountryUtil", "ODAction"), cfg.analysis.expandClasses);
+        assertEquals(List.of("CountryUtil", "ODAction", "ContentUtil"), cfg.analysis.expandClasses);
     }
 
     /** 셋업 객체를 호출자 변수로 잇지 못하는 경우(new 를 변수에 안 받음·생성자 두 곳·생성자 안 자기 메서드)도 출력까지 예외 없음 */
