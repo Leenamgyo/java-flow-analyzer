@@ -97,8 +97,28 @@
   for (const [id, n] of nodes) {
     if (!n.voIn) continue;
     const list = [];
-    for (const v of n.voIn) for (const f of v.from || []) if (nodes.has(f)) list.push({ style: 'vo', label: [], loop: false, from: f, to: id });
+    for (const v of n.voIn) for (const f of v.from || []) {
+      if (nodes.has(f)) list.push({ style: 'vo', label: [], loop: false, from: f, to: id, rows: voRows(nodes.get(f), v.lines) });
+    }
     if (list.length) voEdges.set(id, list);
+  }
+  /**
+   * 노드 안에서 VO 에 set 하는 줄 (노드 전체가 아니라 그 줄만 강조 — 사용자: 주변 줄까지 켜져 이상함).
+   * 노드 줄은 '#n '·'│ '·'▸ ' 머리가 붙고 긴 줄은 '> ' 로 이어지므로 머리를 떼고 set 코드와 비교한다.
+   */
+  function voRows(node, wanted) {
+    const want = wanted.map(w => w.replace(/  \(조건부\)$/, ''));
+    const out = [];
+    for (let i = 0; i < node.lines.length; i++) {
+      const text = lineText(node.lines[i]);
+      if (text.startsWith('> ')) continue;
+      const norm = text.replace(/^[│ ]*/, '').replace(/^▸ /, '').replace(/^#\d+(–\d+)? /, '');
+      if (want.some(w => norm === w || norm.startsWith(w + ' ') || norm.length > 8 && w.startsWith(norm))) {
+        out.push(i);
+        for (let k = i + 1; k < node.lines.length && lineText(node.lines[k]).startsWith('> '); k++) out.push(k); // 이어지는 줄
+      }
+    }
+    return out;
   }
   function voText(n) {
     const out = [];
@@ -342,7 +362,11 @@
             const f = pos.get(visible(d.from));
             if (!f || f === t) continue;
             const mx = Math.max(f.x + f.width, t.x + t.width) + 18;
-            const fy = f.y + f.height / 2, ty = t.y + t.height / 2;
+            const fn = nodes.get(d.from);
+            const fy = visible(d.from) === d.from && d.rows.length
+              ? f.y + (f.height - boxSize(fn.lines).h) / 2 + PAD_Y + d.rows[0] * LINE_H + LINE_H / 2 // set 하는 줄 높이에서
+              : f.y + f.height / 2;
+            const ty = t.y + t.height / 2;
             edges.push({ id: 'vo' + edges.length, sections: [{ startPoint: { x: f.x + f.width, y: fy },
               bendPoints: [{ x: mx, y: fy }, { x: mx, y: ty }], endPoint: { x: t.x + t.width, y: ty } }], labels: [], data: d });
           }
@@ -459,7 +483,7 @@
             ng.addEventListener('dblclick', ev => { ev.stopPropagation(); go(n.goto); });
             ng.appendChild(document.createElementNS(SVGNS, 'title')).textContent = '더블클릭: 세부 메서드로 이동';
           }
-          drawn.set(id, { x: c.x, y: c.y, w: c.width, h: c.height, el: ng, shape: shape });
+          drawn.set(id, { x: c.x, y: c.y, w: c.width, h: c.height, el: ng, shape: shape, textTop: c.y + (c.height - s.h) / 2 + PAD_Y });
         }
       }
     })(layout.children || [], 0);
@@ -553,7 +577,10 @@
       if (!hl) hl = { nodes: new Set(), units: new Set(), edges: new Set() };
       for (const id of voStarts) {
         hl.nodes.add(id); hl.units.add(unitOf.get(id));
-        for (const d of voEdges.get(id) || []) { hl.edges.add(d); hl.nodes.add(d.from); }
+        for (const d of voEdges.get(id) || []) {
+          hl.edges.add(d); hl.nodes.add(d.from);
+          if (d.rows.length) { hl.rows = hl.rows || new Map(); hl.rows.set(d.from, [...(hl.rows.get(d.from) || []), ...d.rows]); }
+        }
       }
     }
     applyHighlight();
@@ -567,11 +594,23 @@
   function applyHighlight() {
     const on = !!hl;
     const vis = on ? new Set([...hl.nodes, ...hl.units].map(visible)) : null;
+    // 연결 강조(경로)에서 온 노드 — VO 연결로만 켜진 노드는 테두리 없이 그 줄만 띠로
+    const pathNodes = on ? new Set() : null;
+    if (on) for (const [start, d] of hlStarts) { const h = { nodes: new Set(), units: new Set(), edges: new Set() }; pathOf(start, d.up, d.down, h); h.nodes.forEach(x => pathNodes.add(visible(x))); }
+    if (on) for (const id of voStarts) pathNodes.add(visible(id));
     for (const [id, b] of drawn) {
       if (groupEls.has(id)) continue;
       const lit = on && vis.has(id);
       b.el.classList.toggle('dim', on && !lit);
-      b.el.classList.toggle('path', lit);
+      b.el.classList.toggle('path', lit && (pathNodes.has(id) || !(hl.rows && hl.rows.has(id))));
+      b.el.querySelectorAll('.rowhl').forEach(x => x.remove());
+      const rows = on && hl.rows ? hl.rows.get(id) : null;
+      if (rows && b.textTop !== undefined) {
+        for (const i of rows) {
+          const band = el('rect', { class: 'rowhl', x: b.x + 2, y: b.textTop + i * LINE_H - 1, width: b.w - 4, height: LINE_H + 1, rx: 2 });
+          b.el.insertBefore(band, b.shape.nextSibling); // 글자 아래, 상자 위
+        }
+      }
     }
     for (const [id, gEl] of groupEls) {
       const lit = on && hl.units.has(id);
