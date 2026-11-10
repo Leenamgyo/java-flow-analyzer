@@ -82,10 +82,6 @@ class RequestSetupTest {
                 | appId | String | N | - |  |
                 | lang | String | N | - | .trim() |
                 | startNum | String | N | - | Integer.parseInt() |
-
-                ## 2. VO 정의
-
-                없음.
                 """, new SpecWriter().render(r));
     }
 
@@ -111,13 +107,13 @@ class RequestSetupTest {
         assertEquals(List.of("id", "name"), r.bindingsOf(holder).stream().map(b -> b.field).toList());
     }
 
-    /** spec.md VO 정의: VO 클래스 · 변수명 · 사용 위치 클래스 (역할 VO 만 — ParamMgr 같은 셋업 클래스·Map 은 제외) */
+    /** vo.md(내부용, spec.md 와 별도): VO 클래스 · 변수명 · 사용 위치 클래스 (역할 VO 만 — 셋업 클래스·Map 제외) */
     @Test
-    void specVoDefinition() {
-        String md = new SpecWriter().render(Fixtures.analyze("CaseAction", "variableState"));
+    void voList() {
+        AnalysisResult r = Fixtures.analyze("CaseAction", "variableState");
+        assertTrue(!new SpecWriter().render(r).contains("VO"));
+        String md = new analyzer.serializer.VoListWriter().render(r);
         assertTrue(md.contains("""
-                ## 2. VO 정의
-
                 | VO 클래스 | 변수명 | 사용 위치 클래스 |
                 |---|---|---|
                 | SearchVO | vo | CaseAction |

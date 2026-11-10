@@ -33,40 +33,7 @@ public final class SpecWriter {
         if (response != null) {
             responseDef(response, sb);
         }
-        voDef(r, response != null ? 3 : 2, sb);
         return sb.toString();
-    }
-
-    /**
-     * VO 정의 (사용자: 컨플루언스에 옮길 수 있게 VO 클래스·변수명·사용 위치 클래스만): 값을 채우는 VO 객체(역할 VO)마다 한 줄.
-     * 사용 위치 클래스 = 그 객체 변수가 있는 메서드의 클래스, 변수가 없으면(필드·this) 값을 넣는 메서드들의 클래스.
-     */
-    private void voDef(AnalysisResult r, int no, StringBuilder sb) {
-        sb.append("\n## ").append(no).append(". VO 정의\n\n");
-        java.util.Map<String, java.util.Set<String>> rows = new java.util.TreeMap<>();
-        for (var o : r.objects) {
-            if (o.classId == null || r.clazz(o.classId).role != analyzer.model.ClassRole.VO) {
-                continue;
-            }
-            Set<String> where = new LinkedHashSet<>();
-            if (o.methodId != null) {
-                where.add(r.classOf(r.method(o.methodId)).name);
-            } else {
-                r.bindingsOf(o).forEach(b -> where.add(r.classOf(r.method(b.methodId)).name));
-            }
-            String key = r.clazz(o.classId).name + "\u0000" + (o.variable == null ? "-" : o.variable);
-            rows.computeIfAbsent(key, k -> new LinkedHashSet<>()).addAll(where);
-        }
-        if (rows.isEmpty()) {
-            sb.append("없음.\n");
-            return;
-        }
-        sb.append("| VO 클래스 | 변수명 | 사용 위치 클래스 |\n|---|---|---|\n");
-        rows.forEach((k, where) -> {
-            String[] kv = k.split("\u0000", 2);
-            sb.append("| ").append(kv[0]).append(" | ").append(kv[1]).append(" | ")
-                    .append(where.isEmpty() ? "-" : String.join(", ", where)).append(" |\n");
-        });
     }
 
     private void requestParams(AnalysisResult r, StringBuilder sb) {
