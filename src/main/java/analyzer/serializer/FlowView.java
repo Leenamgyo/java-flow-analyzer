@@ -41,6 +41,10 @@ public final class FlowView {
     private record View(Set<String> hiddenCalls, Set<String> bindingMethods, List<Summary> summaries) {
     }
 
+    /** 바인딩 메서드·바인딩 함수로 접지 않는 역할 (로직 계층 — 그 안의 VO set·DAO 호출을 흐름에서 볼 수 있게) */
+    public static final java.util.Set<analyzer.model.ClassRole> LOGIC_ROLES = java.util.EnumSet.of(analyzer.model.ClassRole.SERVICE,
+            analyzer.model.ClassRole.BIZ, analyzer.model.ClassRole.DAO, analyzer.model.ClassRole.REPOSITORY, analyzer.model.ClassRole.MAPPER);
+
     private static final Map<AnalysisResult, View> CACHE = Collections.synchronizedMap(new WeakHashMap<>());
 
     private FlowView() {
@@ -59,7 +63,8 @@ public final class FlowView {
         }
         Set<String> bindingMethods = new LinkedHashSet<>();
         for (MethodInfo m : r.methods()) {
-            if (!m.analyzed || m.origin != Origin.SOURCE || m.id.equals(r.entryMethodId)) {
+            if (!m.analyzed || m.origin != Origin.SOURCE || m.id.equals(r.entryMethodId)
+                    || LOGIC_ROLES.contains(r.classOf(m).role)) { // Service·Biz·DAO 는 VO 만 채워도 흐름에 그린다 (Biz VO 추적)
                 continue;
             }
             List<CallSiteInfo> calls = r.callSitesOf(m.id);

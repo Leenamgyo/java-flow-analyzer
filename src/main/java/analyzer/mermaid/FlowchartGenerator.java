@@ -888,7 +888,10 @@ public final class FlowchartGenerator {
     public static Set<String> bindingFunctions(AnalysisResult r) {
         Set<String> pure = new java.util.LinkedHashSet<>();
         for (MethodInfo m : r.methods()) {
+            // 로직 역할(Service·Biz·DAO·Mapper·Repository) 메서드는 본문이 VO set 뿐이어도 바인딩 함수가 아니다 — 상자로 그린다
+            // (사용자: Biz 도 VO 를 추적할 수 있어야 — Biz.write(vo) 가 set + 빈 DAO 호출뿐이라 바인딩 함수로 접혀 Biz·DAO 가 사라졌음)
             if (m.analyzed && m.origin == analyzer.model.Origin.SOURCE && !m.id.equals(r.entryMethodId)
+                    && !FlowView.LOGIC_ROLES.contains(r.classOf(m).role)
                     && r.blocksOf(m.id).stream().allMatch(b -> b.type == BlockType.RETURN && b.parentBlockId == null)) {
                 pure.add(m.id);
             }

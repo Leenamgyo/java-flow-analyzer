@@ -8,6 +8,7 @@ import com.example.model.NoticeVO;
 import com.example.dao.OrderDAO;
 import com.example.mapper.UserMapper;
 import com.example.model.SearchVO;
+import com.example.biz.NoticeWriteBiz;
 import com.example.support.Cache;
 import com.example.support.LogService;
 import com.example.support.Registry;
@@ -22,6 +23,7 @@ public class EdgeAction {
     private static final Logger LOG = LoggerFactory.getLogger(EdgeAction.class);
     private final Cache cache = new Cache();
     private LogService logService;
+    private NoticeWriteBiz noticeWriteBiz;
 
     // ---- 중첩 반복문 + 반복문 안 상태 변화(버전이 back edge 에서 무한히 늘지 않아야)
     public void nestedLoops(List<String> rows, int n) {
@@ -380,5 +382,12 @@ public class EdgeAction {
 
     private String pickId(HttpServletRequest request) {
         return request.getParameter("uid");
+    }
+
+    // ---- Biz 로 넘긴 VO 를 Biz 안에서도 추적 (BizVoTest) ----
+    public void bizVo(HttpServletRequest request) {
+        NoticeVO vo = new NoticeVO();
+        vo.setTitle(request.getParameter("title"));
+        noticeWriteBiz.write(vo, request.getParameter("body"));
     }
 }

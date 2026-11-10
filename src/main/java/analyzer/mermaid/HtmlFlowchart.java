@@ -237,16 +237,23 @@ public final class HtmlFlowchart {
             if (!a.matches("[A-Za-z_$][\\w$]*")) {
                 continue;
             }
-            ObjectInfo o = r.objects.stream().filter(x -> s.callerMethodId.equals(x.methodId) && a.equals(x.variable)).findFirst().orElse(null);
+            // 호출한 메서드의 VO 변수 — 그 메서드의 파라미터면 (분석된 호출 위치가 정확히 1개일 때) 부른 쪽 변수로 거슬러 간다
+            // (Biz.write(vo) 안의 noticeDAO.insert(vo) → Action 의 vo; 사용자: Biz 도 VO 를 추적). 지나온 호출 위치 = 그 메서드에서
+            // 이 흐름으로 들어오는 지점 (그 뒤의 set 은 아직 일어나지 않음)
+            Map<String, CallSiteInfo> pathCall = new LinkedHashMap<>(); // 메서드 → 그 메서드 안에서 이 호출로 이어지는 호출 위치
+            pathCall.put(s.callerMethodId, s);
+            ObjectInfo o = objectOf(r, s.callerMethodId, a, pathCall, 0);
             String via = null;
             String made0 = null; // VO 를 만든 함수 호출 (반환값으로 받은 경우)
             List<Binding> bs = new ArrayList<>();
             if (o != null) {
+                Set<String> inside = reachable(r, s); // 이 호출이 부르는 쪽(그 안의 set 은 호출 뒤)
                 for (String bid : o.bindingIds) {
                     Binding b = r.binding(bid);
-                    boolean after = b.methodId.equals(s.callerMethodId) && b.location != null && s.location != null
-                            && b.location.beginLine() > s.location.beginLine();
-                    if (!after) {
+                    CallSiteInfo at = pathCall.get(b.methodId);
+                    boolean after = at != null && b.location != null && at.location != null
+                            && b.location.beginLine() > at.location.beginLine();
+                    if (!after && !inside.contains(b.methodId)) {
                         bs.add(b);
                     }
                 }
@@ -316,6 +323,62 @@ public final class HtmlFlowchart {
             }
             m.put("from", new ArrayList<>(from));
             out.add(m);
+        }
+        return out;
+    }
+
+    /** methodId 의 변수 var 가 가리키는 VO 객체 — 없고 var 가 그 메서드 파라미터면 유일한 호출 위치의 인자로 (지나온 호출은 path 에) */
+    private static ObjectInfo objectOf(AnalysisResult r, String methodId, String var, Map<String, CallSiteInfo> path, int hops) {
+        for (ObjectInfo x : r.objects) {
+            if (methodId.equals(x.methodId) && var.equals(x.variable)) {
+                return x;
+            }
+        }
+        MethodInfo m = r.method(methodId);
+        if (m == null || hops > 10) {
+            return null;
+        }
+        int idx = -1;
+        for (int i = 0; i < m.parameters.size(); i++) {
+            if (var.equals(m.parameters.get(i).name())) {
+                idx = i;
+            }
+        }
+        if (idx < 0) {
+            return null;
+        }
+        List<CallSiteInfo> in = r.callSites.stream()
+                .filter(c -> methodId.equals(c.targetMethodId) || methodId.equals(c.implementationMethodId)).toList();
+        if (in.size() != 1 || in.get(0).arguments.size() <= idx || path.containsKey(in.get(0).callerMethodId)) {
+            return null; // 호출 위치가 여럿·없음 — 어느 객체인지 확정 못 함 (추측 금지)
+        }
+        CallSiteInfo c = in.get(0);
+        String arg = c.arguments.get(idx).trim();
+        if (!arg.matches("[A-Za-z_$][\\w$]*")) {
+            return null;
+        }
+        path.put(c.callerMethodId, c);
+        return objectOf(r, c.callerMethodId, arg, path, hops + 1);
+    }
+
+    /** 호출 s 가 부르는 메서드와 그 안에서 (전이적으로) 부르는 메서드 */
+    private static Set<String> reachable(AnalysisResult r, CallSiteInfo s) {
+        Set<String> out = new java.util.LinkedHashSet<>();
+        java.util.Deque<String> todo = new java.util.ArrayDeque<>();
+        if (s.targetMethodId != null) {
+            todo.add(s.expansionTargetId());
+            todo.add(s.targetMethodId);
+        }
+        while (!todo.isEmpty()) {
+            String m = todo.poll();
+            if (m == null || !out.add(m)) {
+                continue;
+            }
+            for (CallSiteInfo c : r.callSitesOf(m)) {
+                if (c.targetMethodId != null) {
+                    todo.add(c.expansionTargetId());
+                }
+            }
         }
         return out;
     }
