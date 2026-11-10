@@ -82,6 +82,6 @@ class RequestSetupTest {
         Path f = tmp.resolve("c.yml");
         Files.writeString(f, "target:\n  source-root: x\n  class: X\n");
         AnalyzerConfig cfg = ConfigLoader.load(f);
-        assertEquals(List.of("CountryUtil"), cfg.analysis.expandClasses);
+        assertEquals(List.of("CountryUtil", "ODAction"), cfg.analysis.expandClasses);
     }
 }

@@ -120,7 +120,7 @@ public class AppDetailAction {
 ```
 
 - 생성자 `new X(…)` 는 호출 트리·흐름도에 호출로 나오고, 안에서 읽는 요청 값은 Request Param 에, 필드에 넣는 값은 바인딩(`ParamMgr.appId`)으로 기록됩니다.
-- Action 밖의 클래스(Util 등)를 끝까지 따라가려면 `analysis.expand-classes` 에 이름을 넣습니다 (기본 `["CountryUtil"]`, `*` 패턴 가능).
+- Action 밖의 클래스(Util 등)를 끝까지 따라가려면 `analysis.expand-classes` 에 이름을 넣습니다 (기본 `["CountryUtil", "ODAction"]`, `*` 패턴 가능).
 
 ## Response(JSP) 등록하기
 

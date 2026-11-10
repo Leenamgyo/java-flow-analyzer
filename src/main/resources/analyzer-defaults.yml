@@ -16,7 +16,7 @@ analysis:
   expand-roles: [Service, Biz, DAO, Repository, Mapper, Validator]
   # max-depth 를 넘어도 본문을 분석할 클래스 (* 패턴: 단순명·FQN·바깥 클래스 포함 "XxxAction.Inner")
   #   Action/Controller 안에 선언된 클래스(예: ParamMgr — new ParamMgr(request)·setup(request))는 이름과 무관하게 항상 분석
-  expand-classes: ["CountryUtil"]   # 로직이 많은 Util
+  expand-classes: ["CountryUtil", "ODAction"]   # 로직이 많은 Util · 공통 상위 Action
   # 인터페이스 호출: source-root 내 구현 클래스가 정확히 1개면 구현 후보로 연결 (런타임 DI 확정 아님)
   link-single-implementation: true
   # VO/DTO/Command/Map 바인딩 수집 + 값 출처·변환·조건 추적
