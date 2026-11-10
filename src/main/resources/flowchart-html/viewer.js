@@ -380,6 +380,8 @@
   function draw(layout, titles) {
     vp.textContent = '';
     drawn.clear();
+    groupEls.clear();
+    edgeEls.length = 0;
     const gLayer = el('g', {}, vp), eLayer = el('g', {}, vp), nLayer = el('g', {}, vp);
     (function walk(list, depth) {
       for (const c of list) {
@@ -398,6 +400,7 @@
           el('rect', { x: c.x, y: c.y, width: c.width, height: (titles.get(id) || { h: 20 }).h + 4, fill: 'transparent' }, tg);
           tg.addEventListener('click', ev => { ev.stopPropagation(); toggle(id); });
           drawn.set(id, { x: c.x, y: c.y, w: c.width, h: c.height, el: box });
+          groupEls.set(id, { box: box, title: tg });
           walk(c.children || [], depth + 1);
         } else if (groups.has(id)) { // 접힌 상자
           const g = groups.get(id);
@@ -432,22 +435,102 @@
       const d = e.data;
       const callColor = (FLOW.classes.detail && FLOW.classes.detail.stroke) || '#b45309';
       const color = d.loop ? loopColor : d.style === 'exception' ? cssVar('--exc') : d.style === 'call' ? callColor : cssVar('--edge');
+      const els = [];
+      edgeEls.push({ data: d, cross: !!e.cross, els: els });
       for (const sec of e.sections || []) {
         const pts = [sec.startPoint, ...(sec.bendPoints || []), sec.endPoint];
         if (e.rev) pts.reverse();
-        el('path', { d: 'M' + pts.map(p => p.x + ',' + p.y).join(' L'), fill: 'none', stroke: color,
+        els[els.length] = el('path', { d: 'M' + pts.map(p => p.x + ',' + p.y).join(' L'), fill: 'none', stroke: color,
           'stroke-width': d.loop ? 2 : d.style === 'call' ? 1.6 : 1.3, 'stroke-dasharray': d.style === 'exception' ? '5 4' : d.style === 'call' ? '7 4' : null,
           'stroke-opacity': e.cross ? 0.85 : 1,
           'marker-end': 'url(#' + (d.loop ? 'arrowLoop' : d.style === 'exception' ? 'arrowExc' : d.style === 'call' ? 'arrowCall' : 'arrow') + ')' }, eLayer);
       }
       for (const l of e.labels || []) {
-        el('rect', { x: l.x - 2, y: l.y - 1, width: l.width + 4, height: l.height + 2, fill: cssVar('--label-bg'), opacity: 0.9, rx: 3 }, eLayer);
-        writeLines(eLayer, d.label, l.x, l.y, 'left', color);
+        els.push(el('rect', { x: l.x - 2, y: l.y - 1, width: l.width + 4, height: l.height + 2, fill: cssVar('--label-bg'), opacity: 0.9, rx: 3 }, eLayer));
+        els.push(writeLines(eLayer, d.label, l.x, l.y, 'left', color));
       }
     }
     if (selected && drawn.has(selected)) drawn.get(selected).el.classList.add('sel');
     else if (selected) select(null); // 접혀 안 보이게 된 노드의 상세는 닫는다
     markHits();
+    applyHighlight();
+  }
+
+  // ---- 연결 강조: 고른 노드·메서드에서 호출(==>)을 따라 위(부른 쪽, 진입 메서드까지)·아래(부르는 Service·DAO …)로 ----
+  const groupEls = new Map(); // 펼친 상자 id → {box, title}
+  const edgeEls = [];         // {data(원래 간선), cross, els}
+  const callIn = new Map(), callOut = new Map(), unitCalls = new Map();
+  for (const e of FLOW.edges) {
+    if (e.style !== 'call') continue;
+    const tu = unitOf.get(e.to), fu = unitOf.get(e.from);
+    if (!tu || !fu) continue;
+    if (!callIn.has(tu)) callIn.set(tu, []);
+    callIn.get(tu).push(e);
+    if (!callOut.has(e.from)) callOut.set(e.from, []);
+    callOut.get(e.from).push(e);
+    if (!unitCalls.has(fu)) unitCalls.set(fu, new Set());
+    unitCalls.get(fu).add(e.from);
+  }
+  let hl = null; // {nodes:Set, units:Set, edges:Set, label}
+  function headerOf(unit) { const id = unit && unit.startsWith('sg_') ? unit.substring(3) : null; return id && nodes.has(id) ? id : null; }
+  function highlight(start, dir) {
+    const h = { nodes: new Set([start]), units: new Set(), edges: new Set(), start: start, dir: dir };
+    const u0 = unitOf.get(start);
+    h.units.add(u0);
+    if (headerOf(u0)) h.nodes.add(headerOf(u0));
+    const isHeader = headerOf(u0) === start;
+    if (dir !== 'down') { // 위로: 이 메서드를 부른 노드 → 그 메서드를 부른 노드 … (진입 메서드까지)
+      const seen = new Set();
+      (function up(u) {
+        if (seen.has(u)) return;
+        seen.add(u);
+        for (const e of callIn.get(u) || []) {
+          h.edges.add(e); h.nodes.add(e.from);
+          const pu = unitOf.get(e.from);
+          h.units.add(pu);
+          if (headerOf(pu)) h.nodes.add(headerOf(pu));
+          up(pu);
+        }
+      })(u0);
+    }
+    if (dir !== 'up') { // 아래로: 이 노드(메서드 머리면 메서드 안 모든 호출)가 부르는 메서드 → 그 안의 호출 …
+      const seen = new Set();
+      const down = n => {
+        for (const e of callOut.get(n) || []) {
+          h.edges.add(e); h.nodes.add(n);
+          const tu = unitOf.get(e.to);
+          h.units.add(tu);
+          if (headerOf(tu)) h.nodes.add(headerOf(tu));
+          if (seen.has(tu)) continue;
+          seen.add(tu);
+          for (const c of unitCalls.get(tu) || []) down(c);
+        }
+      };
+      if (isHeader) { seen.add(u0); for (const c of unitCalls.get(u0) || []) down(c); } else down(start);
+    }
+    hl = h;
+    applyHighlight();
+    info();
+  }
+  function clearHighlight() { if (hl) { hl = null; applyHighlight(); info(); } }
+  function applyHighlight() {
+    const on = !!hl;
+    const vis = on ? new Set([...hl.nodes, ...hl.units].map(visible)) : null;
+    for (const [id, b] of drawn) {
+      if (groupEls.has(id)) continue;
+      b.el.classList.toggle('dim', on && !vis.has(id));
+      b.el.classList.toggle('path', on && vis.has(id));
+    }
+    for (const [id, gEl] of groupEls) {
+      const lit = on && hl.units.has(id);
+      for (const x of [gEl.box, gEl.title]) x.classList.toggle('dim', on && !lit && isMethodGroup(id));
+      gEl.box.classList.toggle('pathbox', lit && isMethodGroup(id));
+    }
+    for (const e of edgeEls) {
+      const lit = on && hl.edges.has(e.data);
+      for (const x of e.els) { x.classList.toggle('dim', on && !lit); x.classList.toggle('pathedge', lit); }
+    }
+    document.getElementById('clearHl').style.display = on ? '' : 'none';
   }
 
   // ---- 배치 실행 ----
@@ -590,6 +673,17 @@
       let m = p; while (m && !isMethodGroup(m)) m = parent.get(m);
       if (m) { const d = document.createElement('div'); d.className = 'meta'; d.textContent = '메서드: ' + groups.get(m).label.join(' '); panel.appendChild(d); }
     }
+    if (callIn.has(unitOf.get(id)) || callOut.has(id) || headerOf(unitOf.get(id)) === id && unitCalls.has(unitOf.get(id))) {
+      const row2 = document.createElement('div'); row2.className = 'row'; row2.style.marginTop = '6px'; row2.style.justifyContent = 'flex-start';
+      const lab = document.createElement('span'); lab.className = 'meta'; lab.textContent = '연결 강조:';
+      row2.appendChild(lab);
+      for (const [dir, text] of [['both', '위·아래'], ['up', '부른 쪽 ↑'], ['down', '부르는 쪽 ↓']]) {
+        const b = document.createElement('button'); b.textContent = text;
+        b.onclick = () => highlight(id, dir);
+        row2.appendChild(b);
+      }
+      panel.appendChild(row2);
+    }
     if (n.goto) {
       const b = document.createElement('button'); b.style.marginTop = '6px';
       const tg = groups.get('sg_' + n.goto);
@@ -633,6 +727,7 @@
   document.getElementById('next').onclick = () => step(1);
   document.getElementById('prev').onclick = () => step(-1);
   document.getElementById('fit').onclick = fit;
+  document.getElementById('clearHl').onclick = clearHighlight;
   document.getElementById('collapseAll').onclick = () => {
     for (const gid of groups.keys()) if (isMethodGroup(gid) && !(nodes.get(gid.substring(3)) || {}).cls?.startsWith('entry')) collapsed.add(gid);
     relayout(null);
@@ -642,7 +737,8 @@
     const s = q.value.trim();
     document.getElementById('info').textContent = (s ? '검색 ' + (hits.length ? (hitAt + 1) + '/' + hits.length : '0건') + ' · ' : '')
       + '노드 ' + nodes.size + ' · 상자 ' + groups.size + (collapsed.size ? ' · 접힘 ' + collapsed.size : '')
-      + (hiddenCount() ? ' · 생략 ' + hiddenCount() : '');
+      + (hiddenCount() ? ' · 생략 ' + hiddenCount() : '')
+      + (hl ? ' · 강조 ' + hl.units.size + '개 메서드' : '');
   }
 
   function hiddenCount() { return unitList.filter(u => hiddenUnit(u.group || u.id)).length; }
@@ -663,7 +759,7 @@
   window.addEventListener('keydown', ev => {
     if (ev.target === q) return;
     if (ev.key === '/') { ev.preventDefault(); q.focus(); }
-    else if (ev.key === 'Escape') select(null);
+    else if (ev.key === 'Escape') { if (hl) clearHighlight(); else select(null); }
     else if (ev.key === 'f') fit();
   });
 
