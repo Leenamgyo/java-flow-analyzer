@@ -74,7 +74,7 @@
   const elk = new ELK();
 
   // ---- 배치 단위: 메서드 상자 ----
-  // 메서드마다 따로 ELK 로 배치하고, 진입 메서드를 왼쪽에 두고 호출 깊이마다 오른쪽 열로 —
+  // 메서드마다 따로 ELK 로 배치하고, 진입 메서드를 가운데 두고 호출 깊이마다 좌우 바깥 열로 —
   // 불린 메서드 상자는 부른 노드와 같은 높이에 붙여 연결선으로 잇는다 (사용자: 링크로 찾아가지 말고 주변에 붙이기).
   const unitList = [];      // 단위(메서드 상자, 메서드 밖 노드)
   const unitOf = new Map(); // id → 단위 id
@@ -197,64 +197,95 @@
     }
     return Promise.all(jobs).then(results => {
       results.forEach(r => trim(r.node, r.edges));
-      // 호출 깊이 (진입 메서드에서 BFS)
+      const byId = new Map(results.map(r => [r.uid, r]));
+      // 호출 깊이 (진입 메서드에서 BFS) — 처음 찾은 호출자(via)를 기억해 방향을 물려준다
       const next = new Map();
       for (const c of cross) { if (!next.has(c.ua)) next.set(c.ua, []); next.get(c.ua).push(c.ub); }
-      const depth = new Map();
+      const depth = new Map(), via = new Map();
       if (entryUnit) depth.set(entryUnit, 0);
       const queue = entryUnit ? [entryUnit] : [];
       while (queue.length) {
         const u = queue.shift();
-        for (const v of next.get(u) || []) if (!depth.has(v)) { depth.set(v, depth.get(u) + 1); queue.push(v); }
+        for (const v of next.get(u) || []) if (!depth.has(v)) { depth.set(v, depth.get(u) + 1); via.set(v, u); queue.push(v); }
       }
       let maxDepth = 0;
       depth.forEach(d => { maxDepth = Math.max(maxDepth, d); });
-      for (const r of results) if (!depth.has(r.uid)) depth.set(r.uid, maxDepth + 1); // 어디서도 안 불린 것은 맨 오른쪽
-      const columns = [];
-      for (const r of results) { const d = depth.get(r.uid); (columns[d] = columns[d] || []).push(r); }
+      for (const r of results) if (!depth.has(r.uid)) depth.set(r.uid, maxDepth + 1); // 어디서도 안 불린 것은 맨 끝
 
       const pos = new Map(); // 배치를 마친 id → 절대 상자
       function record(n) { pos.set(n.id, n); (n.children || []).forEach(record); }
-      let colX = 0;
-      for (const col of columns.filter(Boolean)) {
-        // 부른 노드의 높이 (이미 놓인 왼쪽 열 기준)
-        const anchor = r => {
-          let y = Infinity;
-          for (const c of cross) if (c.ub === r.uid && pos.has(c.a)) { const s = pos.get(c.a); y = Math.min(y, s.y + s.height / 2 - 20); }
-          return y;
-        };
-        const rows = col.map((r, i) => ({ r: r, y: anchor(r), i: i }))
-          .sort((p, q) => (p.y === q.y ? p.i - q.i : p.y - q.y));
-        let bottom = -Infinity, right = colX;
-        for (const row of rows) {
-          const n = row.r.node;
-          const y = Math.max(row.y === Infinity ? (bottom === -Infinity ? 0 : bottom + ROW_GAP) : row.y, bottom + ROW_GAP);
-          const dx = colX - n.x, dy = y - n.y;
-          shift(n, dx, dy);
-          row.r.edges.forEach(e => shiftEdge(e, dx, dy));
-          record(n);
-          bottom = n.y + n.height;
-          right = Math.max(right, n.x + n.width);
+      function place(r, x, y) {
+        const n = r.node, dx = x - n.x, dy = y - n.y;
+        shift(n, dx, dy);
+        r.edges.forEach(e => shiftEdge(e, dx, dy));
+        record(n);
+      }
+      // 진입 메서드 (깊이 0) 를 가운데에
+      const entry = byId.get(entryUnit);
+      if (entry) place(entry, 0, 0);
+
+      // 방향: 진입 메서드가 직접 부른 메서드는 부른 노드가 진입 상자의 왼쪽 절반이면 왼쪽(-1), 아니면 오른쪽(+1).
+      // 더 깊은 메서드는 처음 부른 메서드의 방향을 따라 계속 바깥쪽으로 (사용자: 좌우 가까운 쪽에)
+      const side = new Map();
+      function sideOf(uid) {
+        if (side.has(uid)) return side.get(uid);
+        let sd = 1;
+        const p = via.get(uid);
+        if (p === entryUnit && entry) {
+          let top = null;
+          for (const c of cross) if (c.ub === uid && c.ua === entryUnit && pos.has(c.a)) { const n = pos.get(c.a); if (!top || n.y < top.y) top = n; }
+          if (top) sd = top.x + top.width / 2 < entry.node.x + entry.node.width / 2 ? -1 : 1;
+        } else if (p) {
+          sd = sideOf(p);
         }
-        colX = right + COL_GAP;
+        side.set(uid, sd);
+        return sd;
+      }
+      let rightEdge = entry ? entry.node.x + entry.node.width : 0;
+      let leftEdge = entry ? entry.node.x : 0;
+      const anchor = r => { // 부른 노드의 높이 (이미 놓인 안쪽 열 기준)
+        let y = Infinity;
+        for (const c of cross) if (c.ub === r.uid && pos.has(c.a)) { const sn = pos.get(c.a); y = Math.min(y, sn.y + sn.height / 2 - 20); }
+        return y;
+      };
+      for (let d = 1; d <= maxDepth + 1; d++) {
+        for (const sd of [1, -1]) {
+          const col = results.filter(r => r.uid !== entryUnit && depth.get(r.uid) === d && sideOf(r.uid) === sd);
+          if (!col.length) continue;
+          const rows = col.map((r, i) => ({ r: r, y: anchor(r), i: i }))
+            .sort((p, q) => (p.y === q.y ? p.i - q.i : p.y - q.y));
+          let bottom = -Infinity, edge = sd > 0 ? rightEdge : leftEdge;
+          for (const row of rows) {
+            const n = row.r.node;
+            const y = Math.max(row.y === Infinity ? (bottom === -Infinity ? 0 : bottom + ROW_GAP) : row.y, bottom + ROW_GAP);
+            // 오른쪽 열은 왼쪽 끝을, 왼쪽 열은 오른쪽 끝을 맞춘다 (진입 메서드 쪽으로 붙게)
+            place(row.r, sd > 0 ? rightEdge + COL_GAP : leftEdge - COL_GAP - n.width, y);
+            bottom = n.y + n.height;
+            edge = sd > 0 ? Math.max(edge, n.x + n.width) : Math.min(edge, n.x);
+          }
+          if (sd > 0) rightEdge = edge; else leftEdge = edge;
+        }
       }
 
-      // 단위 사이 연결선: 부른 노드 오른쪽 → 불린 메서드 상자 왼쪽 위 (열 사이 빈 곳에서 꺾음)
+      // 단위 사이 연결선: 부른 노드 → 불린 메서드 상자 (오른쪽이면 상자 왼쪽 위, 왼쪽이면 상자 오른쪽 위; 열 사이 빈 곳에서 꺾음)
       const edges = results.flatMap(r => r.edges);
       for (const c of cross) {
-        const s = pos.get(c.a), t = pos.get(c.ub);
-        if (!s || !t) continue;
-        const ty = t.y + 16;
+        const sn = pos.get(c.a), t = pos.get(c.ub);
+        if (!sn || !t) continue;
+        const ty = t.y + 16, sy = sn.y + sn.height / 2;
         let pts;
-        if (t.x >= s.x + s.width) {
-          const sy = s.y + s.height / 2, mx = t.x - 24;
-          pts = [{ x: s.x + s.width, y: sy }, { x: mx, y: sy }, { x: mx, y: ty }, { x: t.x, y: ty }];
-        } else { // 왼쪽(되돌아가는 호출)
-          const sy = s.y + s.height / 2, mx = Math.min(s.x, t.x) - 24;
-          pts = [{ x: s.x, y: sy }, { x: mx, y: sy }, { x: mx, y: ty }, { x: t.x, y: ty }];
+        if (t.x >= sn.x + sn.width) {
+          const mx = t.x - 24;
+          pts = [{ x: sn.x + sn.width, y: sy }, { x: mx, y: sy }, { x: mx, y: ty }, { x: t.x, y: ty }];
+        } else if (t.x + t.width <= sn.x) {
+          const mx = t.x + t.width + 24;
+          pts = [{ x: sn.x, y: sy }, { x: mx, y: sy }, { x: mx, y: ty }, { x: t.x + t.width, y: ty }];
+        } else { // 같은 열(되돌아가는 호출 등) — 바깥으로 돌아서
+          const mx = Math.min(sn.x, t.x) - 24;
+          pts = [{ x: sn.x, y: sy }, { x: mx, y: sy }, { x: mx, y: ty }, { x: t.x, y: ty }];
         }
         const label = c.data.label.length ? labelBox(c.data.label) : null;
-        if (label) { label.x = pts[0].x + 6; label.y = pts[0].y - label.height - 2; }
+        if (label) { label.x = pts[1].x > pts[0].x ? pts[0].x + 6 : pts[0].x - label.width - 6; label.y = pts[0].y - label.height - 2; }
         edges.push({ id: 'x' + edges.length, sections: [{ startPoint: pts[0], bendPoints: pts.slice(1, -1), endPoint: pts[pts.length - 1] }],
           labels: label ? [label] : [], data: c.data, cross: true });
       }
