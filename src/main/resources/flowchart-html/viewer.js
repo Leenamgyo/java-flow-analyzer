@@ -91,9 +91,8 @@
     return unitList.length ? (unitList[0].group || unitList[0].id) : null;
   })();
 
-  // ---- VO 연결: Service·DAO 호출 노드 ← 넘기는 VO 를 set 하는 기존 노드 (선만 덧그림 — 배치·노드·색은 그대로) ----
-  let voOn = true;
-  try { const v = localStorage.getItem('flowchart.voOn'); if (v !== null) voOn = v === '1'; } catch (e) { /* 저장소 없음 */ }
+  // ---- VO 연결: Service·DAO 호출 노드 ← 넘기는 VO 를 set 하는 기존 노드. 평소엔 안 보이고, 상세 패널 'VO 연결' 체크로
+  //      강조할 때만 선이 나타난다 (사용자: 선으로 하이라이트만 — 배치·노드·색은 그대로) ----
   const voEdges = new Map(); // 호출 노드 → [{style:'vo', from, to}] (강조에서 같은 객체로 찾음)
   for (const [id, n] of nodes) {
     if (!n.voIn) continue;
@@ -335,7 +334,7 @@
           labels: label ? [label] : [], data: c.data, cross: true });
       }
       // VO 연결선: 배치가 끝난 위치에 덧그림 (VO 를 set 하는 노드 오른쪽 → 호출 노드 오른쪽, 바깥으로 돌아서)
-      if (voOn) {
+      {
         for (const [id, list] of voEdges) {
           const t = pos.get(visible(id));
           if (!t) continue;
@@ -544,11 +543,18 @@
       if (isHeader) { seen.add(u0); for (const c of unitCalls.get(u0) || []) down(c); } else down(start);
     }
   }
+  const voStarts = new Set(); // 'VO 연결' 체크한 호출 노드
   function recomputeHighlight() {
     if (!hlStarts.size) { hl = null; } else {
       hl = { nodes: new Set(), units: new Set(), edges: new Set() };
       for (const [start, d] of hlStarts) pathOf(start, d.up, d.down, hl);
-      for (const id of [...hl.nodes]) for (const d of voEdges.get(id) || []) { hl.edges.add(d); hl.nodes.add(d.from); } // VO 를 set 하는 노드도
+    }
+    if (voStarts.size) { // VO 연결 체크: 호출 노드 + VO 를 set 하는 노드 + 그 사이 선
+      if (!hl) hl = { nodes: new Set(), units: new Set(), edges: new Set() };
+      for (const id of voStarts) {
+        hl.nodes.add(id); hl.units.add(unitOf.get(id));
+        for (const d of voEdges.get(id) || []) { hl.edges.add(d); hl.nodes.add(d.from); }
+      }
     }
     applyHighlight();
     info();
@@ -557,7 +563,7 @@
     if (d && (d.up || d.down)) hlStarts.set(id, d); else hlStarts.delete(id);
     recomputeHighlight();
   }
-  function clearHighlight() { if (hlStarts.size) { hlStarts.clear(); recomputeHighlight(); if (selected) select(selected); } }
+  function clearHighlight() { if (hlStarts.size || voStarts.size) { hlStarts.clear(); voStarts.clear(); recomputeHighlight(); if (selected) select(selected); } }
   function applyHighlight() {
     const on = !!hl;
     const vis = on ? new Set([...hl.nodes, ...hl.units].map(visible)) : null;
@@ -574,6 +580,7 @@
     }
     for (const e of edgeEls) {
       const lit = on && hl.edges.has(e.data);
+      if (e.data.style === 'vo') { for (const x of e.els) { x.style.display = lit ? '' : 'none'; x.classList.toggle('pathedge', lit); } continue; }
       for (const x of e.els) { x.classList.toggle('dim', on && !lit); x.classList.toggle('pathedge', lit); }
     }
     document.getElementById('clearHl').style.display = on ? '' : 'none';
@@ -724,7 +731,8 @@
       panel.appendChild(t);
       const pv = document.createElement('pre'); pv.textContent = voText(n); panel.appendChild(pv);
     }
-    if (callIn.has(unitOf.get(id)) || callOut.has(id) || headerOf(unitOf.get(id)) === id && unitCalls.has(unitOf.get(id))) {
+    const linkable = callIn.has(unitOf.get(id)) || callOut.has(id) || headerOf(unitOf.get(id)) === id && unitCalls.has(unitOf.get(id));
+    if (linkable || voEdges.has(id)) {
       const cur = hlStarts.get(id);
       const row2 = document.createElement('div'); row2.className = 'row'; row2.style.marginTop = '6px'; row2.style.justifyContent = 'flex-start';
       const box = (text, checked, disabled, onChange) => {
@@ -735,9 +743,14 @@
         row2.appendChild(l);
         return c;
       };
-      box('연결 강조', !!cur, false, on => { setHighlight(id, on ? { up: true, down: true } : null); select(id); });
-      box('↑ 부른 쪽', cur ? cur.up : true, !cur, on => { setHighlight(id, { up: on, down: hlStarts.get(id).down }); select(id); });
-      box('↓ 부르는 쪽', cur ? cur.down : true, !cur, on => { setHighlight(id, { up: hlStarts.get(id).up, down: on }); select(id); });
+      if (linkable) {
+        box('연결 강조', !!cur, false, on => { setHighlight(id, on ? { up: true, down: true } : null); select(id); });
+        box('↑ 부른 쪽', cur ? cur.up : true, !cur, on => { setHighlight(id, { up: on, down: hlStarts.get(id).down }); select(id); });
+        box('↓ 부르는 쪽', cur ? cur.down : true, !cur, on => { setHighlight(id, { up: hlStarts.get(id).up, down: on }); select(id); });
+      }
+      if (voEdges.has(id)) {
+        box('VO 연결', voStarts.has(id), false, on => { if (on) voStarts.add(id); else voStarts.delete(id); recomputeHighlight(); select(id); });
+      }
       panel.appendChild(row2);
     }
     if (n.goto) {
@@ -797,7 +810,7 @@
     document.getElementById('info').textContent = (s ? '검색 ' + (hits.length ? (hitAt + 1) + '/' + hits.length : '0건') + ' · ' : '')
       + '노드 ' + nodes.size + ' · 상자 ' + groups.size + (collapsed.size ? ' · 접힘 ' + collapsed.size : '')
       + (hiddenCount() ? ' · 생략 ' + hiddenCount() : '')
-      + (hl ? ' · 강조 ' + hlStarts.size + '곳 · ' + hl.units.size + '개 메서드' : '');
+      + (hl ? ' · 강조 ' + (hlStarts.size + voStarts.size) + '곳' : '');
   }
 
   function hiddenCount() { return unitList.filter(u => hiddenUnit(u.group || u.id)).length; }
@@ -813,14 +826,6 @@
     relayout(entryUnit);
   }
   hideBox.addEventListener('change', setHide);
-  const voBox = document.getElementById('voOn');
-  voBox.checked = voOn;
-  if (!voEdges.size) voBox.parentElement.style.display = 'none';
-  voBox.addEventListener('change', () => {
-    voOn = voBox.checked;
-    try { localStorage.setItem('flowchart.voOn', voOn ? '1' : '0'); } catch (e) { /* 저장소 없음 */ }
-    relayout(entryUnit);
-  });
   hideNum.addEventListener('change', () => { if (hideBox.checked) setHide(); });
 
   window.addEventListener('keydown', ev => {
