@@ -71,75 +71,195 @@
     return [...g.label, '▸ 펼치기 · 노드 ' + countNodes(g.group) + '개'];
   }
 
-  // ---- ELK 그래프 ----
-  function buildElk() {
-    const sizes = new Map();
-    function items(list) {
-      const out = [];
-      for (const it of list) {
-        if (it.group) {
-          if (collapsed.has(it.group)) {
-            const s = boxSize(collapsedLines(it), TITLE_FONT);
-            out.push({ id: it.group, width: s.w, height: s.h });
-          } else {
-            const t = boxSize(['▾ ' + it.label[0], ...it.label.slice(1)], TITLE_FONT);
-            out.push({
-              id: it.group,
-              layoutOptions: {
-                'elk.padding': '[top=' + (t.h + 6) + ',left=14,bottom=14,right=14]',
-                // 제목이 상자보다 길면 상자를 넓힌다
-                'elk.nodeSize.constraints': 'MINIMUM_SIZE',
-                'elk.nodeSize.minimum': '(' + (t.w + 30) + ',' + (t.h + 30) + ')',
-              },
-              children: items(it.children),
-            });
-            sizes.set(it.group, t);
-          }
-        } else {
-          const s = nodeSize(it);
-          out.push({ id: it.id, width: s.w, height: s.h });
-        }
-      }
-      return out;
+  const elk = new ELK();
+
+  // ---- 배치 단위: 메서드 상자 ----
+  // 메서드마다 따로 ELK 로 배치하고, 진입 메서드를 왼쪽에 두고 호출 깊이마다 오른쪽 열로 —
+  // 불린 메서드 상자는 부른 노드와 같은 높이에 붙여 연결선으로 잇는다 (사용자: 링크로 찾아가지 말고 주변에 붙이기).
+  const unitList = [];      // 단위(메서드 상자, 메서드 밖 노드)
+  const unitOf = new Map(); // id → 단위 id
+  (function units(items) {
+    for (const it of items) {
+      if (it.group && !isMethodGroup(it.group)) { units(it.children); continue; } // 단계 보기 레이어 등은 펼쳐서
+      const uid = it.group || it.id;
+      unitList.push(it);
+      (function mark(x) { unitOf.set(x.group || x.id, uid); if (x.group) x.children.forEach(mark); })(it);
     }
-    const children = items(FLOW.root);
-    const edges = [], seen = new Set();
+  })(FLOW.root);
+  const entryUnit = (() => {
+    for (const [id, n] of nodes) if (n.cls === 'entry') return unitOf.get(id);
+    return unitList.length ? (unitList[0].group || unitList[0].id) : null;
+  })();
+
+  const ELK_OPTIONS = {
+    'elk.algorithm': 'layered',
+    'elk.direction': FLOW.direction === 'LR' ? 'RIGHT' : FLOW.direction === 'RL' ? 'LEFT' : FLOW.direction === 'BT' ? 'UP' : 'DOWN',
+    'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
+    'elk.json.edgeCoords': 'ROOT',
+    'elk.json.shapeCoords': 'ROOT',
+    'elk.edgeRouting': 'ORTHOGONAL',
+    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+    'elk.layered.cycleBreaking.strategy': 'MODEL_ORDER',
+    'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
+    'elk.spacing.nodeNode': '28',
+    'elk.layered.spacing.nodeNodeBetweenLayers': '36',
+    'elk.spacing.edgeLabel': '4',
+    'elk.edgeLabels.inline': 'false',
+  };
+
+  function elkItems(list, sizes) {
+    const out = [];
+    for (const it of list) {
+      if (it.group) {
+        if (collapsed.has(it.group)) {
+          const s = boxSize(collapsedLines(it), TITLE_FONT);
+          out.push({ id: it.group, width: s.w, height: s.h });
+        } else {
+          const t = boxSize(['▾ ' + it.label[0], ...it.label.slice(1)], TITLE_FONT);
+          out.push({
+            id: it.group,
+            layoutOptions: {
+              'elk.padding': '[top=' + (t.h + 6) + ',left=14,bottom=14,right=14]',
+              // 제목이 상자보다 길면 상자를 넓힌다
+              'elk.nodeSize.constraints': 'MINIMUM_SIZE',
+              'elk.nodeSize.minimum': '(' + (t.w + 30) + ',' + (t.h + 30) + ')',
+            },
+            children: elkItems(it.children, sizes),
+          });
+          sizes.set(it.group, t);
+        }
+      } else {
+        const s = nodeSize(it);
+        out.push({ id: it.id, width: s.w, height: s.h });
+      }
+    }
+    return out;
+  }
+
+  function labelBox(lines) { return { text: lines.join('\n'), width: boxSize(lines).w - 8, height: lines.length * LINE_H }; }
+
+  /** 보이는 간선: 같은 단위 안(ELK 가 배치) / 단위 사이(연결선, 직접 그림) */
+  function visibleEdges() {
+    const inner = new Map(), cross = [], seen = new Set();
     FLOW.edges.forEach((e, i) => {
       const a = visible(e.from), b = visible(e.to);
-      // 세부 호출은 선 대신 상자 색 (Mermaid 흐름도와 같은 규칙) — 단, 접힌 상자끼리는 호출 관계가 보이게 선을 긋는다
-      if (e.style === 'call' && !FLOW.callEdges && a === e.from && b === e.to) return;
       if (a === b) return;
       const key = a + '>' + b + '>' + e.style + '>' + e.label.join('\n');
       if (seen.has(key)) return;
       seen.add(key);
-      const labels = e.label.length ? [{ text: e.label.join('\n'), width: boxSize(e.label).w - 8, height: e.label.length * LINE_H }] : [];
+      const ua = unitOf.get(a), ub = unitOf.get(b);
+      if (ua !== ub) { cross.push({ a: a, b: b, ua: ua, ub: ub, data: e }); return; }
+      if (e.style === 'call') return; // 같은 메서드 안 재귀 호출 — 상자 색으로
+      // 뒤에서 앞으로 가는 간선(반복 ↻ 등)은 배치할 때만 뒤집어 흐름이 위→아래로 유지되게
       const rev = order.get(b) < order.get(a);
-      edges.push({ id: 'e' + i, sources: [rev ? b : a], targets: [rev ? a : b], labels: labels, data: e, rev: rev });
+      if (!inner.has(ua)) inner.set(ua, []);
+      inner.get(ua).push({ id: 'e' + i, sources: [rev ? b : a], targets: [rev ? a : b],
+        labels: e.label.length ? [labelBox(e.label)] : [], data: e, rev: rev });
     });
-    return {
-      graph: {
-        id: 'root',
-        layoutOptions: {
-          'elk.algorithm': 'layered',
-          'elk.direction': FLOW.direction === 'LR' ? 'RIGHT' : FLOW.direction === 'RL' ? 'LEFT' : FLOW.direction === 'BT' ? 'UP' : 'DOWN',
-          'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-          'elk.json.edgeCoords': 'ROOT',
-          'elk.json.shapeCoords': 'ROOT',
-          'elk.edgeRouting': 'ORTHOGONAL',
-          'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-          // 반복의 되돌아가는 선(↻)이 순환을 만든다 — 소스 순서(모델 순서)를 거스르는 간선을 뒤집어, 흐름이 위→아래로 유지되게
-          'elk.layered.cycleBreaking.strategy': 'MODEL_ORDER',
-          'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
-          'elk.spacing.nodeNode': '28',
-          'elk.layered.spacing.nodeNodeBetweenLayers': '36',
-          'elk.spacing.edgeLabel': '4',
-          'elk.edgeLabels.inline': 'false',
-        },
-        children: children,
-        edges: edges,
-      },
-      titles: sizes,
-    };
+    return { inner, cross };
+  }
+
+  function shift(n, dx, dy) {
+    n.x += dx; n.y += dy;
+    (n.children || []).forEach(c => shift(c, dx, dy));
+  }
+  function shiftEdge(e, dx, dy) {
+    for (const sec of e.sections || []) {
+      for (const p of [sec.startPoint, ...(sec.bendPoints || []), sec.endPoint]) { p.x += dx; p.y += dy; }
+    }
+    for (const l of e.labels || []) { l.x += dx; l.y += dy; }
+  }
+
+  const COL_GAP = 140, ROW_GAP = 36;
+
+  /** 메서드별 배치 → 열·높이 맞춤 → 하나의 배치 결과 (draw 가 그대로 그림) */
+  function layoutAll() {
+    const sizes = new Map();
+    const { inner, cross } = visibleEdges();
+    const jobs = unitList.map(u => {
+      const uid = u.group || u.id;
+      return elk.layout({ id: 'root', layoutOptions: ELK_OPTIONS, children: elkItems([u], sizes), edges: inner.get(uid) || [] })
+        .then(res => ({ uid: uid, node: res.children[0], edges: res.edges || [] }));
+    });
+    // ELK 가 단독 배치에서 상자를 내용보다 크게 잡는 경우가 있어 내용(자식·간선)에 맞춰 줄인다
+    function trim(n, edges) {
+      if (!n.children || !n.children.length) return;
+      n.children.forEach(c => trim(c, null));
+      let r = -Infinity, b = -Infinity;
+      for (const c of n.children) { r = Math.max(r, c.x + c.width); b = Math.max(b, c.y + c.height); }
+      for (const e of edges || []) {
+        for (const sec of e.sections || []) for (const p of [sec.startPoint, ...(sec.bendPoints || []), sec.endPoint]) { r = Math.max(r, p.x); b = Math.max(b, p.y); }
+        for (const l of e.labels || []) { r = Math.max(r, l.x + l.width); b = Math.max(b, l.y + l.height); }
+      }
+      const t = sizes.get(n.id);
+      n.width = Math.min(n.width, Math.max(r + 14 - n.x, t ? t.w + 30 : 0));
+      n.height = Math.min(n.height, b + 14 - n.y);
+    }
+    return Promise.all(jobs).then(results => {
+      results.forEach(r => trim(r.node, r.edges));
+      // 호출 깊이 (진입 메서드에서 BFS)
+      const next = new Map();
+      for (const c of cross) { if (!next.has(c.ua)) next.set(c.ua, []); next.get(c.ua).push(c.ub); }
+      const depth = new Map();
+      if (entryUnit) depth.set(entryUnit, 0);
+      const queue = entryUnit ? [entryUnit] : [];
+      while (queue.length) {
+        const u = queue.shift();
+        for (const v of next.get(u) || []) if (!depth.has(v)) { depth.set(v, depth.get(u) + 1); queue.push(v); }
+      }
+      let maxDepth = 0;
+      depth.forEach(d => { maxDepth = Math.max(maxDepth, d); });
+      for (const r of results) if (!depth.has(r.uid)) depth.set(r.uid, maxDepth + 1); // 어디서도 안 불린 것은 맨 오른쪽
+      const columns = [];
+      for (const r of results) { const d = depth.get(r.uid); (columns[d] = columns[d] || []).push(r); }
+
+      const pos = new Map(); // 배치를 마친 id → 절대 상자
+      function record(n) { pos.set(n.id, n); (n.children || []).forEach(record); }
+      let colX = 0;
+      for (const col of columns.filter(Boolean)) {
+        // 부른 노드의 높이 (이미 놓인 왼쪽 열 기준)
+        const anchor = r => {
+          let y = Infinity;
+          for (const c of cross) if (c.ub === r.uid && pos.has(c.a)) { const s = pos.get(c.a); y = Math.min(y, s.y + s.height / 2 - 20); }
+          return y;
+        };
+        const rows = col.map((r, i) => ({ r: r, y: anchor(r), i: i }))
+          .sort((p, q) => (p.y === q.y ? p.i - q.i : p.y - q.y));
+        let bottom = -Infinity, right = colX;
+        for (const row of rows) {
+          const n = row.r.node;
+          const y = Math.max(row.y === Infinity ? (bottom === -Infinity ? 0 : bottom + ROW_GAP) : row.y, bottom + ROW_GAP);
+          const dx = colX - n.x, dy = y - n.y;
+          shift(n, dx, dy);
+          row.r.edges.forEach(e => shiftEdge(e, dx, dy));
+          record(n);
+          bottom = n.y + n.height;
+          right = Math.max(right, n.x + n.width);
+        }
+        colX = right + COL_GAP;
+      }
+
+      // 단위 사이 연결선: 부른 노드 오른쪽 → 불린 메서드 상자 왼쪽 위 (열 사이 빈 곳에서 꺾음)
+      const edges = results.flatMap(r => r.edges);
+      for (const c of cross) {
+        const s = pos.get(c.a), t = pos.get(c.ub);
+        if (!s || !t) continue;
+        const ty = t.y + 16;
+        let pts;
+        if (t.x >= s.x + s.width) {
+          const sy = s.y + s.height / 2, mx = t.x - 24;
+          pts = [{ x: s.x + s.width, y: sy }, { x: mx, y: sy }, { x: mx, y: ty }, { x: t.x, y: ty }];
+        } else { // 왼쪽(되돌아가는 호출)
+          const sy = s.y + s.height / 2, mx = Math.min(s.x, t.x) - 24;
+          pts = [{ x: s.x, y: sy }, { x: mx, y: sy }, { x: mx, y: ty }, { x: t.x, y: ty }];
+        }
+        const label = c.data.label.length ? labelBox(c.data.label) : null;
+        if (label) { label.x = pts[0].x + 6; label.y = pts[0].y - label.height - 2; }
+        edges.push({ id: 'x' + edges.length, sections: [{ startPoint: pts[0], bendPoints: pts.slice(1, -1), endPoint: pts[pts.length - 1] }],
+          labels: label ? [label] : [], data: c.data, cross: true });
+      }
+      return { layout: { children: results.map(r => r.node), edges: edges }, titles: sizes };
+    });
   }
 
   // ---- 그리기 ----
@@ -160,6 +280,7 @@
   }
   const loopColor = (FLOW.loopEdge && FLOW.loopEdge.stroke) || '#2563eb';
   marker('arrow', cssVar('--edge')); marker('arrowExc', cssVar('--exc')); marker('arrowLoop', loopColor);
+  marker('arrowCall', (FLOW.classes.detail && FLOW.classes.detail.stroke) || '#b45309');
 
   function writeLines(g, lines, x, y, align, fill) {
     const t = el('text', { x: x, y: y, 'font-size': FONT_SIZE, 'text-anchor': align === 'left' ? 'start' : 'middle', fill: fill }, g);
@@ -252,13 +373,15 @@
 
     for (const e of layout.edges || []) {
       const d = e.data;
-      const color = d.loop ? loopColor : d.style === 'exception' ? cssVar('--exc') : cssVar('--edge');
+      const callColor = (FLOW.classes.detail && FLOW.classes.detail.stroke) || '#b45309';
+      const color = d.loop ? loopColor : d.style === 'exception' ? cssVar('--exc') : d.style === 'call' ? callColor : cssVar('--edge');
       for (const sec of e.sections || []) {
         const pts = [sec.startPoint, ...(sec.bendPoints || []), sec.endPoint];
         if (e.rev) pts.reverse();
         el('path', { d: 'M' + pts.map(p => p.x + ',' + p.y).join(' L'), fill: 'none', stroke: color,
-          'stroke-width': d.loop ? 2 : d.style === 'call' ? 2.5 : 1.3, 'stroke-dasharray': d.style === 'exception' ? '5 4' : null,
-          'marker-end': 'url(#' + (d.loop ? 'arrowLoop' : d.style === 'exception' ? 'arrowExc' : 'arrow') + ')' }, eLayer);
+          'stroke-width': d.loop ? 2 : d.style === 'call' ? 1.6 : 1.3, 'stroke-dasharray': d.style === 'exception' ? '5 4' : d.style === 'call' ? '7 4' : null,
+          'stroke-opacity': e.cross ? 0.85 : 1,
+          'marker-end': 'url(#' + (d.loop ? 'arrowLoop' : d.style === 'exception' ? 'arrowExc' : d.style === 'call' ? 'arrowCall' : 'arrow') + ')' }, eLayer);
       }
       for (const l of e.labels || []) {
         el('rect', { x: l.x - 2, y: l.y - 1, width: l.width + 4, height: l.height + 2, fill: cssVar('--label-bg'), opacity: 0.9, rx: 3 }, eLayer);
@@ -271,7 +394,6 @@
   }
 
   // ---- 배치 실행 ----
-  const elk = new ELK();
   const busy = document.getElementById('busy');
   let layoutRun = 0;
   function relayout(anchorId) {
@@ -279,10 +401,9 @@
     const run = ++layoutRun;
     busy.style.display = 'flex';
     setTimeout(() => {
-      const built = buildElk();
-      elk.layout(built.graph).then(res => {
+      layoutAll().then(built => {
         if (run !== layoutRun) return;
-        draw(res, built.titles);
+        draw(built.layout, built.titles);
         busy.style.display = 'none';
         if (pendingFocus && drawn.has(pendingFocus)) {
           const f = pendingFocus; pendingFocus = null;
