@@ -18,6 +18,8 @@ public final class ObjectInfo {
     /** 객체 변수가 선언된(소유) 메서드 */
     public String methodId;
     public final List<String> bindingIds = new ArrayList<>();
+    /** VO 소스 클래스의 인스턴스 필드 → 선언 타입 (상위 클래스 포함, 표시용 — vo.md 프로퍼티 타입. YAML 에는 넣지 않음) */
+    public final java.util.Map<String, String> fieldTypes = new java.util.LinkedHashMap<>();
 
     // ---- 필드 커버리지 (VO 만; 소스에 선언된 인스턴스 필드 기준) ----
     public final List<String> declaredFields = new ArrayList<>();

@@ -204,7 +204,7 @@ include 된 JSP 는 그 자리에 펼치고, `c:set` 처럼 출력이 없는 태
 | `flowchart-sections/` · `flowchart-skeleton/` | 메서드별 보기 — 구간 분할(`output.flowchart-sections`, 기본 true) · 골격(`output.flowchart-skeleton`, 기본 false, 용량 때문에 꺼 둠) |
 | `flowchart-*` 노드 | 연속된 코드는 노드 하나에 쌓되 `output.max-node-lines`(기본 30줄)를 넘으면 다음 노드로 이어서 나눔 |
 | `spec.md` | 간결한 명세: 1. Request Param 정의(파라미터·타입·필수·기본값·설명), 2. Response 정의(JSP 지정 시) |
-| `vo.md` | 내부용 VO 목록: VO 클래스 · 변수명 · 사용 위치 클래스 (spec.md 에는 넣지 않음) |
+| `vo.md` | 내부용 VO 목록: VO 클래스 · 변수명 · 사용 위치 클래스 + VO 마다 사용하는 프로퍼티(이름 · 타입 · set/get) (spec.md 에는 넣지 않음) |
 | `response.md` | JSP 지정 시: XML 구조, 값마다 출처 사슬·JSP 위치, Action → JSP attribute 표 |
 | `call-tree.txt` | 진입 메서드부터의 호출 트리 (분기·예외·요청 파라미터·바인딩 요약 포함) |
 | `flowchart.mmd` | Mermaid 흐름도 (메서드별 subgraph). try 는 블록 1개로 묶고 예외는 블록에서 catch 노드로 한 번에(`try -.->|ValidationException| catch …`), finally 는 그 뒤 노드 1개. 레이아웃은 Mermaid 기본(dagre), 직각 간선을 원하면 `output.layout: elk`(뷰어가 ELK 를 지원해야 함). 세부(박스)는 Service 쪽으로 넘어가는 흐름만 그림(Action → Service → Service·Biz·DAO·Mapper). Action 의 내부 함수(`readItems`, `preparePayment`, `calculateTotal` …)와 `checkLogin` 같은 값 조회는 코드 한 줄(`#15 items = readItems(request)` / `VO 값 설정 · OrderItemVO`) — 안에서 읽는 요청 값·VO 매핑은 `mapping.md` 에 그대로. 연속된 요청 값 읽기 → `요청 파라미터` 노드, 연속된 setter·builder·생성자 → `VO 값 설정` 노드 (아래 예시) |

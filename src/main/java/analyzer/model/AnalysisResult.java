@@ -35,6 +35,14 @@ public final class AnalysisResult {
     public final List<RequestSpecEntry> requestSpec = new ArrayList<>();
     /** 분석 중 생략/제약 사항 */
     public final List<String> notes = new ArrayList<>();
+    /**
+     * VO getter 읽기: 변수.getX() / isX() (인자 없음, 변수 선언 타입이 VO 소스 클래스) — 표시용(vo.md), YAML 에는 넣지 않음.
+     * getter 가 소스에 없어도(Lombok 등) 변수 타입으로 판정한다. type = VO 필드 선언 타입(없으면 getter 반환 타입, 모르면 null).
+     */
+    public record VoRead(String classId, String variable, String methodId, String property, String type) {
+    }
+
+    public final List<VoRead> voReads = new ArrayList<>();
     public int excludedExternalCalls;
 
     private final Map<String, Integer> counters = new HashMap<>();

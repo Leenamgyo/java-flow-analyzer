@@ -59,6 +59,7 @@ public final class BindingCollector {
     }
 
     private static final Pattern SETTER = Pattern.compile("set[A-Z_].*");
+    private static final Pattern GETTER = Pattern.compile("(?:get|is)([A-Z_].*)");
     private static final Set<String> MAP_TYPES = Set.of("Map", "HashMap", "LinkedHashMap", "TreeMap",
             "ConcurrentHashMap", "Hashtable", "SortedMap", "NavigableMap");
 
@@ -116,6 +117,10 @@ public final class BindingCollector {
     }
 
     private void visit(Node n, MethodInfo m, CallableDeclaration<?> md) {
+        if (n instanceof MethodCallExpr mc && mc.getArguments().isEmpty() && mc.getScope().orElse(null) instanceof NameExpr
+                && GETTER.matcher(mc.getNameAsString()).matches()) {
+            getter(mc, m, md);
+        }
         if (n instanceof MethodCallExpr mc) {
             String name = mc.getNameAsString();
             if (SETTER.matcher(name).matches() && mc.getArguments().size() == 1 && mc.getScope().isPresent()
@@ -237,6 +242,26 @@ public final class BindingCollector {
             objectTypes.put(o.id, owner);
             return o;
         });
+    }
+
+    /** VO getter 읽기 vo.getX() — 변수 선언 타입이 VO 소스 클래스일 때 (getter 선언이 없어도: Lombok) */
+    private void getter(MethodCallExpr mc, MethodInfo m, CallableDeclaration<?> md) {
+        TypeDeclaration<?> td = typeOf(mc.getScope().get(), md).orElse(null);
+        if (td == null || !types.isVo(td)) {
+            return;
+        }
+        java.util.regex.Matcher g = GETTER.matcher(mc.getNameAsString());
+        g.matches();
+        String prop = Character.toLowerCase(g.group(1).charAt(0)) + g.group(1).substring(1);
+        Map<String, String> fields = new LinkedHashMap<>();
+        fieldTypes(td, fields, new java.util.HashSet<>());
+        String type = fields.get(prop);
+        if (type == null) {
+            type = td.getMethodsByName(mc.getNameAsString()).stream().filter(x -> x.getParameters().isEmpty())
+                    .map(x -> x.getType().asString()).findFirst().orElse(null);
+        }
+        ClassInfo c = types.register(td);
+        r.voReads.add(new AnalysisResult.VoRead(c.id, ((NameExpr) mc.getScope().get()).getNameAsString(), m.id, prop, type));
     }
 
     // ------------------------------------------------------------------ assignment kinds
@@ -609,6 +634,7 @@ public final class BindingCollector {
         }
         Map<String, String> types = new LinkedHashMap<>();
         fieldTypes(td, types, new java.util.HashSet<>());
+        o.fieldTypes.putAll(types);
         for (Binding b : r.bindingsOf(o)) {
             b.fieldType = types.get(b.field);
         }

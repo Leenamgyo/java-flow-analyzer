@@ -119,4 +119,21 @@ class RequestSetupTest {
                 | SearchVO | vo | CaseAction |
                 """), md);
     }
+
+    /** vo.md 프로퍼티: 값을 넣는 필드(set) + getter 읽기(get, getter 선언이 없어도 변수 타입으로), 타입 = 필드 선언 */
+    @Test
+    void voListProperties() {
+        String set = new analyzer.serializer.VoListWriter().render(Fixtures.analyze("CaseAction", "variableState"));
+        assertTrue(set.contains("""
+                ### SearchVO (vo)
+
+                | 프로퍼티 | 타입 | 사용 |
+                |---|---|---|
+                | page | int | set |
+                """), set);
+        // 읽기만 하는 VO (for-each 변수, getter 는 소스에 없음 — Lombok 같은 경우)
+        String get = new analyzer.serializer.VoListWriter().render(Fixtures.analyze("EdgeAction", "loopAddThenIfElse"));
+        assertTrue(get.contains("| NoticeVO | vo | EdgeAction |"), get);
+        assertTrue(get.contains("| title | String | get |"), get);
+    }
 }
