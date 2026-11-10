@@ -154,7 +154,7 @@ public final class HtmlFlowchart {
                 List<Map<String, Object>> vo = new ArrayList<>();
                 for (String id : ids) {
                     if (r.element(id).orElse(null) instanceof CallSiteInfo c) {
-                        vo.addAll(voInputs(r, c, logicRoles));
+                        vo.addAll(voInputs(r, g, c, logicRoles));
                     }
                 }
                 if (!vo.isEmpty()) {
@@ -225,7 +225,7 @@ public final class HtmlFlowchart {
      * 그 변수가 다른 함수의 반환값이면(cmd = createCommand(…)) 그 함수 안에서 같은 클래스 VO 에 set 하는 코드 — 반환값을 거친
      * 객체 정체성은 모델이 추적하지 않으므로 "… 안에서" 로 밝혀 둔다.
      */
-    static List<Map<String, Object>> voInputs(AnalysisResult r, CallSiteInfo s, Set<ClassRole> logicRoles) {
+    static List<Map<String, Object>> voInputs(AnalysisResult r, MermaidGraph g, CallSiteInfo s, Set<ClassRole> logicRoles) {
         List<Map<String, Object>> out = new ArrayList<>();
         String target = s.implementationMethodId != null ? s.implementationMethodId : s.targetMethodId;
         MethodInfo tm = target == null ? null : r.method(target);
@@ -239,6 +239,7 @@ public final class HtmlFlowchart {
             }
             ObjectInfo o = r.objects.stream().filter(x -> s.callerMethodId.equals(x.methodId) && a.equals(x.variable)).findFirst().orElse(null);
             String via = null;
+            String made0 = null; // VO 를 만든 함수 호출 (반환값으로 받은 경우)
             List<Binding> bs = new ArrayList<>();
             if (o != null) {
                 for (String bid : o.bindingIds) {
@@ -267,6 +268,7 @@ public final class HtmlFlowchart {
                             if (made.expansionTargetId().equals(x.methodId) && type.equals(x.className) && !x.bindingIds.isEmpty()) {
                                 o = x;
                                 via = Labels.truncate(made.expression, 80) + " 안에서";
+                                made0 = made.id;
                                 x.bindingIds.forEach(id -> bs.add(r.binding(id)));
                                 break;
                             }
@@ -293,6 +295,26 @@ public final class HtmlFlowchart {
                 lines.add(Labels.bindingLine(r, b, false) + (b.conditional() ? "  (조건부)" : ""));
             }
             m.put("lines", lines);
+            // VO 를 set 하는 코드가 그려진 기존 노드 (연결선 출발점) — 흐름도 노드는 그대로, 선만 잇는다
+            java.util.Set<String> from = new java.util.LinkedHashSet<>();
+            List<String> cands = new ArrayList<>();
+            if (made0 != null) {
+                cands.add(made0);
+            } else {
+                for (Binding b : bs) {
+                    cands.add(b.id);
+                    cands.add("SET_" + b.id);
+                    if (b.callSiteId != null) {
+                        cands.add(b.callSiteId);
+                    }
+                }
+            }
+            for (String x : cands) {
+                if (g.has(x) && g.nodeById(g.nodeOf(x)) != null && !g.nodeOf(x).equals(g.nodeOf(s.id))) {
+                    from.add(g.nodeOf(x));
+                }
+            }
+            m.put("from", new ArrayList<>(from));
             out.add(m);
         }
         return out;

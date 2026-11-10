@@ -91,23 +91,24 @@
     return unitList.length ? (unitList[0].group || unitList[0].id) : null;
   })();
 
-  // ---- VO 입력 메모: Service·DAO 호출 노드 위에 넘기는 VO 와 set 코드 (토글 'VO 입력') ----
+  // ---- VO 연결: Service·DAO 호출 노드 ← 넘기는 VO 를 set 하는 기존 노드 (선만 덧그림 — 배치·노드·색은 그대로) ----
   let voOn = true;
   try { const v = localStorage.getItem('flowchart.voOn'); if (v !== null) voOn = v === '1'; } catch (e) { /* 저장소 없음 */ }
-  const NOTE = 'VOIN_';
+  const voEdges = new Map(); // 호출 노드 → [{style:'vo', from, to}] (강조에서 같은 객체로 찾음)
   for (const [id, n] of nodes) {
     if (!n.voIn) continue;
-    unitOf.set(NOTE + id, unitOf.get(id)); parent.set(NOTE + id, parent.get(id)); order.set(NOTE + id, order.get(id) - 0.5);
+    const list = [];
+    for (const v of n.voIn) for (const f of v.from || []) if (nodes.has(f)) list.push({ style: 'vo', label: [], loop: false, from: f, to: id });
+    if (list.length) voEdges.set(id, list);
   }
-  function noteLines(n) {
+  function voText(n) {
     const out = [];
     for (const v of n.voIn) {
-      out.push([['▣ VO ' + v.title + (v.via ? '  ← ' + v.via : ''), 'fn']]);
-      for (const l of v.lines) out.push([['  ' + l, '']]);
+      out.push(v.title + (v.via ? '  ← ' + v.via : ''));
+      for (const l of v.lines) out.push('  ' + l);
     }
-    return out;
+    return out.join('\n');
   }
-  function noteShown(id) { const n = nodes.get(id); return voOn && n && n.voIn && visible(id) === id; }
 
   // ---- 작은 세부 메서드 생략 (노드 수 ≤ 기준, 설정 output.flowchart-html-hide-nodes, 뷰어에서 바꿈) ----
   const unitSize = new Map();
@@ -157,10 +158,6 @@
           sizes.set(it.group, t);
         }
       } else {
-        if (noteShown(it.id)) {
-          const ns = boxSize(noteLines(it));
-          out.push({ id: NOTE + it.id, width: ns.w, height: ns.h });
-        }
         const s = nodeSize(it);
         out.push({ id: it.id, width: s.w, height: s.h });
       }
@@ -188,12 +185,6 @@
       inner.get(ua).push({ id: 'e' + i, sources: [rev ? b : a], targets: [rev ? a : b],
         labels: e.label.length ? [labelBox(e.label)] : [], data: e, rev: rev });
     });
-    for (const [id, n] of nodes) { // VO 메모 → 호출 노드 (점선, 메모가 호출 위에 오게)
-      if (!noteShown(id)) continue;
-      const u = unitOf.get(id);
-      if (!inner.has(u)) inner.set(u, []);
-      inner.get(u).push({ id: 'n_' + id, sources: [NOTE + id], targets: [id], labels: [], data: { style: 'note', label: [], loop: false } });
-    }
     // 생략한 메서드로 가는 선은 빼고, 생략한 메서드에서 나가는 선은 그 메서드를 부른 노드에서 나가게 (호출 줄기 유지)
     const cross = [], seenCross = new Set();
     for (const c of raw) {
@@ -343,6 +334,21 @@
         edges.push({ id: 'x' + edges.length, sections: [{ startPoint: pts[0], bendPoints: pts.slice(1, -1), endPoint: pts[pts.length - 1] }],
           labels: label ? [label] : [], data: c.data, cross: true });
       }
+      // VO 연결선: 배치가 끝난 위치에 덧그림 (VO 를 set 하는 노드 오른쪽 → 호출 노드 오른쪽, 바깥으로 돌아서)
+      if (voOn) {
+        for (const [id, list] of voEdges) {
+          const t = pos.get(visible(id));
+          if (!t) continue;
+          for (const d of list) {
+            const f = pos.get(visible(d.from));
+            if (!f || f === t) continue;
+            const mx = Math.max(f.x + f.width, t.x + t.width) + 18;
+            const fy = f.y + f.height / 2, ty = t.y + t.height / 2;
+            edges.push({ id: 'vo' + edges.length, sections: [{ startPoint: { x: f.x + f.width, y: fy },
+              bendPoints: [{ x: mx, y: fy }, { x: mx, y: ty }], endPoint: { x: t.x + t.width, y: ty } }], labels: [], data: d });
+          }
+        }
+      }
       return { layout: { children: results.map(r => r.node), edges: edges }, titles: sizes };
     });
   }
@@ -438,14 +444,6 @@
           writeLines(ng, collapsedLines(g), c.x + PAD_X, c.y + PAD_Y, 'left', cssVar('--g-title')).style.font = TITLE_FONT;
           ng.addEventListener('click', ev => { ev.stopPropagation(); toggle(id); });
           drawn.set(id, { x: c.x, y: c.y, w: c.width, h: c.height, el: ng, shape: shape });
-        } else if (id.startsWith(NOTE)) { // VO 입력 메모
-          const callId = id.substring(NOTE.length);
-          const ng = el('g', { class: 'node note' }, nLayer);
-          const shape = el('rect', { class: 'shape', x: c.x, y: c.y, width: c.width, height: c.height, rx: 4, ry: 4,
-            fill: cssVar('--note-fill'), stroke: cssVar('--note-stroke'), 'stroke-width': 1.2, 'stroke-dasharray': '4 3' }, ng);
-          writeLines(ng, noteLines(nodes.get(callId)), c.x + PAD_X, c.y + PAD_Y, 'left', cssVar('--fg'));
-          ng.addEventListener('click', ev => { ev.stopPropagation(); select(callId); });
-          drawn.set(id, { x: c.x, y: c.y, w: c.width, h: c.height, el: ng, shape: shape });
         } else {
           const n = nodes.get(id);
           const ng = el('g', { class: 'node' }, nLayer);
@@ -470,17 +468,16 @@
     for (const e of layout.edges || []) {
       const d = e.data;
       const callColor = (FLOW.classes.detail && FLOW.classes.detail.stroke) || '#b45309';
-      const color = d.loop ? loopColor : d.style === 'exception' ? cssVar('--exc') : d.style === 'call' ? callColor
-        : d.style === 'note' ? cssVar('--note-stroke') : cssVar('--edge');
+      const color = d.loop ? loopColor : d.style === 'exception' ? cssVar('--exc') : d.style === 'call' ? callColor : cssVar('--edge');
       const els = [];
       edgeEls.push({ data: d, cross: !!e.cross, els: els });
       for (const sec of e.sections || []) {
         const pts = [sec.startPoint, ...(sec.bendPoints || []), sec.endPoint];
         if (e.rev) pts.reverse();
         els[els.length] = el('path', { d: 'M' + pts.map(p => p.x + ',' + p.y).join(' L'), fill: 'none', stroke: color,
-          'stroke-width': d.loop ? 2 : d.style === 'call' ? 1.6 : 1.3, 'stroke-dasharray': d.style === 'exception' ? '5 4' : d.style === 'call' ? '7 4' : d.style === 'note' ? '2 3' : null,
+          'stroke-width': d.loop ? 2 : d.style === 'call' ? 1.6 : 1.3, 'stroke-dasharray': d.style === 'exception' ? '5 4' : d.style === 'call' ? '7 4' : d.style === 'vo' ? '2 3' : null,
           'stroke-opacity': e.cross ? 0.85 : 1,
-          'marker-end': d.style === 'note' ? null : 'url(#' + (d.loop ? 'arrowLoop' : d.style === 'exception' ? 'arrowExc' : d.style === 'call' ? 'arrowCall' : 'arrow') + ')' }, eLayer);
+          'marker-end': 'url(#' + (d.loop ? 'arrowLoop' : d.style === 'exception' ? 'arrowExc' : d.style === 'call' ? 'arrowCall' : 'arrow') + ')' }, eLayer);
       }
       for (const l of e.labels || []) {
         els.push(el('rect', { x: l.x - 2, y: l.y - 1, width: l.width + 4, height: l.height + 2, fill: cssVar('--label-bg'), opacity: 0.9, rx: 3 }, eLayer));
@@ -551,6 +548,7 @@
     if (!hlStarts.size) { hl = null; } else {
       hl = { nodes: new Set(), units: new Set(), edges: new Set() };
       for (const [start, d] of hlStarts) pathOf(start, d.up, d.down, hl);
+      for (const id of [...hl.nodes]) for (const d of voEdges.get(id) || []) { hl.edges.add(d); hl.nodes.add(d.from); } // VO 를 set 하는 노드도
     }
     applyHighlight();
     info();
@@ -565,9 +563,9 @@
     const vis = on ? new Set([...hl.nodes, ...hl.units].map(visible)) : null;
     for (const [id, b] of drawn) {
       if (groupEls.has(id)) continue;
-      const lit = on && (vis.has(id) || id.startsWith(NOTE) && vis.has(id.substring(NOTE.length)));
+      const lit = on && vis.has(id);
       b.el.classList.toggle('dim', on && !lit);
-      b.el.classList.toggle('path', lit && !id.startsWith(NOTE));
+      b.el.classList.toggle('path', lit);
     }
     for (const [id, gEl] of groupEls) {
       const lit = on && hl.units.has(id);
@@ -722,9 +720,9 @@
       if (m) { const d = document.createElement('div'); d.className = 'meta'; d.textContent = '메서드: ' + groups.get(m).label.join(' '); panel.appendChild(d); }
     }
     if (n.voIn) { // 넘기는 VO 와 set 코드
-      const t = document.createElement('div'); t.className = 'meta'; t.style.marginTop = '6px'; t.textContent = 'VO 입력 (set 코드 그대로)';
+      const t = document.createElement('div'); t.className = 'meta'; t.style.marginTop = '6px'; t.textContent = '넘기는 VO (set 코드 그대로)';
       panel.appendChild(t);
-      const pv = document.createElement('pre'); pv.textContent = noteLines(n).map(lineText).join('\n'); panel.appendChild(pv);
+      const pv = document.createElement('pre'); pv.textContent = voText(n); panel.appendChild(pv);
     }
     if (callIn.has(unitOf.get(id)) || callOut.has(id) || headerOf(unitOf.get(id)) === id && unitCalls.has(unitOf.get(id))) {
       const cur = hlStarts.get(id);
@@ -760,7 +758,7 @@
     hits = [];
     if (s) {
       for (const [id, n] of nodes) {
-        const text = nodeText(n) + (n.voIn ? '\n' + noteLines(n).map(lineText).join('\n') : '');
+        const text = nodeText(n) + (n.voIn ? '\n' + voText(n) : '');
         if (text.toLowerCase().includes(s) || n.ids.some(x => x.toLowerCase() === s)) hits.push(id);
       }
       for (const [gid, g] of groups) if (g.label.join(' ').toLowerCase().includes(s)) { const first = firstNode(gid); if (first && !hits.includes(first)) hits.push(first); }
@@ -817,6 +815,7 @@
   hideBox.addEventListener('change', setHide);
   const voBox = document.getElementById('voOn');
   voBox.checked = voOn;
+  if (!voEdges.size) voBox.parentElement.style.display = 'none';
   voBox.addEventListener('change', () => {
     voOn = voBox.checked;
     try { localStorage.setItem('flowchart.voOn', voOn ? '1' : '0'); } catch (e) { /* 저장소 없음 */ }

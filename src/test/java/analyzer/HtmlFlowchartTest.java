@@ -104,6 +104,11 @@ class HtmlFlowchartTest {
         assertEquals("AppListCommand cmd", vo.get(0).get("title"));
         assertTrue(((String) vo.get(0).get("via")).startsWith("createCommand("));
         assertEquals(List.of("mcc = parseParameter(mcc)", "startNum = startNum"), vo.get(0).get("lines"));
+        // 연결선 출발점 = VO 를 만든 createCommand 호출이 그려진 기존 노드
+        List<String> from = (List<String>) vo.get(0).get("from");
+        assertEquals(1, from.size());
+        assertTrue(nodes.stream().anyMatch(n -> n.get("id").equals(from.get(0))
+                && ((List<String>) n.get("ids")).stream().anyMatch(x -> r.callSite(x) != null && r.callSite(x).expression.startsWith("createCommand("))));
         // 단계 보기도
         assertTrue(Files.exists(dir.resolve("phase-flowchart.html")));
     }
