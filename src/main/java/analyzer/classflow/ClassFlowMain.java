@@ -20,8 +20,9 @@ import java.util.List;
  * 진입으로 한 번에 분석(핵심 분석 FlowAnalyzer 공유, 규칙 같음)하고 flowchart.html 하나만 만든다 (VO·spec 등 없음).
  * <pre>
  *   ./gradlew runClass --args="--config config/my-project.yml --class ContentUtil"
+ *   ./gradlew runClass --args="--config config/my-project.yml --class ContentUtil --apply"   # catalog/ContentUtil.yml 의 hidden 적용
  * </pre>
- * 옵션: --config, --source-root(반복), --class, --output. 결과: &lt;output&gt;/class/&lt;클래스&gt;/flowchart.html
+ * 옵션: --config, --source-root(반복), --class, --output, --apply. 결과: &lt;output&gt;/class/&lt;클래스&gt;/flowchart.html
  */
 public final class ClassFlowMain {
 
@@ -42,6 +43,7 @@ public final class ClassFlowMain {
         Path configPath = null;
         List<String> roots = new ArrayList<>();
         String clazz = null, output = null;
+        boolean apply = false;
         for (int i = 0; i < args.length; i++) {
             String v = i + 1 < args.length ? args[i + 1] : null;
             switch (args[i]) {
@@ -49,7 +51,8 @@ public final class ClassFlowMain {
                 case "--source-root" -> { roots.add(require(v, "--source-root")); i++; }
                 case "--class" -> { clazz = require(v, "--class"); i++; }
                 case "--output" -> { output = require(v, "--output"); i++; }
-                default -> throw new IllegalArgumentException("알 수 없는 옵션: " + args[i] + " (runClass: --config --source-root --class --output)");
+                case "--apply" -> apply = true; // catalog/<클래스>.yml 의 hidden 을 흐름도에 적용
+                default -> throw new IllegalArgumentException("알 수 없는 옵션: " + args[i] + " (runClass: --config --source-root --class --output --apply)");
             }
         }
         if (configPath == null && roots.isEmpty() && Files.isRegularFile(Path.of("config/analyzer.yml"))) {
@@ -66,7 +69,16 @@ public final class ClassFlowMain {
 
         AnalysisResult r = analyze(cfg);
         String name = r.clazz(r.targetClassId).name;
-        Path file = write(r, cfg, outputDir(cfg, name));
+        List<String> hidden = null;
+        if (apply) {
+            Path catalog = analyzer.catalog.UtilCatalog.catalogFile(cfg, name);
+            List<String> patterns = CatalogApply.hiddenPatterns(catalog);
+            hidden = CatalogApply.matchMethods(r, patterns);
+            System.out.println("카탈로그 적용: " + catalog + " — hidden " + patterns.size() + "개 → 숨긴 메서드 상자 " + hidden.size() + "개"
+                    + (Files.isRegularFile(catalog) ? "" : " (카탈로그 파일 없음)"));
+            CatalogApply.unmatched(r, patterns).forEach(p -> System.err.println("[WARN] hidden '" + p + "' 에 맞는 메서드 없음"));
+        }
+        Path file = write(r, cfg, outputDir(cfg, name), hidden);
         System.out.println("전체 클래스 흐름도: " + r.clazz(r.targetClassId).qualifiedName + " (메서드 " + r.entryMethodIds.size() + "개) → " + file);
         return 0;
     }
@@ -88,6 +100,11 @@ public final class ClassFlowMain {
 
     /** flowchart.html 하나 (Mermaid 흐름도와 같은 그래프·검증) */
     public static Path write(AnalysisResult r, AnalyzerConfig cfg, Path dir) throws java.io.IOException {
+        return write(r, cfg, dir, null);
+    }
+
+    /** hidden: 처음부터 숨길 메서드 ID (카탈로그 적용), null 이면 없음 */
+    public static Path write(AnalysisResult r, AnalyzerConfig cfg, Path dir, List<String> hidden) throws java.io.IOException {
         FlowchartGenerator gen = new FlowchartGenerator(FlowchartGenerator.roles(cfg.phases.logicRoles))
                 .maxLineLength(cfg.output.maxLineLength).maxNodeLines(cfg.output.maxNodeLines)
                 .exclude(cfg.output.flowchartExclude).theme(cfg.output.colorTheme);
@@ -96,7 +113,7 @@ public final class ClassFlowMain {
         Path file = dir.resolve("flowchart.html");
         Files.writeString(file, HtmlFlowchart.render(r, g, gen.classDefinitions(), cfg.output.direction,
                 r.clazz(r.targetClassId).name + " — 전체 클래스 흐름도", cfg.output.flowchartHtmlHideNodes,
-                FlowchartGenerator.roles(cfg.phases.logicRoles)));
+                FlowchartGenerator.roles(cfg.phases.logicRoles), hidden));
         return file;
     }
 

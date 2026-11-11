@@ -113,7 +113,16 @@ Action 분석과 **따로** 실행·결과를 두는 모드입니다. 클래스(
 
 결과: `output/class/<클래스>/flowchart.html` **하나** (VO·spec·analysis.yaml 등은 만들지 않음 — Action 분석 결과 `output/<클래스>/` 와 섞이지 않음).
 - 메서드마다 시작 상자가 가운데 열에 소스 순서로 세로로 나란히, 각자 부르는 Service·DAO 는 부른 줄 옆에. 여러 메서드가 같은 Biz·DAO 를 쓰면 그 상자는 한 번만(공유).
-- 뷰어 기능(확대·이동, 접기, 검색, 연결 강조, VO 연결, 작은 세부 생략)은 Action 흐름도와 같음.
+- 뷰어 기능(확대·이동, 접기, 검색, 연결 강조, VO 연결, 작은 세부 생략, 메서드 숨기기)은 Action 흐름도와 같음.
+- **카탈로그 적용 `--apply`**: `catalog/<클래스>.yml` 최상위 `hidden:` 목록(손으로 관리)을 처음부터 숨긴 상태로 흐름도를 만듭니다. 항목은 `클래스.메서드`, `클래스`(그 클래스 메서드 전부), `*` 패턴. 맞는 메서드가 없는 항목은 경고. `--apply` 가 없으면 카탈로그를 보지 않습니다.
+  ```yaml
+  hidden:
+    - ProductInfoBizImpl.getInfo
+    - "*CacheBiz"
+  ```
+  ```bash
+  ./gradlew runClass --args="--config config/my-project.yml --class ContentUtil --apply"
+  ```
 
 ## Util 기능 목록 (ContentUtil 등 유틸 전체의 기능 분석)
 

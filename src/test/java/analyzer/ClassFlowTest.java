@@ -55,4 +55,35 @@ class ClassFlowTest {
         }
         return n;
     }
+
+    /** --apply: catalog/<클래스>.yml 의 hidden(메서드·패턴)을 처음부터 숨김으로. --apply 없으면 카탈로그를 보지 않는다 */
+    @SuppressWarnings("unchecked")
+    @Test
+    void applyCatalogHidden(@TempDir Path tmp) throws Exception {
+        Path catalog = tmp.resolve("catalog");
+        Files.createDirectories(catalog);
+        Files.writeString(catalog.resolve("ProductUtil.yml"), "class: com.example.util.ProductUtil\nmethods: []\n"
+                + "hidden:\n  - ProductInfoBizImpl.getInfo\n  - \"*CacheBiz\"\n  - NoSuch.method\n");
+        Path cfg = tmp.resolve("c.yml");
+        Files.writeString(cfg, "target:\n  source-root: " + Fixtures.SOURCE_ROOT + "\n  class: ProductUtil\n"
+                + "output:\n  directory: " + tmp.resolve("out") + "\n  catalog-dir: " + catalog + "\n");
+        assertEquals(0, ClassFlowMain.run(new String[]{"--config", cfg.toString(), "--apply"}));
+        Map<String, Object> data = data(tmp.resolve("out/class/ProductUtil/flowchart.html"));
+        List<String> preset = (List<String>) data.get("hiddenPreset");
+        assertEquals(2, preset.size(), preset.toString()); // BizImpl.getInfo + CacheBiz.getInfo (NoSuch 는 경고만)
+        String all = Files.readString(tmp.resolve("out/class/ProductUtil/flowchart.html"));
+        for (String id : preset) {
+            assertTrue(all.contains("\"group\":\"" + id + "\""), id);
+        }
+        // --apply 없으면 카탈로그를 보지 않음
+        assertEquals(0, ClassFlowMain.run(new String[]{"--config", cfg.toString()}));
+        assertFalse(data(tmp.resolve("out/class/ProductUtil/flowchart.html")).containsKey("hiddenPreset"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> data(Path html) throws Exception {
+        String s = Files.readString(html);
+        int a = s.indexOf("const FLOW = ") + "const FLOW = ".length();
+        return new ObjectMapper().readValue(s.substring(a, s.indexOf(";</script>", a)), Map.class);
+    }
 }

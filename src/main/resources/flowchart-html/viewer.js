@@ -188,7 +188,11 @@
   // 직접 숨긴 메서드 상자 (사용자: 숨기기 기능) — 파일(제목)마다 브라우저에 기억. 숨긴 메서드가 부르던 메서드는 부른 줄에 이어진다
   const HIDE_KEY = 'flowchart.hidden.' + FLOW.title;
   const userHidden = new Set();
-  try { JSON.parse(localStorage.getItem(HIDE_KEY) || '[]').forEach(u => { if (groups.has(u)) userHidden.add(u); }); } catch (e) { /* 저장소 없음 */ }
+  if (Array.isArray(FLOW.hiddenPreset)) { // 카탈로그 적용(runClass --apply): 카탈로그의 hidden 이 기준 — 브라우저에 기억한 것보다 우선
+    FLOW.hiddenPreset.forEach(u => { if (groups.has(u)) userHidden.add(u); });
+  } else {
+    try { JSON.parse(localStorage.getItem(HIDE_KEY) || '[]').forEach(u => { if (groups.has(u)) userHidden.add(u); }); } catch (e) { /* 저장소 없음 */ }
+  }
   function saveHidden() { try { localStorage.setItem(HIDE_KEY, JSON.stringify([...userHidden])); } catch (e) { /* 저장소 없음 */ } }
   function setUserHidden(uid, on) {
     if (on) userHidden.add(uid); else userHidden.delete(uid);

@@ -60,8 +60,20 @@ public final class HtmlFlowchart {
     /** logicRoles: VO 입력을 붙일 호출 대상 역할 (Service·Biz·DAO·Mapper·Repository — phases.logic-roles) */
     public static String render(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title,
                                 int hideNodes, Set<ClassRole> logicRoles) {
+        return render(r, g, classDefs, direction, title, hideNodes, logicRoles, null);
+    }
+
+    /**
+     * hiddenPreset: 처음부터 숨길 메서드 상자(메서드 ID) — 카탈로그 적용(runClass --apply)의 hidden 목록. null 이면 없음
+     * (뷰어가 브라우저에 기억한 숨김을 씀), 있으면 카탈로그가 기준.
+     */
+    public static String render(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title,
+                                int hideNodes, Set<ClassRole> logicRoles, List<String> hiddenPreset) {
         Map<String, Object> data = data(r, g, classDefs, direction, title, logicRoles);
         data.put("hideNodes", Math.max(0, hideNodes));
+        if (hiddenPreset != null) {
+            data.put("hiddenPreset", hiddenPreset.stream().map(id -> "sg_" + id).toList());
+        }
         String json;
         try {
             json = new ObjectMapper().writeValueAsString(data);
