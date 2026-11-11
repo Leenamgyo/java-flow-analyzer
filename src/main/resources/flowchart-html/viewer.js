@@ -387,18 +387,29 @@
         for (const c of cross) if (c.ub === r.uid && pos.has(c.a)) { const sn = pos.get(c.a); y = Math.min(y, sn.y + sn.height / 2 - 20); }
         return y;
       };
+      // 전체 클래스 흐름도(allRight): 단계가 깊어도 덜 꼬이게 — 열 순서는 부른 줄들의 평균 높이, 열 사이 간격은 그 열로 들어오는
+      // 선 수만큼 넓혀 선마다 세로 차선을 따로 (Action 흐름도는 예전 그대로)
+      const LANE = 10;
+      const lanesInto = new Map(); // 열(깊이) → 들어오는 선 수
+      if (FLOW.allRight) for (const c of cross) { const d = depth.get(c.ub); lanesInto.set(d, (lanesInto.get(d) || 0) + 1); }
+      const gapFor = d => FLOW.allRight ? Math.max(COL_GAP, 48 + (lanesInto.get(d) || 0) * LANE) : COL_GAP;
+      const avgAnchor = r => { // 부른 줄들의 평균 높이
+        let sum = 0, n = 0;
+        for (const c of cross) if (c.ub === r.uid && pos.has(c.a)) { const sn = pos.get(c.a); sum += sn.y + sn.height / 2 - 20; n++; }
+        return n ? sum / n : Infinity;
+      };
       for (let d = 1; d <= maxDepth + 1; d++) {
         for (const sd of [1, -1]) {
           const col = results.filter(r => !entrySet.has(r.uid) && depth.get(r.uid) === d && sideOf(r.uid) === sd);
           if (!col.length) continue;
-          const rows = col.map((r, i) => ({ r: r, y: anchor(r), i: i }))
+          const rows = col.map((r, i) => ({ r: r, y: FLOW.allRight ? avgAnchor(r) : anchor(r), i: i }))
             .sort((p, q) => (p.y === q.y ? p.i - q.i : p.y - q.y));
           let bottom = -Infinity, edge = sd > 0 ? rightEdge : leftEdge;
           for (const row of rows) {
             const n = row.r.node;
             const y = Math.max(row.y === Infinity ? (bottom === -Infinity ? 0 : bottom + ROW_GAP) : row.y, bottom + ROW_GAP);
             // 오른쪽 열은 왼쪽 끝을, 왼쪽 열은 오른쪽 끝을 맞춘다 (진입 메서드 쪽으로 붙게)
-            place(row.r, sd > 0 ? rightEdge + COL_GAP : leftEdge - COL_GAP - n.width, y);
+            place(row.r, sd > 0 ? rightEdge + gapFor(d) : leftEdge - gapFor(d) - n.width, y);
             bottom = n.y + n.height;
             edge = sd > 0 ? Math.max(edge, n.x + n.width) : Math.min(edge, n.x);
           }
@@ -408,13 +419,35 @@
 
       // 단위 사이 연결선: 부른 노드 → 불린 메서드 상자 (오른쪽이면 상자 왼쪽 위, 왼쪽이면 상자 오른쪽 위; 열 사이 빈 곳에서 꺾음)
       const edges = results.flatMap(r => r.edges);
+      // allRight: 열로 들어오는 선마다 차선(도착 높이·출발 높이 순, 바깥쪽으로)과 도착점(같은 상자로 들어오는 k 번째 선은 조금 아래)
+      const lane = new Map(), arrive = new Map();
+      if (FLOW.allRight) {
+        const byCol = new Map();
+        for (const c of cross) {
+          const sn = pos.get(c.a), t = pos.get(c.ub);
+          if (!sn || !t || t.x < sn.x + sn.width) continue;
+          const d = depth.get(c.ub);
+          if (!byCol.has(d)) byCol.set(d, []);
+          byCol.get(d).push(c);
+        }
+        for (const list of byCol.values()) {
+          list.sort((p, q) => (pos.get(p.ub).y - pos.get(q.ub).y) || (pos.get(p.a).y - pos.get(q.a).y));
+          list.forEach((c, i) => lane.set(c, i));
+        }
+        const inCount = new Map();
+        for (const c of cross) {
+          const k = inCount.get(c.ub) || 0;
+          inCount.set(c.ub, k + 1);
+          arrive.set(c, k);
+        }
+      }
       for (const c of cross) {
         const sn = pos.get(c.a), t = pos.get(c.ub);
         if (!sn || !t) continue;
-        const ty = t.y + 16, sy = sn.y + sn.height / 2;
+        const ty = t.y + 16 + (arrive.has(c) ? Math.min(arrive.get(c) * 6, Math.max(0, t.height - 28)) : 0), sy = sn.y + sn.height / 2;
         let pts;
         if (t.x >= sn.x + sn.width) {
-          const mx = t.x - 24;
+          const mx = lane.has(c) ? t.x - 16 - lane.get(c) * LANE : t.x - 24;
           pts = [{ x: sn.x + sn.width, y: sy }, { x: mx, y: sy }, { x: mx, y: ty }, { x: t.x, y: ty }];
         } else if (t.x + t.width <= sn.x) {
           const mx = t.x + t.width + 24;
