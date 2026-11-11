@@ -11,4 +11,5 @@
 - `note` 와 직접 추가한 키(메서드 안·파일 최상위 모두)는 그대로 둡니다.
 - 소스에서 없어진 메서드는 지우지 않고 `removed: true` 로 남깁니다.
 - `void-methods` = 반환 타입이 void 인 현재 메서드 목록.
+- `--catalog-prune`: 없어진(`removed: true`) 메서드만 정리 / `--catalog-reset`: 이전 내용을 버리고 새로 — 둘 다 `catalog/.backup/` 에 먼저 백업 (git 제외).
 - `ProductUtil.yml` 은 샘플 프로젝트 예시입니다.

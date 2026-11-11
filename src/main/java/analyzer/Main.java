@@ -20,7 +20,7 @@ import java.util.List;
  *   ./gradlew run --args="--source-root /abs/src/main/java --class XAction" # 기본 조건만 + 경로
  *   ./gradlew run --args="--config my-project.yml --class ContentUtil --all-methods"   # Util 기능 목록 → catalog/ContentUtil.yml
  * </pre>
- * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output, --jsp, --all-methods
+ * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output, --jsp, --all-methods, --catalog-reset, --catalog-prune
  */
 public final class Main {
 
@@ -42,6 +42,7 @@ public final class Main {
         List<String> sourceRoots = new java.util.ArrayList<>();
         String clazz = null, method = null, output = null;
         boolean allMethods = false;
+        analyzer.catalog.UtilCatalog.Mode catalogMode = analyzer.catalog.UtilCatalog.Mode.UPDATE;
         List<String> jsp = new java.util.ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String v = i + 1 < args.length ? args[i + 1] : null;
@@ -53,6 +54,8 @@ public final class Main {
                 case "--output" -> { output = require(v, "--output"); i++; }
                 case "--jsp" -> { jsp.add(require(v, "--jsp")); i++; }
                 case "--all-methods" -> allMethods = true;
+                case "--catalog-reset" -> catalogMode = analyzer.catalog.UtilCatalog.Mode.RESET;   // 기능 목록을 지금 소스로 새로 (백업 후)
+                case "--catalog-prune" -> catalogMode = analyzer.catalog.UtilCatalog.Mode.PRUNE;   // 없어진(removed) 메서드만 정리 (백업 후)
                 default -> throw new IllegalArgumentException("알 수 없는 옵션: " + args[i]);
             }
         }
@@ -71,10 +74,13 @@ public final class Main {
         if (output != null) cfg.output.directory = output;
         if (!jsp.isEmpty()) cfg.response.jsp = jsp;   // Action 마다 JSP 가 다르므로 실행 단위로 지정
         if (allMethods) cfg.target.allMethods = true;
+        if (catalogMode != analyzer.catalog.UtilCatalog.Mode.UPDATE && !cfg.target.allMethods) {
+            throw new IllegalArgumentException("--catalog-reset·--catalog-prune 은 기능 목록 모드(--all-methods 또는 target.all-methods)에서만 씁니다.");
+        }
         ConfigLoader.validate(cfg);
 
         if (cfg.target.allMethods) { // Util 기능 목록: 메서드 전부 → catalog/<클래스>.yml (계속 관리되는 파일, 갱신)
-            Path file = analyzer.catalog.UtilCatalog.run(cfg);
+            Path file = analyzer.catalog.UtilCatalog.run(cfg, catalogMode);
             System.out.println("기능 목록 갱신: " + cfg.target.className + " → " + file);
             return 0;
         }

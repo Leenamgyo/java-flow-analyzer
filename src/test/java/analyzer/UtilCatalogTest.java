@@ -79,4 +79,36 @@ class UtilCatalogTest {
         assertTrue(cfg.target.allMethods);
         assertEquals("catalog", cfg.output.catalogDir);
     }
+
+    /** --catalog-prune: 없어진 메서드만 정리(note 보존) / --catalog-reset: 지금 소스로 새로(note·추가 키 버림) — 둘 다 백업 */
+    @SuppressWarnings("unchecked")
+    @Test
+    void pruneAndReset(@TempDir Path tmp) throws Exception {
+        Path dir = tmp.resolve("catalog");
+        Path cfg = tmp.resolve("c.yml");
+        Files.writeString(cfg, "target:\n  source-root: " + Fixtures.SOURCE_ROOT + "\n  class: ProductUtil\n  all-methods: true\n"
+                + "output:\n  catalog-dir: " + dir + "\n  catalog-outputs: false\n");
+        assertEquals(0, Main.run(new String[]{"--config", cfg.toString()}));
+        Path file = dir.resolve("ProductUtil.yml");
+        ObjectMapper yaml = new ObjectMapper(new YAMLFactory());
+        Map<String, Object> doc = yaml.readValue(file.toFile(), Map.class);
+        ((List<Map<String, Object>>) doc.get("methods")).get(0).put("note", "메모");
+        ((List<Map<String, Object>>) doc.get("methods")).add(Map.of("signature", "oldMethod()", "removed", true));
+        doc.put("hidden", List.of("X.y"));
+        yaml.writeValue(file.toFile(), doc);
+
+        assertEquals(0, Main.run(new String[]{"--config", cfg.toString(), "--catalog-prune"}));
+        Map<String, Object> pruned = yaml.readValue(file.toFile(), Map.class);
+        assertTrue(((List<Map<String, Object>>) pruned.get("methods")).stream().noneMatch(m -> "oldMethod()".equals(m.get("signature"))));
+        assertEquals("메모", method(pruned, "info(String id)").get("note"));
+        assertEquals(List.of("X.y"), pruned.get("hidden"));
+
+        assertEquals(0, Main.run(new String[]{"--config", cfg.toString(), "--catalog-reset"}));
+        Map<String, Object> reset = yaml.readValue(file.toFile(), Map.class);
+        assertEquals("", method(reset, "info(String id)").get("note"));
+        assertTrue(!reset.containsKey("hidden"));
+        try (var b = Files.list(dir.resolve(".backup"))) {
+            assertEquals(2, b.count()); // prune · reset 각각 백업
+        }
+    }
 }

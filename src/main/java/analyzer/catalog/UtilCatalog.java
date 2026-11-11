@@ -55,8 +55,19 @@ public final class UtilCatalog {
     private UtilCatalog() {
     }
 
+    /**
+     * 갱신 방식 (사용자: 카탈로그 reset 같은 기능도): UPDATE = 기본(분석 칸만 갱신, 사람이 적은 칸·없어진 메서드 보존),
+     * PRUNE = 소스에서 없어진(removed) 메서드만 정리(note 등은 보존), RESET = 이전 내용을 버리고 지금 소스로 새로.
+     * PRUNE·RESET 은 기존 파일을 <catalog-dir>/.backup/<클래스>.<시각>.yml 로 먼저 백업한다.
+     */
+    public enum Mode { UPDATE, PRUNE, RESET }
+
     /** 목록을 만들거나 갱신한다. @return 쓴 파일 */
     public static Path run(AnalyzerConfig cfg) throws IOException {
+        return run(cfg, Mode.UPDATE);
+    }
+
+    public static Path run(AnalyzerConfig cfg, Mode mode) throws IOException {
         ProjectSources sources = new ProjectSources(cfg.target.effectiveSourceRoots().stream().map(Path::of).toList(),
                 cfg.analysis.classpathJars.stream().map(Path::of).toList());
         TypeDeclaration<?> type = EntryPointLocator.locateType(sources, cfg.target.className);
@@ -102,10 +113,45 @@ public final class UtilCatalog {
             cfg.target.entryMethod = savedMethod;
             cfg.target.entryMethodParameterTypes = savedTypes;
         }
-        Map<String, Object> doc = merge(fqn, fresh, read(file));
+        Map<String, Object> old = read(file);
+        if (mode != Mode.UPDATE && Files.isRegularFile(file)) {
+            Path backup = backup(file);
+            System.out.println("  기존 목록 백업: " + backup);
+        }
+        if (mode == Mode.RESET) {
+            old = Map.of(); // 이전 내용(note·추가 키·removed) 버림
+        }
+        Map<String, Object> doc = merge(fqn, fresh, old);
+        if (mode == Mode.PRUNE) {
+            prune(doc);
+        }
         Files.createDirectories(file.getParent());
         Files.writeString(file, YAML.writeValueAsString(doc));
         return file;
+    }
+
+    /** 기존 파일 백업: <catalog-dir>/.backup/<클래스>.<yyyyMMdd-HHmmss>.yml */
+    static Path backup(Path file) throws IOException {
+        String name = file.getFileName().toString().replaceFirst("\\.yml$", "");
+        String stamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        Path dir = file.getParent().resolve(".backup");
+        Files.createDirectories(dir);
+        Path b = dir.resolve(name + "." + stamp + ".yml");
+        for (int i = 2; Files.exists(b); i++) {
+            b = dir.resolve(name + "." + stamp + "-" + i + ".yml");
+        }
+        Files.copy(file, b);
+        return b;
+    }
+
+    /** removed: true 인 메서드 제거 */
+    @SuppressWarnings("unchecked")
+    static void prune(Map<String, Object> doc) {
+        Object ms = doc.get("methods");
+        if (ms instanceof List<?> list) {
+            doc.put("methods", new ArrayList<>(((List<Map<String, Object>>) list).stream()
+                    .filter(m -> !Boolean.TRUE.equals(m.get("removed"))).toList()));
+        }
     }
 
     /** 목록 파일 위치: output.catalog-dir/<클래스 단순명>.yml — 원본 소스 안에는 쓰지 않는다 */

@@ -148,6 +148,12 @@ void-methods: [refresh(String id)]           # 반환 타입 void 인 메서드
 
 - 다시 돌리면 분석 칸만 갱신하고 `note`·직접 추가한 키(메서드 안·최상위 모두)는 보존, 소스에서 없어진 메서드는 `removed: true` 로 남김. 실행 시각 등은 넣지 않아 소스가 그대로면 파일도 그대로(git diff 가 변경만).
 - 대상: 클래스에 선언된 본문 있는 메서드 전부(void·private 포함, 소스 순서). 분석에 실패한 메서드는 `error`.
+- 정리·초기화 (둘 다 기존 파일을 `catalog/.backup/<클래스>.<시각>.yml` 로 먼저 백업):
+  - `--catalog-prune` — 소스에서 없어진(`removed: true`) 메서드만 지움, `note` 등은 그대로.
+  - `--catalog-reset` — 이전 내용(`note`·직접 추가한 키·`removed`)을 버리고 지금 소스로 새로 만듦.
+  ```bash
+  ./gradlew run --args="--config config/class-survey.yml --class ContentUtil --catalog-reset"
+  ```
 - 메서드마다 기존 출력(`flowchart.html`·`analysis.yaml`·`analysis.md` …)도 `output/<클래스>/<메서드>/` 에 함께 만듭니다(`output.catalog-outputs`, 기본 true — 이쪽은 `output/` 이라 실행마다 다시 만듦, 오버로딩은 `이름_2`).
 
 ## 빈 이름으로 꺼내 쓰는 Service·DAO (Wcommon.getBean 등)
