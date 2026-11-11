@@ -182,7 +182,18 @@
   let hideNodes = FLOW.hideNodes || 0;
   try { const v = localStorage.getItem('flowchart.hideNodes'); if (v !== null && v !== '') hideNodes = Math.max(0, parseInt(v, 10) || 0); } catch (e) { /* 저장소 없음 */ }
   function hiddenUnit(uid) {
+    if (userHidden.has(uid)) return true; // 직접 숨긴 메서드
     return hideNodes > 0 && !entrySet.has(uid) && groups.has(uid) && (unitSize.get(uid) || 0) <= hideNodes && !forceShown.has(uid);
+  }
+  // 직접 숨긴 메서드 상자 (사용자: 숨기기 기능) — 파일(제목)마다 브라우저에 기억. 숨긴 메서드가 부르던 메서드는 부른 줄에 이어진다
+  const HIDE_KEY = 'flowchart.hidden.' + FLOW.title;
+  const userHidden = new Set();
+  try { JSON.parse(localStorage.getItem(HIDE_KEY) || '[]').forEach(u => { if (groups.has(u)) userHidden.add(u); }); } catch (e) { /* 저장소 없음 */ }
+  function saveHidden() { try { localStorage.setItem(HIDE_KEY, JSON.stringify([...userHidden])); } catch (e) { /* 저장소 없음 */ } }
+  function setUserHidden(uid, on) {
+    if (on) userHidden.add(uid); else userHidden.delete(uid);
+    saveHidden();
+    relayout(on ? null : uid);
   }
 
   const ELK_OPTIONS = {
@@ -252,19 +263,24 @@
     });
     // 생략한 메서드로 가는 선은 빼고, 생략한 메서드에서 나가는 선은 그 메서드를 부른 노드에서 나가게 (호출 줄기 유지)
     const cross = [], seenCross = new Set();
+    // 숨긴(생략한) 메서드에서 나가는 선의 출발점: 그 메서드를 부른 노드 전부 (여러 곳에서 부르면 모두에서 — 예전엔 첫 호출 하나만)
+    function sourcesOf(a, ua, seen) {
+      if (!hiddenUnit(ua)) return [{ a: a, ua: ua }];
+      if (seen.has(ua) || seen.size > 50) return [];
+      seen.add(ua);
+      const out = [];
+      for (const up of raw) if (up.ub === ua) out.push(...sourcesOf(up.a, up.ua, seen));
+      return out;
+    }
     for (const c of raw) {
       if (hiddenUnit(c.ub)) continue;
-      let a = c.a, ua = c.ua, guard = 0;
-      while (hiddenUnit(ua) && guard++ < 50) {
-        const up = raw.find(x => x.ub === ua);
-        if (!up) { a = null; break; }
-        a = up.a; ua = up.ua;
+      for (const src of sourcesOf(c.a, c.ua, new Set())) {
+        if (src.ua === c.ub) continue;
+        const key = src.a + '>' + c.b + '>' + c.data.style;
+        if (seenCross.has(key)) continue;
+        seenCross.add(key);
+        cross.push({ a: src.a, b: c.b, ua: src.ua, ub: c.ub, data: c.data });
       }
-      if (!a || ua === c.ub) continue;
-      const key = a + '>' + c.b + '>' + c.data.style;
-      if (seenCross.has(key)) continue;
-      seenCross.add(key);
-      cross.push({ a: a, b: c.b, ua: ua, ub: c.ub, data: c.data });
     }
     return { inner, cross };
   }
@@ -786,6 +802,7 @@
   function reveal(id) { // 접힌 조상 펴기 · 생략한 메서드 다시 보이기
     let p = parent.get(id), changed = false;
     const u = unitOf.get(id);
+    if (userHidden.delete(u)) { saveHidden(); changed = true; }
     if (hiddenUnit(u)) { forceShown.add(u); changed = true; }
     while (p) { if (collapsed.delete(p)) changed = true; p = parent.get(p); }
     return changed;
@@ -852,6 +869,16 @@
       }
       panel.appendChild(row2);
     }
+    const unit = unitOf.get(id);
+    if (unit && groups.has(unit)) { // 이 노드가 든 메서드 상자 숨기기
+      const row3 = document.createElement('div'); row3.className = 'row'; row3.style.marginTop = '6px'; row3.style.justifyContent = 'flex-start';
+      const l = document.createElement('label'); l.className = 'chk';
+      const c = document.createElement('input'); c.type = 'checkbox'; c.checked = userHidden.has(unit);
+      c.onchange = () => { select(null); setUserHidden(unit, c.checked); };
+      l.appendChild(c); l.appendChild(document.createTextNode(' 이 메서드 숨기기 (' + groups.get(unit).label[0] + ')'));
+      row3.appendChild(l);
+      panel.appendChild(row3);
+    }
     if (n.goto) {
       const b = document.createElement('button'); b.style.marginTop = '6px';
       const tg = groups.get('sg_' + n.goto);
@@ -905,6 +932,7 @@
   };
   document.getElementById('expandAll').onclick = () => { collapsed.clear(); relayout(null); };
   function info() {
+    if (typeof updateShowAll === 'function') updateShowAll();
     const s = q.value.trim();
     document.getElementById('info').textContent = (s ? '검색 ' + (hits.length ? (hitAt + 1) + '/' + hits.length : '0건') + ' · ' : '')
       + '노드 ' + nodes.size + ' · 상자 ' + groups.size + (collapsed.size ? ' · 접힘 ' + collapsed.size : '')
@@ -912,7 +940,13 @@
       + (hl ? ' · 강조 ' + (hlStarts.size + voStarts.size) + '곳' : '');
   }
 
-  function hiddenCount() { return unitList.filter(u => hiddenUnit(u.group || u.id)).length; }
+  function hiddenCount() { return unitList.filter(u => hiddenUnit(u.group || u.id) && !userHidden.has(u.group || u.id)).length; }
+  const showAll = document.getElementById('showAll');
+  function updateShowAll() {
+    showAll.style.display = userHidden.size ? '' : 'none';
+    showAll.textContent = '숨김 ' + userHidden.size + ' · 모두 보이기';
+  }
+  showAll.onclick = () => { userHidden.clear(); saveHidden(); relayout(null); };
   const hideBox = document.getElementById('hideOn'), hideNum = document.getElementById('hideNum');
   let lastHide = hideNodes > 0 ? hideNodes : (FLOW.hideNodes > 0 ? FLOW.hideNodes : 10);
   hideBox.checked = hideNodes > 0;
