@@ -23,7 +23,7 @@
 ./gradlew test                                   # 전체 테스트 (JUnit 5)
 ./gradlew run                                    # 내장 기본 조건 + config/analyzer.yml(덮어쓰기) → output/<Class>/
 ./gradlew run --args="--config config/analyzer.yml --class CaseAction --method throwCases"
-#   옵션: --config --source-root(반복 가능) --class --method --output --jsp(반복 가능, Response JSP 파일명)
+#   옵션: --config --source-root(반복 가능) --class --method --output --jsp(반복 가능, Response JSP 파일명) --all-methods(클래스 조사)
 ```
 
 - 설치된 JDK 는 26 뿐이라 `options.release = 21` 로 Java 21 타깃 컴파일한다(toolchain 미사용).
@@ -56,6 +56,10 @@ analyzer/
   response/              JspLocator(파일명 → 웹 루트에서 찾기), JspParser(JSP → 태그 트리), ResponseAnalyzer(XML 값 → 출처), ResponseReportWriter(response.md)
   phase/                 PhaseAnalyzer(진입 메서드 요소 → 바인딩·체크·로직·후처리), PhaseModel, PhaseText(표시), PhaseReportWriter(phase-summary.md)
 ```
+
+## 클래스 조사 (`survey/ClassSurvey`, CLI `--all-methods`, 설정 `target.all-methods`)
+
+사용자: Action 대신 ContentUtil 같은 클래스를 조사 — 한 메서드에서 여러 개를 타던 것을 클래스의 모든 메서드로 나열하고 얽힌 의존 조사(기존 기능 재사용). 클래스에 선언된 본문 있는 메서드마다 `cfg.target.entryMethod`(+ 파라미터 타입, 오버로딩) 를 바꿔 `Main.analyze` → `OutputWriter` 로 `<output>/<클래스>/<메서드>/`(오버로딩 `이름_2`) 에 기존 출력 전부, `dependencies.md` = 메서드별 표(Service·Biz / DAO·Mapper = 선언 대상·구현 후보 역할 기준, SQL id·테이블, 흐름도 링크) + 의존 대상별 역색인 + 빈 이름·리플렉션 근거 + 확정 못 한 호출(UNRESOLVED·AMBIGUOUS·빈 못 찾음). 메서드 하나 실패해도 계속(표에 사유). 분석 규칙은 바꾸지 않음. `ClassSurveyTest`.
 
 ## 핵심 설계 결정 (코드만 봐서는 이유가 안 보이는 것)
 

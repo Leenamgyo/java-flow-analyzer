@@ -60,6 +60,11 @@ public class AnalyzerConfig {
         public String entryMethod;
         /** 오버로딩된 진입 메서드 식별용 파라미터 타입(단순명). null 이면 미지정 */
         public List<String> entryMethodParameterTypes;
+        /**
+         * 클래스 조사: 진입 메서드 하나 대신 클래스의 메서드 전부를 각각 진입 메서드로 분석하고 dependencies.md 에 의존 정리
+         * (ContentUtil 같은 Util 클래스 조사용, CLI --all-methods). entry-method 는 무시
+         */
+        public boolean allMethods;
     }
 
     public static class Analysis {

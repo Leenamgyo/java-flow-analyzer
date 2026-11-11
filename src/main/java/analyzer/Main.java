@@ -18,8 +18,9 @@ import java.util.List;
  *   ./gradlew run                                                           # 기본 조건 + config/analyzer.yml
  *   ./gradlew run --args="--config my-project.yml --class XxxAction"        # 프로젝트 설정 + Action 지정
  *   ./gradlew run --args="--source-root /abs/src/main/java --class XAction" # 기본 조건만 + 경로
+ *   ./gradlew run --args="--config my-project.yml --class ContentUtil --all-methods"   # 클래스 조사: 메서드 전부·의존 정리
  * </pre>
- * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output
+ * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output, --jsp, --all-methods
  */
 public final class Main {
 
@@ -40,6 +41,7 @@ public final class Main {
         Path configPath = null;
         List<String> sourceRoots = new java.util.ArrayList<>();
         String clazz = null, method = null, output = null;
+        boolean allMethods = false;
         List<String> jsp = new java.util.ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String v = i + 1 < args.length ? args[i + 1] : null;
@@ -50,6 +52,7 @@ public final class Main {
                 case "--method" -> { method = require(v, "--method"); i++; }
                 case "--output" -> { output = require(v, "--output"); i++; }
                 case "--jsp" -> { jsp.add(require(v, "--jsp")); i++; }
+                case "--all-methods" -> allMethods = true;
                 default -> throw new IllegalArgumentException("알 수 없는 옵션: " + args[i]);
             }
         }
@@ -67,7 +70,14 @@ public final class Main {
         if (method != null) cfg.target.entryMethod = method;
         if (output != null) cfg.output.directory = output;
         if (!jsp.isEmpty()) cfg.response.jsp = jsp;   // Action 마다 JSP 가 다르므로 실행 단위로 지정
+        if (allMethods) cfg.target.allMethods = true;
         ConfigLoader.validate(cfg);
+
+        if (cfg.target.allMethods) { // 클래스 조사: 메서드 전부를 각각 진입 메서드로 → dependencies.md
+            Path dir = analyzer.survey.ClassSurvey.run(cfg);
+            System.out.println("조사 완료: " + cfg.target.className + " → " + dir.resolve("dependencies.md"));
+            return 0;
+        }
 
         AnalysisResult result = analyze(cfg);
         ClassInfo target = result.clazz(result.targetClassId);

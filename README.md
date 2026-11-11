@@ -101,6 +101,24 @@ output:
 - 결과는 이 저장소의 `output/<클래스명>/` 에 생깁니다(`--output` 으로 변경). 출력 위치가 분석 대상 소스 루트 안이면 실행을 거부합니다.
 - 분석 대상 프로젝트는 읽기만 합니다(수정·빌드·실행 없음).
 
+## 클래스 조사 (Util 등 메서드 전부의 의존)
+
+Action 의 진입 메서드 하나 대신, 클래스 하나(`ContentUtil` 등)의 **메서드 전부**를 각각 진입 메서드로 분석해 얽힌 Service·Biz·DAO·SQL 을 정리합니다. 분석 규칙·출력은 Action 분석과 같습니다.
+
+```bash
+./gradlew run --args="--config config/my-project.yml --class ContentUtil --all-methods"
+```
+(설정 파일로는 `target.all-methods: true`)
+
+결과 `output/ContentUtil/`:
+
+| 파일 | 내용 |
+|---|---|
+| `dependencies.md` | 1. 메서드별 의존 표(메서드 · 접근 · Service·Biz · DAO·Mapper · SQL id·테이블 · 흐름도 링크) 2. 의존 대상별 역색인(이 DAO 를 쓰는 메서드) 3. 빈 이름·리플렉션 연결 근거 4. 확정하지 못한 호출 |
+| `<메서드>/` | 그 메서드를 진입으로 한 기존 출력 전부 (`flowchart.html` · `analysis.yaml` · `analysis.md` …). 오버로딩은 `이름_2` |
+
+- 클래스에 선언된 본문 있는 메서드 전부(접근 제어자 무관, 소스 순서). 분석에 실패한 메서드는 표에 `분석 실패: 사유`.
+
 ## 빈 이름으로 꺼내 쓰는 Service·DAO (Wcommon.getBean 등)
 
 Util 이 `Wcommon.getBean("productInfoBiz")` 처럼 빈 이름으로 Service·Biz·DAO 를 꺼내 쓰면, 그 이름으로 실제 클래스를 찾아 잇습니다.
@@ -210,6 +228,7 @@ include 된 JSP 는 그 자리에 펼치고, `c:set` 처럼 출력이 없는 태
 | `--method <name>` | 진입 메서드 (생략 시 추론) |
 | `--output <dir>` | 출력 디렉터리. 결과는 `<dir>/<클래스명>/` |
 | `--jsp <path>` | Response 로 분석할 JSP 파일 경로 또는 파일명 (여러 번 지정 가능, 설정 `response.jsp` 대체) |
+| `--all-methods` | 클래스 조사: `--class` 의 메서드 전부를 각각 분석하고 `dependencies.md` 에 의존 정리 (`--method` 무시) |
 
 ## 출력 파일
 
