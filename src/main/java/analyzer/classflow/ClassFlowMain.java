@@ -113,8 +113,19 @@ public final class ClassFlowMain {
         Path file = dir.resolve("flowchart.html");
         Files.writeString(file, HtmlFlowchart.render(r, g, gen.classDefinitions(), cfg.output.direction,
                 r.clazz(r.targetClassId).name + " — 전체 클래스 흐름도", cfg.output.flowchartHtmlHideNodes,
-                FlowchartGenerator.roles(cfg.phases.logicRoles), hidden));
+                FlowchartGenerator.roles(cfg.phases.logicRoles), hidden, viewOptions(r, g)));
         return file;
+    }
+
+    /**
+     * 전체 클래스 흐름도 표시 (사용자 요구): 불린 메서드는 모두 오른쪽 열(allRight), Util 클래스 메서드 상자는 처음에 모두 접기
+     * (collapsedPreset — 진입 메서드 포함, 제목 클릭·모두 펴기로 펼침).
+     */
+    static java.util.Map<String, Object> viewOptions(AnalysisResult r, MermaidGraph g) {
+        List<String> utils = r.methods().stream()
+                .filter(m -> r.classOf(m).role == analyzer.model.ClassRole.UTIL && g.isSubgraph("sg_" + m.id))
+                .map(m -> "sg_" + m.id).toList();
+        return java.util.Map.of("allRight", true, "collapsedPreset", utils);
     }
 
     private static String require(String v, String opt) {

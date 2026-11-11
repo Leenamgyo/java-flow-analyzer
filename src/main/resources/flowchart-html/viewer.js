@@ -31,6 +31,8 @@
   const order = new Map();
   (function number(items) { for (const it of items) { order.set(it.group || it.id, order.size); if (it.group) number(it.children); } })(FLOW.root);
   const collapsed = new Set();
+  // 처음부터 접어 둘 상자 (전체 클래스 흐름도: Util 메서드 상자 — 사용자 요구). 펼치면 그대로 펼친 상태
+  (FLOW.collapsedPreset || []).forEach(g => collapsed.add(g));
 
   const measureCtx = document.createElement('canvas').getContext('2d');
   function textWidth(s, font) { measureCtx.font = font || FONT; return measureCtx.measureText(s).width; }
@@ -364,6 +366,7 @@
       const side = new Map();
       function sideOf(uid) {
         if (side.has(uid)) return side.get(uid);
+        if (FLOW.allRight) { side.set(uid, 1); return 1; } // 전체 클래스 흐름도: 불린 메서드는 모두 오른쪽 열 (사용자 요구)
         let sd = 1;
         const p = via.get(uid);
         if (entrySet.has(p) && byId.get(p)) {

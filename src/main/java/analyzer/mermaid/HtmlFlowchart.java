@@ -69,7 +69,17 @@ public final class HtmlFlowchart {
      */
     public static String render(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title,
                                 int hideNodes, Set<ClassRole> logicRoles, List<String> hiddenPreset) {
+        return render(r, g, classDefs, direction, title, hideNodes, logicRoles, hiddenPreset, Map.of());
+    }
+
+    /**
+     * viewOptions: 뷰어 표시 옵션 (데이터에 그대로) — 전체 클래스 흐름도가 쓰는 allRight(불린 메서드 모두 오른쪽 열)·
+     * collapsedPreset(처음부터 접어 둘 상자 id). Action 흐름도는 비움.
+     */
+    public static String render(AnalysisResult r, MermaidGraph g, Map<String, String> classDefs, String direction, String title,
+                                int hideNodes, Set<ClassRole> logicRoles, List<String> hiddenPreset, Map<String, Object> viewOptions) {
         Map<String, Object> data = data(r, g, classDefs, direction, title, logicRoles);
+        data.putAll(viewOptions);
         data.put("hideNodes", Math.max(0, hideNodes));
         if (hiddenPreset != null) {
             data.put("hiddenPreset", hiddenPreset.stream().map(id -> "sg_" + id).toList());

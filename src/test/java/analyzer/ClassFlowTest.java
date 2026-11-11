@@ -31,6 +31,8 @@ class ClassFlowTest {
         int a = html.indexOf("const FLOW = ") + "const FLOW = ".length();
         Map<String, Object> data = new ObjectMapper().readValue(html.substring(a, html.indexOf(";</script>", a)), Map.class);
         assertEquals(6, ((List<String>) data.get("entries")).size()); // 메서드 6개가 모두 진입
+        assertEquals(true, data.get("allRight")); // 불린 메서드는 모두 오른쪽 열
+        assertEquals(6, ((List<String>) data.get("collapsedPreset")).size()); // Util 메서드 상자(ProductUtil 6개)는 처음에 접힘
         // 같은 Biz 구현·DAO 는 한 번만 (여러 메서드가 공유)
         assertEquals(1, count(html, "ProductInfoBizImpl.getInfo() «Service»"));
         assertEquals(1, count(html, "ProductDAO.select() «DAO»"));
