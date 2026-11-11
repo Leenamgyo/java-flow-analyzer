@@ -298,6 +298,7 @@ public final class FlowchartGenerator {
         methodParents.clear();
         inLeaf.clear();
         assignedBy.clear();
+        dbMemo.clear();
         for (VariableChange c : r.variableChanges) {
             if ("ASSIGN".equals(c.op) || "INIT".equals(c.op)) {
                 c.callSiteIds.stream().map(r::callSite)
@@ -350,6 +351,9 @@ public final class FlowchartGenerator {
             Subgraph ms = g.subgraph(parent, "sg_" + m.id, Labels.methodName(r, m) + "() «" + r.classOf(m).role.label() + "»");
             methodGraphs.put(m.id, ms);
             List<String> lines = new ArrayList<>(List.of(Labels.methodDeclaration(r, m), m.visibility.text() + " · D" + m.depth));
+            if (!DB_ROLES.contains(r.classOf(m).role) && !dbReach(m.id).isEmpty()) {
+                lines.add("⛁ DB 로직: " + String.join(", ", dbReach(m.id)));
+            }
             String req = Labels.methodRequestTag(r, m);
             if (req != null) {
                 lines.add(Labels.truncate(req, 120));
@@ -1239,6 +1243,10 @@ public final class FlowchartGenerator {
                 lines.add(new Line("  " + req, null, null));
             }
             Labels.sqlLines(s.sql).forEach(l -> lines.add(new Line("  " + l, null, null)));
+            String db = dbLine(s);
+            if (db != null) {
+                lines.add(new Line("  " + db, null, null));
+            }
             members.add(s.id);
             assignedBy.getOrDefault(s.id, List.of()).forEach(v -> members.add(v.id));
             return cur;
@@ -1452,6 +1460,51 @@ public final class FlowchartGenerator {
         boolean nested = s.inArgument && r.callSitesOf(s.callerMethodId).stream()
                 .anyMatch(o -> o != s && contains(o.location, s.location));
         return !nested;
+    }
+
+    /** DB 접근 역할 — 이 역할 메서드를 (전이적으로) 부르면 'DB 로직' (사용자: 내부에 DAO 가 있으면 DB 로직이라 표시) */
+    private static final Set<ClassRole> DB_ROLES = java.util.EnumSet.of(ClassRole.DAO, ClassRole.MAPPER, ClassRole.REPOSITORY);
+    private final Map<String, Set<String>> dbMemo = new HashMap<>();
+
+    /** 메서드 안에서 (몇 단계를 거치든) 부르는 DB 접근 메서드 (Class.method, 부르는 순서) — 본문을 분석한 메서드만 따라간다 */
+    private Set<String> dbReach(String methodId) {
+        Set<String> hit = dbMemo.get(methodId);
+        if (hit != null) {
+            return hit;
+        }
+        hit = new java.util.LinkedHashSet<>();
+        dbMemo.put(methodId, hit); // 재귀 방지 (진행 중엔 빈 집합)
+        for (CallSiteInfo c : r.callSitesOf(methodId)) {
+            hit.addAll(dbTargets(c));
+        }
+        return hit;
+    }
+
+    /** 이 호출로 닿는 DB 접근 메서드: 대상(또는 구현 후보)이 DAO·Mapper·Repository 면 그것, 아니면 그 본문 안에서 */
+    private Set<String> dbTargets(CallSiteInfo c) {
+        Set<String> out = new java.util.LinkedHashSet<>();
+        for (String t : new String[]{c.targetMethodId, c.implementationMethodId}) {
+            if (t == null) {
+                continue;
+            }
+            MethodInfo tm = r.method(t);
+            if (DB_ROLES.contains(r.classOf(tm).role)) {
+                out.add(Labels.methodName(r, tm));
+            } else if (tm.analyzed) {
+                out.addAll(dbReach(t));
+            }
+        }
+        return out;
+    }
+
+    /** 호출 노드 부가 줄: DAO 를 직접 부르는 호출이 아닌데 그 안에 DB 접근이 있으면 "⛁ DB 로직: …" */
+    private String dbLine(CallSiteInfo s) {
+        if (s.targetMethodId == null || DB_ROLES.contains(r.classOf(r.method(s.targetMethodId)).role)
+                || s.implementationMethodId != null && DB_ROLES.contains(r.classOf(r.method(s.implementationMethodId)).role)) {
+            return null;
+        }
+        Set<String> db = dbTargets(s);
+        return db.isEmpty() ? null : "⛁ DB 로직: " + String.join(", ", db);
     }
 
     /** 제어 블록 머리(조건식·for 초기화·for-each 대상·switch selector) 위치 — 그 안의 호출은 조건 노드에 합쳐진다 */
@@ -2088,6 +2141,10 @@ public final class FlowchartGenerator {
         String req = Labels.requestTag(r, s);
         if (req != null) {
             lines.add(req);
+        }
+        String db = dbLine(s);
+        if (db != null) {
+            lines.add(db);
         }
         g.node(sg, s.id, lines, Shape.RECT, callCss(s));
         assignedBy.getOrDefault(s.id, List.of()).forEach(c -> g.alias(c.id, s.id));

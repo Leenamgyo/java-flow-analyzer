@@ -71,4 +71,18 @@ class BizVoTest {
         assertEquals(1, toBiz.size(), toBiz.toString());
         assertEquals(List.of("title = request.t"), toBiz.get(0).get("lines"));
     }
+
+    /** 안에서 DAO 를 부르면 '⛁ DB 로직' 줄 (호출 노드·메서드 시작 노드), DAO 를 직접 부르는 호출엔 없음 */
+    @Test
+    void dbLogicIsMarked() {
+        AnalysisResult r = analyze();
+        MermaidGraph g = new FlowchartGenerator().checked(r);
+        CallSiteInfo write = r.callSites.stream().filter(c -> c.expression.startsWith("noticeWriteBiz.write(")).findFirst().orElseThrow();
+        CallSiteInfo insert = r.callSites.stream().filter(c -> c.expression.startsWith("noticeDAO.insert(")).findFirst().orElseThrow();
+        List<String> writeLines = g.nodeById(g.nodeOf(write.id)).lines().stream().map(MermaidGraph::plain).toList();
+        assertTrue(writeLines.contains("⛁ DB 로직: NoticeDAO.insert, NoticeDAO.insertHistory"), writeLines.toString());
+        String biz = r.methods().stream().filter(m -> m.name.equals("write")).findFirst().orElseThrow().id;
+        assertTrue(g.nodeById(biz).lines().contains("⛁ DB 로직: NoticeDAO.insert, NoticeDAO.insertHistory"), g.nodeById(biz).lines().toString());
+        assertFalse(g.nodeById(g.nodeOf(insert.id)).lines().stream().anyMatch(l -> l.contains("DB 로직")));
+    }
 }
