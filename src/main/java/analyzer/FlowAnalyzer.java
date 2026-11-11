@@ -128,7 +128,14 @@ public final class FlowAnalyzer {
      */
     public AnalysisResult analyzeClass() {
         TypeDeclaration<?> type = EntryPointLocator.locateType(sources, cfg.target.className);
-        List<MethodDeclaration> entries = type.getMethods().stream().filter(m -> m.getBody().isPresent()).toList();
+        // output.flowchart-exclude 에 맞는 메서드(ContentUtil.setiAppCache 등)는 출발점에서 뺀다 — 진입 메서드 상자는 제외 규칙이
+        // 지우지 않으므로, 빼지 않으면 상자·내부 메서드가 남았다 (사용자: ContentUtil 내부 메서드를 exclude 로 지우기)
+        String simple = type.getNameAsString();
+        String fqn = type.getFullyQualifiedName().orElse(simple);
+        List<MethodDeclaration> entries = type.getMethods().stream().filter(m -> m.getBody().isPresent())
+                .filter(m -> !analyzer.serializer.Excludes.matches(cfg.output.flowchartExclude,
+                        List.of(simple + "." + m.getNameAsString(), fqn + "." + m.getNameAsString())))
+                .toList();
         if (entries.isEmpty()) {
             throw new analyzer.parser.AnalysisException("본문 있는 메서드가 없습니다: " + type.getNameAsString());
         }

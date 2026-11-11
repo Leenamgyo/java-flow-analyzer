@@ -88,4 +88,18 @@ class ClassFlowTest {
         int a = s.indexOf("const FLOW = ") + "const FLOW = ".length();
         return new ObjectMapper().readValue(s.substring(a, s.indexOf(";</script>", a)), Map.class);
     }
+
+    /** flowchart-exclude 에 맞는 클래스 자신의 메서드는 출발점에서 빠지고 상자도 없다 (그 메서드만 쓰는 내부 메서드도) */
+    @Test
+    void excludedOwnMethodIsNotAnEntry() throws Exception {
+        var cfg = analyzer.config.ConfigLoader.defaults();
+        cfg.target.sourceRoot = Fixtures.SOURCE_ROOT;
+        cfg.target.className = "ProductUtil";
+        cfg.output.flowchartExclude = List.of("ProductUtil.legacy", "*.unknown");
+        var r = ClassFlowMain.analyze(cfg);
+        assertEquals(4, r.entryMethodIds.size());
+        assertTrue(r.methods().stream().noneMatch(m -> m.name.equals("legacy") || m.name.equals("unknown")));
+        // legacy 만 쓰던 ProductInfoCacheBiz.getInfo 도 분석되지 않음
+        assertTrue(r.methods().stream().noneMatch(m -> r.classOf(m).name.equals("ProductInfoCacheBiz") && m.analyzed));
+    }
 }
