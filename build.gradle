@@ -39,6 +39,15 @@ tasks.named('run') {
     workingDir = projectDir
 }
 
+// 전체 클래스 흐름도 (Action 분석과 따로): ./gradlew runClass --args="--config … --class ContentUtil"
+tasks.register('runClass', JavaExec) {
+    group = 'application'
+    description = '클래스의 메서드 전부를 한 번에 분석해 output/class/<클래스>/flowchart.html'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'analyzer.classflow.ClassFlowMain'
+    workingDir = projectDir
+}
+
 tasks.named('test') {
     useJUnitPlatform()
     workingDir = projectDir

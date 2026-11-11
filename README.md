@@ -101,6 +101,20 @@ output:
 - 결과는 이 저장소의 `output/<클래스명>/` 에 생깁니다(`--output` 으로 변경). 출력 위치가 분석 대상 소스 루트 안이면 실행을 거부합니다.
 - 분석 대상 프로젝트는 읽기만 합니다(수정·빌드·실행 없음).
 
+## 전체 클래스 흐름도 (`./gradlew runClass`)
+
+Action 분석과 **따로** 실행·결과를 두는 모드입니다. 클래스(`ContentUtil` 등)의 메서드 전부를 진입 메서드로 **한 번에** 분석해 흐름도 한 장으로 만듭니다(분석 핵심·규칙은 Action 분석과 공유 — 빈 이름·리플렉션·DAO·`[⛁ DB]` 모두 같음).
+
+```bash
+./gradlew runClass --args="--config config/my-project.yml --class ContentUtil"
+```
+
+옵션: `--config` · `--source-root`(반복) · `--class` · `--output` (Action 분석과 같은 뜻)
+
+결과: `output/class/<클래스>/flowchart.html` **하나** (VO·spec·analysis.yaml 등은 만들지 않음 — Action 분석 결과 `output/<클래스>/` 와 섞이지 않음).
+- 메서드마다 시작 상자가 가운데 열에 소스 순서로 세로로 나란히, 각자 부르는 Service·DAO 는 부른 줄 옆에. 여러 메서드가 같은 Biz·DAO 를 쓰면 그 상자는 한 번만(공유).
+- 뷰어 기능(확대·이동, 접기, 검색, 연결 강조, VO 연결, 작은 세부 생략)은 Action 흐름도와 같음.
+
 ## Util 기능 목록 (ContentUtil 등 유틸 전체의 기능 분석)
 
 Action 처럼 메서드 하나에서 내려가는 흐름이 아니라, Util 클래스 **전체**를 기능 목록으로 정리합니다. 메서드마다 같은 분석 규칙(빈 이름·리플렉션·DAO·SQL 추적)으로 분석해 `catalog/<클래스>.yml` 에 씁니다. 이 파일은 실행마다 지우는 `output/` 과 달리 **계속 관리**합니다(git, 빌드가 건드리지 않음).

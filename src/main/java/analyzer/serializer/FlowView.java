@@ -63,7 +63,7 @@ public final class FlowView {
         }
         Set<String> bindingMethods = new LinkedHashSet<>();
         for (MethodInfo m : r.methods()) {
-            if (!m.analyzed || m.origin != Origin.SOURCE || m.id.equals(r.entryMethodId)
+            if (!m.analyzed || m.origin != Origin.SOURCE || r.isEntry(m.id)
                     || LOGIC_ROLES.contains(r.classOf(m).role)) { // Service·Biz·DAO 는 VO 만 채워도 흐름에 그린다 (Biz VO 추적)
                 continue;
             }

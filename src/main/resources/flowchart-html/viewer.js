@@ -91,10 +91,15 @@
       (function mark(x) { unitOf.set(x.group || x.id, uid); if (x.group) x.children.forEach(mark); })(it);
     }
   })(FLOW.root);
-  const entryUnit = (() => {
-    for (const [id, n] of nodes) if (n.cls === 'entry') return unitOf.get(id);
-    return unitList.length ? (unitList[0].group || unitList[0].id) : null;
+  // 진입 메서드 상자들 — Action 분석은 하나, 전체 클래스 흐름도는 클래스의 메서드 전부 (가운데 열에 세로로 나란히)
+  const entryUnits = (() => {
+    const ids = (FLOW.entries || []).map(id => unitOf.get(id)).filter(u => u && groups.has(u));
+    if (ids.length) return [...new Set(ids)];
+    for (const [id, n] of nodes) if (n.cls === 'entry') return [unitOf.get(id)];
+    return unitList.length ? [unitList[0].group || unitList[0].id] : [];
   })();
+  const entrySet = new Set(entryUnits);
+  const entryUnit = entryUnits[0] || null;
 
   // ---- VO 연결: Service·DAO 호출 노드 ← 넘기는 VO 를 set 하는 기존 노드. 평소엔 안 보이고, 상세 패널 'VO 연결' 체크로
   //      강조할 때만 선이 나타난다 (사용자: 선으로 하이라이트만 — 배치·노드·색은 그대로) ----
@@ -177,7 +182,7 @@
   let hideNodes = FLOW.hideNodes || 0;
   try { const v = localStorage.getItem('flowchart.hideNodes'); if (v !== null && v !== '') hideNodes = Math.max(0, parseInt(v, 10) || 0); } catch (e) { /* 저장소 없음 */ }
   function hiddenUnit(uid) {
-    return hideNodes > 0 && uid !== entryUnit && groups.has(uid) && (unitSize.get(uid) || 0) <= hideNodes && !forceShown.has(uid);
+    return hideNodes > 0 && !entrySet.has(uid) && groups.has(uid) && (unitSize.get(uid) || 0) <= hideNodes && !forceShown.has(uid);
   }
 
   const ELK_OPTIONS = {
@@ -307,8 +312,8 @@
       const next = new Map();
       for (const c of cross) { if (!next.has(c.ua)) next.set(c.ua, []); next.get(c.ua).push(c.ub); }
       const depth = new Map(), via = new Map();
-      if (entryUnit) depth.set(entryUnit, 0);
-      const queue = entryUnit ? [entryUnit] : [];
+      entryUnits.forEach(u => depth.set(u, 0));
+      const queue = [...entryUnits];
       while (queue.length) {
         const u = queue.shift();
         for (const v of next.get(u) || []) if (!depth.has(v)) { depth.set(v, depth.get(u) + 1); via.set(v, u); queue.push(v); }
@@ -325,9 +330,14 @@
         r.edges.forEach(e => shiftEdge(e, dx, dy));
         record(n);
       }
-      // 진입 메서드 (깊이 0) 를 가운데에
-      const entry = byId.get(entryUnit);
-      if (entry) place(entry, 0, 0);
+      // 진입 메서드 (깊이 0) 를 가운데 열에 — 여러 개면 소스 순서로 세로로 (왼쪽 끝 맞춤)
+      let entryBottom = -Infinity;
+      for (const u of entryUnits) {
+        const er = byId.get(u);
+        if (!er) continue;
+        place(er, 0, entryBottom === -Infinity ? 0 : entryBottom + ROW_GAP * 2);
+        entryBottom = er.node.y + er.node.height;
+      }
 
       // 방향: 진입 메서드가 직접 부른 메서드는 부른 노드가 진입 상자의 왼쪽 절반이면 왼쪽(-1), 아니면 오른쪽(+1).
       // 더 깊은 메서드는 처음 부른 메서드의 방향을 따라 계속 바깥쪽으로 (사용자: 좌우 가까운 쪽에)
@@ -336,18 +346,19 @@
         if (side.has(uid)) return side.get(uid);
         let sd = 1;
         const p = via.get(uid);
-        if (p === entryUnit && entry) {
+        if (entrySet.has(p) && byId.get(p)) {
+          const pe = byId.get(p).node; // 부른 진입 메서드 상자
           let top = null;
-          for (const c of cross) if (c.ub === uid && c.ua === entryUnit && pos.has(c.a)) { const n = pos.get(c.a); if (!top || n.y < top.y) top = n; }
-          if (top) sd = top.x + top.width / 2 < entry.node.x + entry.node.width / 2 ? -1 : 1;
+          for (const c of cross) if (c.ub === uid && c.ua === p && pos.has(c.a)) { const n = pos.get(c.a); if (!top || n.y < top.y) top = n; }
+          if (top) sd = top.x + top.width / 2 < pe.x + pe.width / 2 ? -1 : 1;
         } else if (p) {
           sd = sideOf(p);
         }
         side.set(uid, sd);
         return sd;
       }
-      let rightEdge = entry ? entry.node.x + entry.node.width : 0;
-      let leftEdge = entry ? entry.node.x : 0;
+      let rightEdge = 0, leftEdge = 0;
+      for (const u of entryUnits) { const er = byId.get(u); if (er) { rightEdge = Math.max(rightEdge, er.node.x + er.node.width); leftEdge = Math.min(leftEdge, er.node.x); } }
       const anchor = r => { // 부른 노드의 높이 (이미 놓인 안쪽 열 기준)
         let y = Infinity;
         for (const c of cross) if (c.ub === r.uid && pos.has(c.a)) { const sn = pos.get(c.a); y = Math.min(y, sn.y + sn.height / 2 - 20); }
@@ -355,7 +366,7 @@
       };
       for (let d = 1; d <= maxDepth + 1; d++) {
         for (const sd of [1, -1]) {
-          const col = results.filter(r => r.uid !== entryUnit && depth.get(r.uid) === d && sideOf(r.uid) === sd);
+          const col = results.filter(r => !entrySet.has(r.uid) && depth.get(r.uid) === d && sideOf(r.uid) === sd);
           if (!col.length) continue;
           const rows = col.map((r, i) => ({ r: r, y: anchor(r), i: i }))
             .sort((p, q) => (p.y === q.y ? p.i - q.i : p.y - q.y));

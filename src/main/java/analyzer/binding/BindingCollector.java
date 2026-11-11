@@ -176,7 +176,10 @@ public final class BindingCollector {
         if (a.getOperator() != AssignExpr.Operator.ASSIGN) {
             b.transforms.add(0, a.getOperator().asString());
         }
-        selfAssigns.computeIfAbsent(owner, x -> new ArrayList<>()).add(new SelfAssign(b, m));
+        selfAssigns.computeIfAbsent(owner, x -> {
+            selfAssignOrder.add(owner); // 처음 나온 순서 (IdentityHashMap 순회 순서는 실행마다 달라 바인딩 ID 가 바뀌었다)
+            return new ArrayList<>();
+        }).add(new SelfAssign(b, m));
     }
 
     private record SelfAssign(Binding binding, MethodInfo method) {
@@ -184,20 +187,22 @@ public final class BindingCollector {
 
     /** 자기 필드 대입 후보 (클래스별, 순서대로) — 요청 값이 하나라도 들어가는 클래스만 객체로 만든다 */
     private final Map<TypeDeclaration<?>, List<SelfAssign>> selfAssigns = new java.util.IdentityHashMap<>();
+    private final List<TypeDeclaration<?>> selfAssignOrder = new ArrayList<>();
 
     /**
      * 요청 셋업 클래스 확정: 자기 필드 대입 중 하나라도 값의 출처가 요청 값이면 그 클래스의 자기 필드 대입을 모두 바인딩으로
      * (요청 값이 아닌 대입도 넣어야 필드 커버리지에서 '미할당'으로 잘못 나오지 않는다).
      */
     private void flushSelfAssigns() {
-        selfAssigns.forEach((owner, list) -> {
+        for (TypeDeclaration<?> owner : selfAssignOrder) {
+            List<SelfAssign> list = selfAssigns.get(owner);
             if (list.stream().noneMatch(x -> x.binding().sources.stream().anyMatch(v -> v.kind().equals("REQUEST")))) {
-                return;
+                continue;
             }
             for (SelfAssign x : list) {
                 add(thisObject(owner, x.method()), x.binding());
             }
-        });
+        }
     }
 
     private static boolean localOrParam(String name, CallableDeclaration<?> md) {

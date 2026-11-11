@@ -23,6 +23,7 @@
 ./gradlew test                                   # 전체 테스트 (JUnit 5)
 ./gradlew run                                    # 내장 기본 조건 + config/analyzer.yml(덮어쓰기) → output/<Class>/
 ./gradlew run --args="--config config/analyzer.yml --class CaseAction --method throwCases"
+./gradlew runClass --args="--class ContentUtil"   # 전체 클래스 흐름도 → output/class/<클래스>/flowchart.html (Action 분석과 별도)
 #   옵션: --config --source-root(반복 가능) --class --method --output --jsp(반복 가능, Response JSP 파일명) --all-methods(Util 기능 목록 → catalog/)
 ```
 
@@ -56,6 +57,12 @@ analyzer/
   response/              JspLocator(파일명 → 웹 루트에서 찾기), JspParser(JSP → 태그 트리), ResponseAnalyzer(XML 값 → 출처), ResponseReportWriter(response.md)
   phase/                 PhaseAnalyzer(진입 메서드 요소 → 바인딩·체크·로직·후처리), PhaseModel, PhaseText(표시), PhaseReportWriter(phase-summary.md)
 ```
+
+## 전체 클래스 흐름도 (`classflow/ClassFlowMain`, Gradle `./gradlew runClass`)
+
+사용자: 핵심 기능은 합치고 인터페이스(실행 명령)·소스·결과는 나눠서, 전체 클래스 방식은 새로 — 기존(Action 분석·Util 기능 목록)은 결과·기능 유지, 새 것은 VO·spec 필요 없이 flowchart.html 에 집중. 핵심 공유: `FlowAnalyzer.analyzeClass()` = 클래스에 선언된 본문 있는 메서드 전부를 D0 로 스케줄(같은 메서드·Service·DAO 는 한 번만, SHARED), `AnalysisResult.entryMethodIds`(Action 은 하나, `entryMethodId` = 첫 번째, YAML 에는 안 씀) + `isEntry(id)` — 흐름도·FlowView 의 "진입 메서드" 판정(entry 색, 상자 생략·바인딩 함수/메서드 제외)은 `isEntry` (단계 보기는 Action 전용이라 `entryMethodId` 그대로). 결과는 `<output>/class/<클래스>/flowchart.html` 하나(`HtmlFlowchart` — 데이터 `entries`, 뷰어가 진입 상자들을 가운데 열에 소스 순서로 세로로, 부른 쪽은 그 진입 상자 기준 좌우, 작은 세부 생략에서 진입 제외). 옵션 --config --source-root --class --output. `ClassFlowTest`.
+
+**회귀 검증(사용자: 기존 기능은 테스트 빡세게)**: `GoldenDumpTest`(GOLDEN_DIR 있을 때만) — 모든 fixture Action public 메서드 × 설정 3종의 출력 전부를 덤프해 바꾸기 전 커밋(git worktree)과 diff. 이 작업에서 Action 출력은 HTML 외 전부 동일(절대 경로만 차이), HTML 데이터 동일(`entries` 추가), 브라우저 배치 좌표 동일 확인. 그 과정에서 기존 비결정성 2건을 찾아 고침: `BindingCollector.selfAssigns`(IdentityHashMap 순회 → 셋업 클래스 처음 나온 순서 `selfAssignOrder`; AppDetailAction.execute 바인딩 ID 가 실행마다 바뀌었음), `HtmlFlowchart` textColors(Map.of → TreeMap). `DeterminismTest`(같은 입력 4회 → 출력 바이트 동일).
 
 ## Util 기능 목록 (`catalog/UtilCatalog`, CLI `--all-methods`, 설정 `target.all-methods`, 폴더 `output.catalog-dir` 기본 `catalog`)
 

@@ -15,7 +15,17 @@ public final class AnalysisResult {
     public final java.util.List<String> sourceRoots = new java.util.ArrayList<>();
     public String targetClassId;
     public String entryMethodId;
+    /**
+     * 진입 메서드 전부 — Action 분석은 entryMethodId 하나, 전체 클래스 흐름도(classflow)는 클래스의 메서드 전부(entryMethodId = 첫 번째).
+     * YAML 에는 쓰지 않는다(Action 분석 결과 그대로).
+     */
+    public final List<String> entryMethodIds = new ArrayList<>();
     public String entrySelection;
+
+    /** 진입 메서드인지 (여러 개일 수 있음) */
+    public boolean isEntry(String methodId) {
+        return methodId != null && (methodId.equals(entryMethodId) || entryMethodIds.contains(methodId));
+    }
     public Map<String, Object> settings = new LinkedHashMap<>();
 
     public final Map<String, ClassInfo> classesByKey = new LinkedHashMap<>();

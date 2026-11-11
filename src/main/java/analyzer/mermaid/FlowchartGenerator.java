@@ -252,7 +252,7 @@ public final class FlowchartGenerator {
         Map<String, Boolean> memo = new HashMap<>();
         Set<String> out = new java.util.HashSet<>();
         for (MethodInfo m : r.methods()) {
-            if (m.analyzed && !m.id.equals(r.entryMethodId) && !logicRoles.contains(r.classOf(m).role)
+            if (m.analyzed && !r.isEntry(m.id) && !logicRoles.contains(r.classOf(m).role)
                     && !reachesLogic(r, m.id, logicRoles, memo, new java.util.HashSet<>())) {
                 out.add(m.id);
             }
@@ -363,7 +363,7 @@ public final class FlowchartGenerator {
             if (phases != null && m.id.equals(r.entryMethodId)) {
                 lines.addAll(exceptionNotes(r, m)); // 단계 보기 진입 메서드는 try 본문을 단계별로 펼치므로 요약 유지
             }
-            g.node(ms, m.id, lines, Shape.STADIUM, m.id.equals(r.entryMethodId) ? "entry" : "method");
+            g.node(ms, m.id, lines, Shape.STADIUM, r.isEntry(m.id) ? "entry" : "method");
             if (phases != null && m.id.equals(r.entryMethodId)) {
                 emitPhased(ms, m);
             } else {
@@ -461,7 +461,7 @@ public final class FlowchartGenerator {
         for (MethodInfo m : drawn) {
             ov.node(ov.root(), m.id, List.of(m.id + " " + Labels.methodName(r, m) + "()",
                     "«" + r.classOf(m).role.label() + "» · " + base.get(m.id) + "-skeleton"), Shape.STADIUM,
-                    m.id.equals(r.entryMethodId) ? "entry" : "method");
+                    r.isEntry(m.id) ? "entry" : "method");
             ov.link(m.id, base.get(m.id) + "-skeleton.svg", "골격");
         }
         java.util.Set<String> seen = new java.util.HashSet<>();
@@ -723,7 +723,7 @@ public final class FlowchartGenerator {
 
         static Rules normal(AnalysisResult r, List<String> excludes) {
             Set<String> seed = new java.util.HashSet<>(bindingFunctions(r));
-            r.methods().stream().filter(m -> m.analyzed && !m.id.equals(r.entryMethodId) && excludedMethod(r, excludes, m))
+            r.methods().stream().filter(m -> m.analyzed && !r.isEntry(m.id) && excludedMethod(r, excludes, m))
                     .forEach(m -> seed.add(m.id));
             return new Rules(Set.of(), Set.of(), seed, false, excludes);
         }
@@ -877,7 +877,7 @@ public final class FlowchartGenerator {
         while (changed) {
             changed = false;
             for (MethodInfo m : r.methods()) {
-                if (!m.analyzed || skip.contains(m.id) || m.id.equals(r.entryMethodId)) {
+                if (!m.analyzed || skip.contains(m.id) || r.isEntry(m.id)) {
                     continue;
                 }
                 List<CallSiteInfo> in = r.callSites.stream()
@@ -908,7 +908,7 @@ public final class FlowchartGenerator {
         for (MethodInfo m : r.methods()) {
             // 로직 역할(Service·Biz·DAO·Mapper·Repository) 메서드는 본문이 VO set 뿐이어도 바인딩 함수가 아니다 — 상자로 그린다
             // (사용자: Biz 도 VO 를 추적할 수 있어야 — Biz.write(vo) 가 set + 빈 DAO 호출뿐이라 바인딩 함수로 접혀 Biz·DAO 가 사라졌음)
-            if (m.analyzed && m.origin == analyzer.model.Origin.SOURCE && !m.id.equals(r.entryMethodId)
+            if (m.analyzed && m.origin == analyzer.model.Origin.SOURCE && !r.isEntry(m.id)
                     && !FlowView.LOGIC_ROLES.contains(r.classOf(m).role)
                     && r.blocksOf(m.id).stream().allMatch(b -> b.type == BlockType.RETURN && b.parentBlockId == null)) {
                 pure.add(m.id);

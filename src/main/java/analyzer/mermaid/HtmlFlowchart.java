@@ -89,9 +89,11 @@ public final class HtmlFlowchart {
         d.put("theme", g.theme());
         d.put("direction", direction);
         d.put("callEdges", g.callEdges());
+        // 진입 메서드 (전체 클래스 흐름도는 여러 개 — 뷰어가 가운데 열에 세로로 나란히)
+        d.put("entries", r.entryMethodIds.isEmpty() ? List.of(r.entryMethodId) : List.copyOf(r.entryMethodIds));
         d.put("comments", g.comments());
         Map<String, String> colors = "dark".equals(g.theme()) ? MermaidGraph.TEXT_COLORS_DARK : MermaidGraph.TEXT_COLORS;
-        d.put("textColors", colors);
+        d.put("textColors", new java.util.TreeMap<>(colors)); // Map.of 순회 순서는 실행마다 달라 파일이 바뀌었다 — 정렬
         d.put("loopEdge", style("dark".equals(g.theme()) ? MermaidGraph.LOOP_EDGE_DARK : MermaidGraph.LOOP_EDGE));
         Map<String, Object> classes = new LinkedHashMap<>();
         classDefs.forEach((k, v) -> classes.put(k, style(v)));

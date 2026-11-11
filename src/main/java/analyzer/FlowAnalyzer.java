@@ -115,21 +115,44 @@ public final class FlowAnalyzer {
         return sources;
     }
 
+    /** Action 분석: 진입 메서드 하나 */
     public AnalysisResult analyze() {
         EntryPointLocator.EntryPoint entry = EntryPointLocator.locate(sources, cfg.target.className,
                 cfg.target.entryMethod, cfg.target.entryMethodParameterTypes);
+        return analyze(entry.type(), List.of(entry.method()), entry.selection());
+    }
+
+    /**
+     * 전체 클래스(classflow): 클래스에 선언된 본문 있는 메서드 전부를 진입 메서드(D0)로 한 번에 분석 — 같은 메서드·Service·DAO 는
+     * 한 번만 분석(SHARED). 규칙은 Action 분석과 같다.
+     */
+    public AnalysisResult analyzeClass() {
+        TypeDeclaration<?> type = EntryPointLocator.locateType(sources, cfg.target.className);
+        List<MethodDeclaration> entries = type.getMethods().stream().filter(m -> m.getBody().isPresent()).toList();
+        if (entries.isEmpty()) {
+            throw new analyzer.parser.AnalysisException("본문 있는 메서드가 없습니다: " + type.getNameAsString());
+        }
+        return analyze(type, entries, "ALL_METHODS");
+    }
+
+    private AnalysisResult analyze(TypeDeclaration<?> type, List<MethodDeclaration> entries, String selection) {
         result.sourceRoot = sources.sourceBase().toString();
         sources.sourceRoots().forEach(p -> result.sourceRoots.add(p.toString()));
-        result.entrySelection = entry.selection();
+        result.entrySelection = selection;
         recordSettings();
 
-        ClassInfo target = sourceClass(entry.type());
+        ClassInfo target = sourceClass(type);
         target.scope = "TARGET";
         result.targetClassId = target.id;
-        MethodInfo entryMethod = sourceMethod(entry.method());
-        entryMethod.depth = 0;
-        result.entryMethodId = entryMethod.id;
-        schedule(entryMethod, entry.method(), 0, null, null);
+        for (MethodDeclaration md : entries) {
+            MethodInfo entryMethod = sourceMethod(md);
+            entryMethod.depth = 0;
+            if (result.entryMethodId == null) {
+                result.entryMethodId = entryMethod.id;
+            }
+            result.entryMethodIds.add(entryMethod.id);
+            schedule(entryMethod, md, 0, null, null);
+        }
 
         while (!queue.isEmpty()) {
             analyzeBody(queue.poll());
