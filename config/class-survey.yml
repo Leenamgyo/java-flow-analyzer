@@ -1,0 +1,25 @@
+# Util 기능 목록 설정 (Util 클래스의 메서드 전부 = 기능 목록 → 얽힌 Service·Biz·DAO·SQL·빈 이름). 저장소에서 관리하는 파일 —
+# 빌드(./gradlew build·clean·test)는 config/·catalog/ 를 건드리지 않는다 (clean 은 build/ 만).
+#   ./gradlew run --args="--config config/class-survey.yml"                      # 아래 class 의 목록 갱신
+#   ./gradlew run --args="--config config/class-survey.yml --class CountryUtil"  # 다른 클래스 (CLI 가 class 를 덮어씀)
+# 결과: catalog/<클래스>.yml — 다시 돌리면 분석 칸만 갱신, note(사람이 적는 칸)는 보존, 없어진 메서드는 removed: true
+target:
+  # 분석할 프로젝트 소스 (읽기 전용). 실제 프로젝트 경로로 바꿔 쓴다 — 멀티 모듈이면 source-roots
+  source-root: src/test/resources/sample-project/src/main/java
+  # source-roots:
+  #   - ../my-project/action/src/main/java
+  #   - ../my-project/lib/src/main/java
+  class: ProductUtil          # 조사할 클래스 (단순명, 같은 이름이 여러 패키지면 FQN). 예: ContentUtil
+  all-methods: true           # 메서드 전부(void·private 포함)를 각각 분석 → catalog/<클래스>.yml (entry-method 무시)
+
+analysis:
+  expand-roles: [Service, Biz, DAO, Repository, Mapper]
+  # 빈 이름으로 꺼내는 메서드 (Wcommon.getBean("…") 이면 기본값 그대로, 다른 이름이 있으면 추가)
+  bean-lookup-methods: ["getBean"]
+  # Spring XML(<bean id=…>)이 src/main/resources·src/main/webapp 밖에 있을 때만 — 쓰면 매퍼 XML 폴더도 함께
+  # mapper-xml-roots:
+  #   - ../my-project/lib/src/main/resources
+  #   - ../my-project/conf
+
+output:
+  catalog-dir: catalog        # 기능 목록 폴더 (git 으로 관리)

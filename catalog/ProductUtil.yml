@@ -1,0 +1,101 @@
+class: com.example.util.ProductUtil
+methods:
+  - signature: info(String id)
+    visibility: public
+    static: true
+    returns: String
+    services:
+      - ProductInfoBiz.getInfo → ProductInfoBizImpl.getInfo
+    daos:
+      - ProductDAO.select
+    sql: []
+    uses-utils: []
+    internal-calls: []
+    beans:
+      - 빈 이름 "productInfoBiz" → com.example.biz.ProductInfoBizImpl (@Service("productInfoBiz"))
+    reflection: []
+    unresolved: []
+    note: ""
+  - signature: infoInline(String id)
+    visibility: public
+    static: true
+    returns: String
+    services:
+      - ProductInfoBiz.getInfo → ProductInfoBizImpl.getInfo
+    daos:
+      - ProductDAO.select
+    sql: []
+    uses-utils: []
+    internal-calls: []
+    beans:
+      - 빈 이름 "productInfoBiz" → com.example.biz.ProductInfoBizImpl (@Service("productInfoBiz"))
+    reflection: []
+    unresolved: []
+    note: ""
+  - signature: infoReflect(String id)
+    visibility: public
+    static: true
+    returns: Object
+    services:
+      - ProductInfoBizImpl.getInfo
+    daos:
+      - ProductDAO.select
+    sql: []
+    uses-utils: []
+    internal-calls: []
+    beans: []
+    reflection:
+      - "bean.getClass().getMethod(\"getInfo\", String.class).invoke(bean, id) → ProductInfoBizImpl.getInfo"
+    unresolved: []
+    note: ""
+  - signature: legacy(String id)
+    visibility: public
+    static: true
+    returns: String
+    services:
+      - ProductInfoBiz.getInfo → ProductInfoCacheBiz.getInfo
+    daos: []
+    sql: []
+    uses-utils: []
+    internal-calls: []
+    beans:
+      - 빈 이름 "legacyProductBiz" → com.example.biz.ProductInfoCacheBiz (<bean id="legacyProductBiz">
+        context-biz.xml)
+    reflection: []
+    unresolved: []
+    note: ""
+  - signature: unknown(String id)
+    visibility: public
+    static: true
+    returns: String
+    services:
+      - ProductInfoBiz.getInfo
+    daos: []
+    sql: []
+    uses-utils: []
+    internal-calls: []
+    beans:
+      - 빈 이름 "noSuchBiz" 정의를 source·XML 에서 찾지 못함 (어노테이션 값·<bean id>·기본 이름)
+    reflection: []
+    unresolved:
+      - ((ProductInfoBiz) Wcommon.getBean("noSuchBiz")).getInfo(id) — 빈 이름 "noSuchBiz"
+        정의를 source·XML 에서 찾지 못함 (어노테이션 값·<bean id>·기본 이름)
+    note: ""
+  - signature: refresh(String id)
+    visibility: public
+    static: true
+    returns: void
+    services:
+      - ProductInfoBiz.getInfo → ProductInfoBizImpl.getInfo
+    daos:
+      - ProductDAO.select
+    sql: []
+    uses-utils: []
+    internal-calls: []
+    beans:
+      - 빈 이름 "productInfoBiz" → com.example.biz.ProductInfoBizImpl (@Service("productInfoBiz"))
+    reflection: []
+    unresolved: []
+    note: ""
+void-methods:
+  - refresh(String id)

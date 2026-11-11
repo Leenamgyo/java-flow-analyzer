@@ -61,8 +61,8 @@ public class AnalyzerConfig {
         /** 오버로딩된 진입 메서드 식별용 파라미터 타입(단순명). null 이면 미지정 */
         public List<String> entryMethodParameterTypes;
         /**
-         * 클래스 조사: 진입 메서드 하나 대신 클래스의 메서드 전부를 각각 진입 메서드로 분석하고 dependencies.md 에 의존 정리
-         * (ContentUtil 같은 Util 클래스 조사용, CLI --all-methods). entry-method 는 무시
+         * Util 기능 목록: 진입 메서드 하나 대신 클래스의 메서드 전부를 각각 분석해 output.catalog-dir/<클래스>.yml 을 만들거나 갱신
+         * (ContentUtil 같은 Util 전체의 기능 분석, CLI --all-methods). entry-method 는 무시
          */
         public boolean allMethods;
     }
@@ -112,6 +112,8 @@ public class AnalyzerConfig {
 
     public static class Output {
         public String directory = "output";
+        /** Util 기능 목록(target.all-methods) 파일 폴더 — 실행마다 지우는 output/ 와 달리 계속 관리(git), 다시 돌리면 갱신 */
+        public String catalogDir = "catalog";
         public boolean yaml = true;
         public boolean tree = true;
         public boolean treeIncludeControlBlocks = true;

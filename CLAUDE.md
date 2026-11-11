@@ -2,7 +2,7 @@
 
 지정한 Action/Controller **하나**의 진입 메서드에서 시작해 Java 소스를 정적 분석하고,
 **하나의 공통 모델**로 실행 흐름 + **데이터 바인딩 명세**(어떤 값이 어느 객체 필드로 가는지)를 만드는 마이그레이션 분석 도구.
-출력: `analysis.yaml`(Source of Truth) · `spec.md`(공개용 간결한 명세: 1. Request Param 정의 · 2. Response 정의) · `vo.md`(내부용 VO 목록) · `response.md`(JSP 지정 시) · `flowchart.html`(뷰어) · `flowchart.mmd`(+ `flowchart-sections/`·`flowchart-skeleton/`·`flowchart-svg/`) · `mapping.md` · `analysis.md` · `call-tree.txt` · `phase-flowchart.mmd` · `phase-summary.md`.
+출력: `analysis.yaml`(Source of Truth) · `catalog/<Util>.yml`(Util 기능 목록, `--all-methods`, 계속 관리) · `spec.md`(공개용 간결한 명세: 1. Request Param 정의 · 2. Response 정의) · `vo.md`(내부용 VO 목록) · `response.md`(JSP 지정 시) · `flowchart.html`(뷰어) · `flowchart.mmd`(+ `flowchart-sections/`·`flowchart-skeleton/`·`flowchart-svg/`) · `mapping.md` · `analysis.md` · `call-tree.txt` · `phase-flowchart.mmd` · `phase-summary.md`.
 요구사항: [docs/SPEC-v2.md](docs/SPEC-v2.md)(현행, 바인딩·YAML·비교) ⊃ [docs/SPEC.md](docs/SPEC.md)(v1 흐름 분석). 애매하면 v2 → v1 순으로 기준.
 
 ## 절대 규칙 (SPEC §1–2)
@@ -23,7 +23,7 @@
 ./gradlew test                                   # 전체 테스트 (JUnit 5)
 ./gradlew run                                    # 내장 기본 조건 + config/analyzer.yml(덮어쓰기) → output/<Class>/
 ./gradlew run --args="--config config/analyzer.yml --class CaseAction --method throwCases"
-#   옵션: --config --source-root(반복 가능) --class --method --output --jsp(반복 가능, Response JSP 파일명) --all-methods(클래스 조사)
+#   옵션: --config --source-root(반복 가능) --class --method --output --jsp(반복 가능, Response JSP 파일명) --all-methods(Util 기능 목록 → catalog/)
 ```
 
 - 설치된 JDK 는 26 뿐이라 `options.release = 21` 로 Java 21 타깃 컴파일한다(toolchain 미사용).
@@ -57,9 +57,9 @@ analyzer/
   phase/                 PhaseAnalyzer(진입 메서드 요소 → 바인딩·체크·로직·후처리), PhaseModel, PhaseText(표시), PhaseReportWriter(phase-summary.md)
 ```
 
-## 클래스 조사 (`survey/ClassSurvey`, CLI `--all-methods`, 설정 `target.all-methods`)
+## Util 기능 목록 (`catalog/UtilCatalog`, CLI `--all-methods`, 설정 `target.all-methods`, 폴더 `output.catalog-dir` 기본 `catalog`)
 
-사용자: Action 대신 ContentUtil 같은 클래스를 조사 — 한 메서드에서 여러 개를 타던 것을 클래스의 모든 메서드로 나열하고 얽힌 의존 조사(기존 기능 재사용). 클래스에 선언된 본문 있는 메서드마다 `cfg.target.entryMethod`(+ 파라미터 타입, 오버로딩) 를 바꿔 `Main.analyze` → `OutputWriter` 로 `<output>/<클래스>/<메서드>/`(오버로딩 `이름_2`) 에 기존 출력 전부, `dependencies.md` = 메서드별 표(Service·Biz / DAO·Mapper = 선언 대상·구현 후보 역할 기준, SQL id·테이블, 흐름도 링크) + 의존 대상별 역색인 + 빈 이름·리플렉션 근거 + 확정 못 한 호출(UNRESOLVED·AMBIGUOUS·빈 못 찾음). 메서드 하나 실패해도 계속(표에 사유). 분석 규칙은 바꾸지 않음. `ClassSurveyTest`.
+사용자: ContentUtil 은 특정 메서드에서 내려가는 계층이 아니라 **유틸 전체의 기능 분석**(기능은 같고 데이터 구조만 다름), 결과 파일은 빌드를 계속해도 남아 **계속 관리**, **void 목록**도 관리. (처음엔 메서드별 출력 폴더 + dependencies.md 로 만들었다가 이 요구로 다시 만듦.) 클래스에 선언된 본문 있는 메서드마다 `cfg.target.entryMethod`(+ 파라미터 타입, className 은 FQN) 를 바꿔 `Main.analyze`(분석 규칙 그대로) → 메서드 하나 = 기능 하나: signature·visibility·static·returns·services(선언 → 구현)·daos·sql(id·xml·tables)·uses-utils(다른 Util)·internal-calls(같은 클래스)·beans(빈 이름 근거)·reflection·unresolved·error. `catalog/<단순명>.yml` 에 쓰되 **갱신**: signature 로 맞춰 분석 칸(`GENERATED`)만 새로, 그 밖의 키(note 기본 "", 사람이 추가한 키) 보존, 이전에만 있던 메서드는 `removed: true` 로 끝에 유지, `void-methods` = 반환 void 인 현재 메서드. 시각·실행 정보 없음(소스가 같으면 파일도 같음 → git diff 가 변경만). catalog/ 는 git 관리(빌드·clean 무관), source-root 안이면 거부. 저장소 설정 `config/class-survey.yml`. `UtilCatalogTest`.
 
 ## 핵심 설계 결정 (코드만 봐서는 이유가 안 보이는 것)
 

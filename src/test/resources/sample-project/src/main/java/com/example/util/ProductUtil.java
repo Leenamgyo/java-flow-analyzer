@@ -26,4 +26,9 @@ public class ProductUtil {
     public static String unknown(String id) {
         return ((ProductInfoBiz) Wcommon.getBean("noSuchBiz")).getInfo(id);
     }
+
+    /** 반환값 없는(void) 메서드도 조사 대상 */
+    public static void refresh(String id) {
+        ((ProductInfoBiz) Wcommon.getBean("productInfoBiz")).getInfo(id);
+    }
 }

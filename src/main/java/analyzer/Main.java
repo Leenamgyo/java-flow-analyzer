@@ -18,7 +18,7 @@ import java.util.List;
  *   ./gradlew run                                                           # 기본 조건 + config/analyzer.yml
  *   ./gradlew run --args="--config my-project.yml --class XxxAction"        # 프로젝트 설정 + Action 지정
  *   ./gradlew run --args="--source-root /abs/src/main/java --class XAction" # 기본 조건만 + 경로
- *   ./gradlew run --args="--config my-project.yml --class ContentUtil --all-methods"   # 클래스 조사: 메서드 전부·의존 정리
+ *   ./gradlew run --args="--config my-project.yml --class ContentUtil --all-methods"   # Util 기능 목록 → catalog/ContentUtil.yml
  * </pre>
  * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output, --jsp, --all-methods
  */
@@ -73,9 +73,9 @@ public final class Main {
         if (allMethods) cfg.target.allMethods = true;
         ConfigLoader.validate(cfg);
 
-        if (cfg.target.allMethods) { // 클래스 조사: 메서드 전부를 각각 진입 메서드로 → dependencies.md
-            Path dir = analyzer.survey.ClassSurvey.run(cfg);
-            System.out.println("조사 완료: " + cfg.target.className + " → " + dir.resolve("dependencies.md"));
+        if (cfg.target.allMethods) { // Util 기능 목록: 메서드 전부 → catalog/<클래스>.yml (계속 관리되는 파일, 갱신)
+            Path file = analyzer.catalog.UtilCatalog.run(cfg);
+            System.out.println("기능 목록 갱신: " + cfg.target.className + " → " + file);
             return 0;
         }
 
