@@ -348,7 +348,9 @@ public final class FlowchartGenerator {
             String cls = r.classOf(m).name;
             Subgraph parent = phases == null ? g.root() : layer(m);
             methodParents.put(m.id, parent);
-            Subgraph ms = g.subgraph(parent, "sg_" + m.id, Labels.methodName(r, m) + "() «" + r.classOf(m).role.label() + "»");
+            boolean db = !DB_ROLES.contains(r.classOf(m).role) && !dbReach(m.id).isEmpty();
+            Subgraph ms = g.subgraph(parent, "sg_" + m.id, Labels.methodName(r, m) + "() «" + r.classOf(m).role.label() + "»"
+                    + (db ? " " + MermaidGraph.DB_TAG : ""));
             methodGraphs.put(m.id, ms);
             List<String> lines = new ArrayList<>(List.of(Labels.methodDeclaration(r, m), m.visibility.text() + " · D" + m.depth));
             if (!DB_ROLES.contains(r.classOf(m).role) && !dbReach(m.id).isEmpty()) {
@@ -1233,7 +1235,7 @@ public final class FlowchartGenerator {
         List<End> code(CallSiteInfo s, List<End> cur) {
             cur = start("block", cur, s.id);
             codeCalls.add(s);
-            lines.add(new Line(callCode(s), stateClass(s), null));
+            lines.add(new Line(callCode(s) + (dbLine(s) == null ? "" : "  " + MermaidGraph.DB_TAG), stateClass(s), null));
             String impl = Labels.implementationTarget(r, s);
             if (impl != null) {
                 lines.add(new Line("  impl 후보: " + impl, null, null));
@@ -2115,7 +2117,7 @@ public final class FlowchartGenerator {
         List<String> lines = new ArrayList<>();
         boolean folded = s.targetMethodId != null && collapsed.contains(s.expansionTargetId());
         String var = s.resultUsage != null && s.resultUsage.startsWith("assigned:") ? s.resultUsage.substring(9) : null;
-        String code = callCode(s);
+        String code = callCode(s) + (dbLine(s) == null ? "" : "  " + MermaidGraph.DB_TAG); // DB 로직 태그(빨강 글자)
         lines.add(stateClass(s) == null ? code : MermaidGraph.styled("state", code)); // x = call() 대입(상태 변화)이면 주황
         if (var != null && fetch(s)) {
             // 값 조회는 바인딩으로 끝: 내부로 들어가지 않고 코드 한 줄

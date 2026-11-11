@@ -68,7 +68,12 @@
     }
   }
   function collapsedLines(g) {
-    return [...g.label, '▸ 펼치기 · 노드 ' + countNodes(g.group) + '개'];
+    return [...g.label.map(titleLine), '▸ 펼치기 · 노드 ' + countNodes(g.group) + '개'];
+  }
+  /** 상자 제목 끝의 DB 태그는 따로 칠한다 (노드 줄과 같은 색 db) */
+  const DB_TAG = '[⛁ DB]';
+  function titleLine(l) {
+    return typeof l === 'string' && l.endsWith(' ' + DB_TAG) ? [[l.slice(0, -DB_TAG.length - 1) + ' ', ''], [DB_TAG, 'db']] : l;
   }
 
   const elk = new ELK();
@@ -489,7 +494,7 @@
             'stroke-width': kind === 'method' ? 1.5 : 1, 'stroke-dasharray': kind === 'try' || kind === 'loop' ? '6 4' : null }, gLayer);
           const tg = el('g', { class: 'gtitle' }, gLayer);
           tg.appendChild(document.createElementNS(SVGNS, 'title')).textContent = '클릭: 접기';
-          const t = writeLines(tg, ['▾ ' + g.label[0], ...g.label.slice(1)], c.x + 10, c.y + 5, 'left', cssVar('--g-title'));
+          const t = writeLines(tg, ['▾ ' + g.label[0], ...g.label.slice(1)].map(titleLine), c.x + 10, c.y + 5, 'left', cssVar('--g-title'));
           t.style.font = TITLE_FONT;
           el('rect', { x: c.x, y: c.y, width: c.width, height: (titles.get(id) || { h: 20 }).h + 4, fill: 'transparent' }, tg);
           tg.addEventListener('click', ev => { ev.stopPropagation(); toggle(id); });

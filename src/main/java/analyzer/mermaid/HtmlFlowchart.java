@@ -179,15 +179,33 @@ public final class HtmlFlowchart {
         for (String l : lines) {
             String tc = MermaidGraph.textClass(l);
             String plain = MermaidGraph.plain(l);
+            String base = MermaidGraph.withoutDbTag(plain); // DB 태그는 따로 칠한 조각으로 마지막 화면 줄 끝에
+            if (base != null) {
+                plain = base;
+            }
             List<String> pieces = MermaidGraph.wrap(plain, g.maxLineLength());
             for (int k = 1; k < pieces.size(); k++) {
                 cont.add(out.size() + k);
             }
+            int from = out.size();
+            appendRows(out, pieces, plain, tc);
+            if (base != null && out.size() > from) {
+                List<List<String>> last = new ArrayList<>(out.get(out.size() - 1));
+                last.add(List.of("  ", ""));
+                last.add(List.of(MermaidGraph.DB_TAG, "db"));
+                out.set(out.size() - 1, last);
+            }
+        }
+        return out;
+    }
+
+    private static void appendRows(List<List<List<String>>> out, List<String> pieces, String plain, String tc) {
+        {
             if (!"req".equals(tc)) {
                 for (String p : pieces) {
                     out.add(List.of(List.of(p, tc == null ? "" : tc)));
                 }
-                continue;
+                return;
             }
             // 요청 값 표기만 칠한다 — 범위는 끊기 전 줄에서 계산 (MermaidGraph.requestPieces 와 같은 규칙)
             List<int[]> ranges = MermaidGraph.requestRanges(plain);
@@ -221,7 +239,6 @@ public final class HtmlFlowchart {
                 cursor = start + content.length();
             }
         }
-        return out;
     }
 
     /**

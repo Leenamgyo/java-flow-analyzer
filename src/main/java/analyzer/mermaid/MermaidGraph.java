@@ -76,12 +76,25 @@ public final class MermaidGraph {
     public static final Map<String, String> TEXT_COLORS = Map.of(
             "req", "#0f766e",
             "fn", "#7c3aed",
-            "state", "#ea580c");
+            "state", "#ea580c",
+            "db", "#b91c1c");
     /** 다크 테마 글자 색 (어두운 노드 바탕 위에서 읽히게 밝은 색) */
     public static final Map<String, String> TEXT_COLORS_DARK = Map.of(
             "req", "#5eead4",
             "fn", "#c4b5fd",
-            "state", "#fdba74");
+            "state", "#fdba74",
+            "db", "#f87171");
+
+    /**
+     * DB 로직 태그 — 줄·상자 제목 끝에 붙이면 이 글자만 진한 빨강(TEXT_COLORS db)으로 칠한다
+     * (사용자: 안에 DAO 가 있으면 DB 로직, 태그 형식으로 티 나게). 상자 색·배치는 그대로.
+     */
+    public static final String DB_TAG = "[⛁ DB]";
+
+    /** 끝의 DB 태그를 뗀 글자 (없으면 null) */
+    static String withoutDbTag(String text) {
+        return text != null && text.endsWith(" " + DB_TAG) ? text.substring(0, text.length() - DB_TAG.length()).stripTrailing() : null;
+    }
 
     /** 색 테마: dark | light (설정 output.color-theme) */
     private String theme = "light";
@@ -528,7 +541,9 @@ public final class MermaidGraph {
 
     private void renderItem(StringBuilder sb, Object o, String indent) {
         if (o instanceof Subgraph s) {
-            sb.append(indent).append("subgraph ").append(s.id).append("[\"").append(wrapped(s.label)).append("\"]\n");
+            String base = withoutDbTag(s.label);
+            sb.append(indent).append("subgraph ").append(s.id).append("[\"")
+                    .append(base == null ? wrapped(s.label) : wrapped(base) + " " + dbTag()).append("\"]\n");
             for (Object c : s.items) {
                 renderItem(sb, c, indent + "    ");
             }
@@ -539,13 +554,22 @@ public final class MermaidGraph {
             for (String l : n.lines()) {
                 String tc = textClass(l);
                 String color = tc == null ? null : ("dark".equals(theme) ? TEXT_COLORS_DARK : TEXT_COLORS).get(tc);
-                List<String> pieces = wrap(plain(l), maxLineLength);
-                if ("req".equals(tc)) {
-                    parts.addAll(requestPieces(plain(l), pieces, color));
-                    continue;
+                String text = plain(l);
+                String base = withoutDbTag(text);
+                if (base != null) {
+                    text = base;
                 }
-                for (String piece : pieces) {
-                    parts.add(tc == null ? esc(piece) : fontOpen(color) + esc(piece) + "</font>");
+                List<String> pieces = wrap(text, maxLineLength);
+                int from = parts.size();
+                if ("req".equals(tc)) {
+                    parts.addAll(requestPieces(text, pieces, color));
+                } else {
+                    for (String piece : pieces) {
+                        parts.add(tc == null ? esc(piece) : fontOpen(color) + esc(piece) + "</font>");
+                    }
+                }
+                if (base != null && parts.size() > from) {
+                    parts.set(parts.size() - 1, parts.get(parts.size() - 1) + "  " + dbTag());
                 }
             }
             String label = String.join("<br/>", parts);
@@ -560,6 +584,11 @@ public final class MermaidGraph {
             };
             sb.append(indent).append(n.id()).append(br[0]).append(label).append(br[1]).append('\n');
         }
+    }
+
+    /** 칠한 DB 태그 */
+    private String dbTag() {
+        return fontOpen(("dark".equals(theme) ? TEXT_COLORS_DARK : TEXT_COLORS).get("db")) + esc(DB_TAG) + "</font>";
     }
 
     /** 한 줄 라벨(subgraph 제목·간선 라벨)도 노드 줄과 같은 한도로 끊는다 */

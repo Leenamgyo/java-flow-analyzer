@@ -84,5 +84,10 @@ class BizVoTest {
         String biz = r.methods().stream().filter(m -> m.name.equals("write")).findFirst().orElseThrow().id;
         assertTrue(g.nodeById(biz).lines().contains("⛁ DB 로직: NoticeDAO.insert, NoticeDAO.insertHistory"), g.nodeById(biz).lines().toString());
         assertFalse(g.nodeById(g.nodeOf(insert.id)).lines().stream().anyMatch(l -> l.contains("DB 로직")));
+        // 태그: 호출 줄 끝·메서드 상자 제목 끝 [⛁ DB] (렌더링에서 이 글자만 빨강)
+        assertTrue(writeLines.get(0).endsWith("  " + MermaidGraph.DB_TAG), writeLines.get(0));
+        String mmd = new FlowchartGenerator().render(r, "TD");
+        assertTrue(mmd.contains("NoticeWriteBiz.write() «Biz» <font color='#b91c1c'>[⛁ DB]</font>"), mmd);
+        assertFalse(g.nodeById(g.nodeOf(insert.id)).lines().get(0).contains(MermaidGraph.DB_TAG));
     }
 }
