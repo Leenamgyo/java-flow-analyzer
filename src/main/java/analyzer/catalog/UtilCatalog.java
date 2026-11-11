@@ -33,8 +33,8 @@ import java.util.Set;
  * <p>
  * 클래스에 선언된 본문 있는 메서드마다 기존 분석(Main.analyze — 같은 규칙: 빈 이름·리플렉션·DAO·SQL 추적)을 그 메서드를 진입으로
  * 돌려, 메서드 하나 = 기능 하나로 의존을 정리한다. 결과는 output/ 가 아니라 계속 관리되는 {@code <catalog-dir>/<클래스>.yml}
- * (기본 catalog/, git 으로 관리 — 빌드는 건드리지 않음). 다시 돌리면 분석 칸은 새로 계산하고, 사람이 적은 칸(note 와 분석이 만들지
- * 않는 키)은 보존, 소스에서 없어진 메서드는 지우지 않고 removed: true. 시각·실행 정보는 넣지 않는다(변경이 없으면 파일도 같게).
+ * (기본 catalog/, git 으로 관리 — 빌드는 건드리지 않음). 다시 돌리면 분석 칸은 새로 계산하고, 사람이 적은 칸(메서드의 note·추가 키,
+ * 최상위에 추가한 키)은 보존, 소스에서 없어진 메서드는 지우지 않고 removed: true. 시각·실행 정보는 넣지 않는다(변경이 없으면 파일도 같게).
  */
 public final class UtilCatalog {
 
@@ -244,6 +244,12 @@ public final class UtilCatalog {
             }
         }
         doc.put("void-methods", voids);
+        // 사람이 최상위에 추가한 키(hidden: … 등)도 보존 — 예전엔 갱신 때 class·methods·void-methods 만 남아 지워졌다
+        old.forEach((k, v) -> {
+            if (!doc.containsKey(k)) {
+                doc.put(k, v);
+            }
+        });
         return doc;
     }
 }

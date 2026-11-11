@@ -57,6 +57,7 @@ class UtilCatalogTest {
         String edited = Files.readString(file).replaceFirst("note: \"\"", "note: 상품 정보 조회 — 신규 API 로 이전 예정");
         Map<String, Object> old = yaml.readValue(edited, Map.class);
         ((List<Map<String, Object>>) old.get("methods")).add(Map.of("signature", "oldMethod()", "returns", "void", "note", "옛 기능"));
+        old.put("hidden", List.of("ProductInfoBizImpl.getInfo")); // 사람이 최상위에 추가한 키
         new ObjectMapper(new YAMLFactory()).writeValue(file.toFile(), old);
         assertEquals(0, Main.run(new String[]{"--config", cfg.toString()}));
         Map<String, Object> again = yaml.readValue(file.toFile(), Map.class);
@@ -64,6 +65,7 @@ class UtilCatalogTest {
         Map<String, Object> gone = method(again, "oldMethod()");
         assertEquals(true, gone.get("removed")); // 지우지 않고 표시
         assertEquals("옛 기능", gone.get("note"));
+        assertEquals(List.of("ProductInfoBizImpl.getInfo"), again.get("hidden")); // 최상위 추가 키도 보존
         // 같은 소스로 다시 돌리면 내용이 같다 (시각 등 실행 정보 없음 — git diff 가 변경만 보이게)
         String once = Files.readString(file);
         assertEquals(0, Main.run(new String[]{"--config", cfg.toString()}));
