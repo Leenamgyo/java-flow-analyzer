@@ -19,6 +19,10 @@ analysis:
   expand-classes: ["CountryUtil", "ODAction", "ContentUtil"]   # 로직이 많은 Util · 공통 상위 Action
   # 인터페이스 호출: source-root 내 구현 클래스가 정확히 1개면 구현 후보로 연결 (런타임 DI 확정 아님)
   link-single-implementation: true
+  # 빈 이름으로 객체를 꺼내는 메서드 (첫 인자 = 빈 이름 리터럴·상수) — Wcommon.getBean("productInfoBiz") 처럼 Util 이 꺼내 쓰는
+  #   Service·Biz·DAO 를 그 빈 클래스(@Service("…")·<bean id>·기본 이름)로 잇는다. 꺼낸 객체를 리플렉션
+  #   (getClass().getMethod("이름", …).invoke(…))으로 부르는 것도 메서드 이름이 리터럴이면 호출로 기록
+  bean-lookup-methods: ["getBean"]
   # VO/DTO/Command/Map 바인딩 수집 + 값 출처·변환·조건 추적
   include-bindings: true
   # 선언 뒤 값이 바뀌는 지역 변수·파라미터(total -= usePoint, size = MAX …) 변경 이력 수집

@@ -13,6 +13,7 @@ import com.example.support.Cache;
 import com.example.support.LogService;
 import com.example.support.Registry;
 import com.example.util.StringUtil;
+import com.example.util.ProductUtil;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -405,5 +406,15 @@ public class EdgeAction {
 
     private void fillBodyLater(NoticeVO vo) {
         vo.setBody("late");
+    }
+
+    // ---- Util 이 빈 이름(Wcommon.getBean("…"))으로 Biz 를 부르는 경우 (UtilBeanTest) ----
+    public void utilBeans(HttpServletRequest request) throws Exception {
+        String id = request.getParameter("id");
+        String a = ProductUtil.info(id);
+        String b = ProductUtil.infoInline(id);
+        Object c = ProductUtil.infoReflect(id);
+        String d = ProductUtil.legacy(id);
+        String e = ProductUtil.unknown(id);
     }
 }

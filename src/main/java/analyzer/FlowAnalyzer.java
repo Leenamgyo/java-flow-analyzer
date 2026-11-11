@@ -72,6 +72,8 @@ public final class FlowAnalyzer {
     private final AnalysisResult result = new AnalysisResult();
     private final RequestParameterExtractor params;
     private final ImplementationFinder implementations;
+    /** 빈 이름 → 클래스 (Wcommon.getBean("…") 류) */
+    private final analyzer.resolver.BeanIndex beans;
     /** max-depth 를 넘어도 본문을 분석할 역할 */
     private final java.util.Set<ClassRole> expandRoles;
 
@@ -96,6 +98,14 @@ public final class FlowAnalyzer {
         this.resolver = new CallResolver(sources, types);
         this.params = new RequestParameterExtractor(result, types, cfg.requestParameterRules);
         this.implementations = new ImplementationFinder(sources);
+        List<Path> beanXml = new ArrayList<>(analyzer.sql.SqlCalls.xmlRoots(cfg.analysis.mapperXmlRoots, sources.sourceRoots()));
+        for (Path root : sources.sourceRoots()) { // Spring 설정 XML 이 흔히 있는 웹 루트 (…/src/main/webapp)
+            Path main = root.getParent();
+            if (main != null && java.nio.file.Files.isDirectory(main.resolve("webapp"))) {
+                beanXml.add(main.resolve("webapp"));
+            }
+        }
+        this.beans = new analyzer.resolver.BeanIndex(sources, beanXml);
         this.expandRoles = cfg.analysis.expandRoles.stream()
                 .map(x -> ClassRole.fromLabel(x).orElseThrow(() -> new IllegalArgumentException("알 수 없는 역할: " + x)))
                 .collect(Collectors.toCollection(() -> java.util.EnumSet.noneOf(ClassRole.class)));
@@ -266,6 +276,10 @@ public final class FlowAnalyzer {
         MethodBodyWalker.CallSink sink = new MethodBodyWalker.CallSink() {
             @Override
             public CallSiteInfo resolve(MethodCallExpr call, WalkContext ctx) {
+                CallSiteInfo reflective = reflectionSite(call, callerType);
+                if (reflective != null) { // bean.getClass().getMethod("이름", …).invoke(bean, …) — 빈 클래스 메서드 호출로
+                    return reflective;
+                }
                 CallTarget t = resolver.resolve(call, callerType);
                 boolean readsRequest = false;
                 if (cfg.analysis.includeRequestParameters) {
@@ -289,7 +303,9 @@ public final class FlowAnalyzer {
                     result.excludedExternalCalls++;
                     return null;
                 }
-                return toSite(t, call);
+                CallSiteInfo site = toSite(t, call);
+                linkBean(site, call, callerType);
+                return site;
             }
 
             @Override
@@ -312,7 +328,9 @@ public final class FlowAnalyzer {
                 boolean sameClass = cfg.analysis.expandSameClassMethods && target.classId.equals(caller.classId);
                 boolean byRole = expandRoles.contains(result.clazz(target.classId).role);
                 boolean byClass = expandClass(result.clazz(target.classId)) || insideAction(declarations.get(target.id));
-                if (byDepth || sameClass || byRole || byClass) {
+                // 본문에서 빈 이름으로 객체를 꺼내는 메서드(Util 의 Wcommon.getBean("…"))는 Service·DAO 로 가는 통로 — 어느 Depth 든 분석
+                boolean byBean = looksUpBeans(declarations.get(target.id));
+                if (byDepth || sameClass || byRole || byClass || byBean) {
                     schedule(target, declarations.get(target.id), site.depth, site, caller);
                 }
             }
@@ -422,6 +440,132 @@ public final class FlowAnalyzer {
         } else if (t.status() == ResolutionStatus.PARTIALLY_RESOLVED && t.declaringType() != null) {
             s.targetMethodId = partialMethod(t, call.getNameAsString(), call.getArguments().size()).id;
         }
+        return s;
+    }
+
+    // ------------------------------------------------------------------ 빈 이름 (Wcommon.getBean("…"))
+
+    /**
+     * 수신 객체가 빈 이름으로 꺼낸 객체면(직접·캐스팅·그 값으로 초기화한 지역 변수) 그 빈 클래스의 같은 이름·인자 수 메서드를
+     * 구현으로 잇는다 (선언 대상은 그대로, 근거 BEAN_NAME). 인터페이스 구현이 여럿이어도 빈 이름이 하나를 정한다.
+     */
+    private void linkBean(CallSiteInfo s, MethodCallExpr call, TypeDeclaration<?> callerType) {
+        if (s.targetMethodId == null || s.implementationMethodId != null || call.getScope().isEmpty()) {
+            return;
+        }
+        MethodInfo declared = result.method(s.targetMethodId);
+        if (declared.origin != Origin.SOURCE || declared.hasBody) {
+            return; // 이미 구체 클래스 메서드 — 잇지 않아도 정확
+        }
+        String name = beanName(call.getScope().get(), callerType, 0);
+        if (name == null) {
+            return;
+        }
+        analyzer.resolver.BeanIndex.Bean bean = beans.find(name);
+        MethodDeclaration md = bean.found() ? beanMethod(bean.fqn(), call.getNameAsString(), call.getArguments().size()) : null;
+        s.implementationBasis = "BEAN_NAME";
+        s.implementationReason = bean.reason() + (bean.found() && md == null ? " — 그 클래스에 " + call.getNameAsString()
+                + "(인자 " + call.getArguments().size() + "개) 메서드가 하나로 정해지지 않음" : "");
+        s.implementationCandidates.clear();
+        s.implementationCandidates.addAll(bean.candidates());
+        if (md != null) {
+            s.implementationMethodId = sourceMethod(md).id;
+        }
+    }
+
+    /** 본문에 빈 이름 조회 호출(bean-lookup-methods, 첫 인자 있음)이 있는지 */
+    private boolean looksUpBeans(com.github.javaparser.ast.body.CallableDeclaration<?> c) {
+        return c != null && ((Node) c).findAll(MethodCallExpr.class).stream()
+                .anyMatch(mc -> cfg.analysis.beanLookupMethods.contains(mc.getNameAsString()) && !mc.getArguments().isEmpty());
+    }
+
+    /** 식이 빈 이름 조회(getBean("x"))의 결과면 그 이름 — 괄호·캐스팅을 벗기고, 지역 변수면 그 초기화·대입식이 모두 같은 빈일 때 */
+    private String beanName(com.github.javaparser.ast.expr.Expression e, TypeDeclaration<?> callerType, int depth) {
+        while (e instanceof com.github.javaparser.ast.expr.EnclosedExpr en) {
+            e = en.getInner();
+        }
+        if (e instanceof com.github.javaparser.ast.expr.CastExpr c) {
+            return beanName(c.getExpression(), callerType, depth);
+        }
+        if (e instanceof MethodCallExpr mc && cfg.analysis.beanLookupMethods.contains(mc.getNameAsString()) && !mc.getArguments().isEmpty()) {
+            return params.stringValue(mc.getArgument(0), callerType, mc).orElse(null);
+        }
+        if (e instanceof com.github.javaparser.ast.expr.NameExpr n && depth < 3) {
+            var body = e.findAncestor(com.github.javaparser.ast.body.CallableDeclaration.class).orElse(null);
+            if (body == null) {
+                return null;
+            }
+            List<com.github.javaparser.ast.expr.Expression> values = new ArrayList<>();
+            for (var v : ((Node) body).findAll(com.github.javaparser.ast.body.VariableDeclarator.class)) {
+                if (v.getNameAsString().equals(n.getNameAsString())) {
+                    v.getInitializer().ifPresent(values::add);
+                }
+            }
+            for (var a : ((Node) body).findAll(com.github.javaparser.ast.expr.AssignExpr.class)) {
+                if (a.getTarget() instanceof com.github.javaparser.ast.expr.NameExpr t && t.getNameAsString().equals(n.getNameAsString())) {
+                    values.add(a.getValue());
+                }
+            }
+            String found = null;
+            for (var v : values) {
+                String b = beanName(v, callerType, depth + 1);
+                if (b == null || found != null && !found.equals(b)) {
+                    return null; // 빈이 아닌 값·다른 빈이 섞이면 확정 못 함
+                }
+                found = b;
+            }
+            return found;
+        }
+        return null;
+    }
+
+    /** 빈 클래스의 이름·인자 수가 같은 메서드 (정확히 하나일 때만) */
+    private MethodDeclaration beanMethod(String fqn, String name, int args) {
+        var td = sources.findTypeByQualifiedName(fqn).orElse(null);
+        if (td == null) {
+            return null;
+        }
+        List<MethodDeclaration> ms = td.getMethodsByName(name).stream()
+                .filter(m -> m.getParameters().size() == args && m.getBody().isPresent()).toList();
+        return ms.size() == 1 ? ms.get(0) : null;
+    }
+
+    /**
+     * 리플렉션 호출: X.getClass().getMethod("이름", …).invoke(X, args…) 또는 Method m = …getMethod("이름"); m.invoke(X, args…) 에서
+     * X 가 빈 이름으로 꺼낸 객체이고 메서드 이름이 리터럴·상수면 그 빈 클래스 메서드 호출로 기록 (근거 REFLECTION).
+     * 빈·메서드를 확정 못 하면 null (지금처럼 외부 라이브러리 호출로 둔다 — 추측 금지).
+     */
+    private CallSiteInfo reflectionSite(MethodCallExpr call, TypeDeclaration<?> callerType) {
+        if (!call.getNameAsString().equals("invoke") || call.getArguments().isEmpty() || call.getScope().isEmpty()) {
+            return null;
+        }
+        com.github.javaparser.ast.expr.Expression scope = call.getScope().get();
+        if (scope instanceof com.github.javaparser.ast.expr.NameExpr n) { // Method m = ….getMethod("x"); m.invoke(…)
+            var body = call.findAncestor(com.github.javaparser.ast.body.CallableDeclaration.class).orElse(null);
+            scope = body == null ? null : ((Node) body).findAll(com.github.javaparser.ast.body.VariableDeclarator.class).stream()
+                    .filter(v -> v.getNameAsString().equals(n.getNameAsString())).map(v -> v.getInitializer().orElse(null))
+                    .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        }
+        if (!(scope instanceof MethodCallExpr gm) || !gm.getNameAsString().matches("getMethod|getDeclaredMethod") || gm.getArguments().isEmpty()) {
+            return null;
+        }
+        String method = params.stringValue(gm.getArgument(0), callerType, gm).orElse(null);
+        String bean = beanName(call.getArgument(0), callerType, 0);
+        if (method == null || bean == null) {
+            return null;
+        }
+        analyzer.resolver.BeanIndex.Bean b = beans.find(bean);
+        MethodDeclaration md = b.found() ? beanMethod(b.fqn(), method, call.getArguments().size() - 1) : null;
+        if (md == null) {
+            return null;
+        }
+        CallSiteInfo s = new CallSiteInfo();
+        s.resolution = ResolutionStatus.RESOLVED;
+        s.resolutionBasis = "REFLECTION";
+        s.resolutionReason = "리플렉션 " + gm.getNameAsString() + "(\"" + method + "\") · " + b.reason();
+        s.targetOrigin = Origin.SOURCE;
+        s.receiverType = b.fqn();
+        s.targetMethodId = sourceMethod(md).id;
         return s;
     }
 

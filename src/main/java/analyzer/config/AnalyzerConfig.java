@@ -87,6 +87,11 @@ public class AnalyzerConfig {
          * 그 구현 메서드를 '구현 후보'로 연결한다(런타임 DI 구현체 확정이 아님).
          */
         public boolean linkSingleImplementation = false;
+        /**
+         * 빈 이름으로 객체를 꺼내는 메서드 이름 (첫 인자 = 빈 이름 리터럴·상수). 예: Wcommon.getBean("productInfoBiz"),
+         * ApplicationContext.getBean("x"). 꺼낸 객체의 메서드 호출은 그 빈 클래스(구현)로 잇는다 (근거 BEAN_NAME).
+         */
+        public List<String> beanLookupMethods = new ArrayList<>(List.of("getBean"));
         /** VO/DTO/Command 및 Map 바인딩(setter·builder·생성자·필드 대입·put·복사)을 수집하고 값의 출처를 추적한다 */
         public boolean includeBindings = true;
         /** 선언 뒤 값이 바뀌는 지역 변수·파라미터의 변경 이력(=, +=, ++ …)을 수집한다 */

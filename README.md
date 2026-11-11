@@ -101,6 +101,23 @@ output:
 - 결과는 이 저장소의 `output/<클래스명>/` 에 생깁니다(`--output` 으로 변경). 출력 위치가 분석 대상 소스 루트 안이면 실행을 거부합니다.
 - 분석 대상 프로젝트는 읽기만 합니다(수정·빌드·실행 없음).
 
+## 빈 이름으로 꺼내 쓰는 Service·DAO (Wcommon.getBean 등)
+
+Util 이 `Wcommon.getBean("productInfoBiz")` 처럼 빈 이름으로 Service·Biz·DAO 를 꺼내 쓰면, 그 이름으로 실제 클래스를 찾아 잇습니다.
+
+```java
+ProductInfoBiz biz = (ProductInfoBiz) Wcommon.getBean("productInfoBiz");   // ① 변수로 받아 쓰기
+biz.getInfo(id);
+((ProductInfoBiz) Wcommon.getBean("productInfoBiz")).getInfo(id);           // ② 바로 캐스팅
+bean.getClass().getMethod("getInfo", String.class).invoke(bean, id);       // ③ 리플렉션 (메서드 이름이 리터럴일 때)
+```
+
+- 빈 이름 → 클래스: `@Service("productInfoBiz")` 같은 어노테이션 값 → XML `<bean id="…" class="…">` → 이름 없는 어노테이션의 기본 이름(클래스 단순명 첫 글자 소문자). 후보가 없거나 2개 이상이면 잇지 않고 analysis.yaml `implementationReason` 에 사유.
+- 인터페이스 구현이 여럿이어도 빈 이름이 하나를 정합니다. 흐름도에는 구현 메서드 상자로 이어지고(`impl 후보:`), 그 안에 DAO 가 있으면 `[⛁ DB]`.
+- 본문에서 빈을 꺼내는 메서드(Util 등)는 `max-depth` 밖이어도 본문까지 분석합니다.
+- 다른 이름의 조회 메서드는 `analysis.bean-lookup-methods` 에 추가 (기본 `["getBean"]`, 첫 인자 = 빈 이름).
+- 빈 이름을 변수·설정 값·문자열 연결로 만들면 추적하지 않습니다(추측 금지).
+
 ## Action 안에 선언된 클래스 (ParamMgr 등)
 
 Action/Controller 클래스 **안에 선언된 클래스**는 이름과 상관없이 자동으로 따라갑니다 (설정 불필요).
