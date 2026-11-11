@@ -31,7 +31,7 @@ class UtilCatalogTest {
         // catalog-dir 는 설정으로 — 임시 설정 파일
         Path cfg = tmp.resolve("c.yml");
         Files.writeString(cfg, "target:\n  source-root: " + Fixtures.SOURCE_ROOT + "\n  class: ProductUtil\n  all-methods: true\n"
-                + "output:\n  catalog-dir: " + dir + "\n");
+                + "output:\n  catalog-dir: " + dir + "\n  directory: " + tmp.resolve("out") + "\n  flowchart-svg: false\n");
         assertEquals(0, Main.run(new String[]{"--config", cfg.toString()}));
         Path file = dir.resolve("ProductUtil.yml");
         ObjectMapper yaml = new ObjectMapper(new YAMLFactory());
@@ -45,6 +45,11 @@ class UtilCatalogTest {
         assertTrue(((List<String>) info.get("beans")).get(0).startsWith("빈 이름 \"productInfoBiz\""));
         assertTrue(((List<String>) method(doc, "infoReflect(String id)").get("reflection")).get(0).contains("→ ProductInfoBizImpl.getInfo"));
         assertTrue(((List<String>) method(doc, "unknown(String id)").get("unresolved")).get(0).contains("noSuchBiz"));
+        // 메서드마다 기존 출력도 (output.catalog-outputs 기본 true)
+        for (String m : new String[]{"info", "infoInline", "infoReflect", "legacy", "unknown", "refresh"}) {
+            assertTrue(Files.exists(tmp.resolve("out").resolve("ProductUtil").resolve(m).resolve("flowchart.html")), m);
+            assertTrue(Files.exists(tmp.resolve("out").resolve("ProductUtil").resolve(m).resolve("analysis.yaml")), m);
+        }
         // void 목록
         assertEquals(List.of("refresh(String id)"), doc.get("void-methods"));
 

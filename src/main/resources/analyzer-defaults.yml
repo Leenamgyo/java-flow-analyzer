@@ -64,6 +64,8 @@ output:
   directory: output     # 결과는 <directory>/<클래스명>/
   # Util 기능 목록(target.all-methods, --all-methods) 폴더 — <catalog-dir>/<클래스>.yml. output 과 달리 계속 관리(git), 다시 돌리면 갱신(note 보존)
   catalog-dir: catalog
+  # 기능 목록을 만들 때 메서드마다 기존 출력도 <directory>/<클래스>/<메서드>/ 에 (flowchart.html·analysis.yaml … — output 이라 실행마다 다시 만듦)
+  catalog-outputs: true
   yaml: true
   tree: true
   tree-include-control-blocks: true

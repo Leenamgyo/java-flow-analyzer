@@ -134,7 +134,7 @@ void-methods: [refresh(String id)]           # 반환 타입 void 인 메서드
 
 - 다시 돌리면 분석 칸만 갱신하고 `note`·직접 추가한 키는 보존, 소스에서 없어진 메서드는 `removed: true` 로 남김. 실행 시각 등은 넣지 않아 소스가 그대로면 파일도 그대로(git diff 가 변경만).
 - 대상: 클래스에 선언된 본문 있는 메서드 전부(void·private 포함, 소스 순서). 분석에 실패한 메서드는 `error`.
-- 메서드 하나의 흐름도가 필요하면 기존처럼 `--class ContentUtil --method 메서드명`.
+- 메서드마다 기존 출력(`flowchart.html`·`analysis.yaml`·`analysis.md` …)도 `output/<클래스>/<메서드>/` 에 함께 만듭니다(`output.catalog-outputs`, 기본 true — 이쪽은 `output/` 이라 실행마다 다시 만듦, 오버로딩은 `이름_2`).
 
 ## 빈 이름으로 꺼내 쓰는 Service·DAO (Wcommon.getBean 등)
 

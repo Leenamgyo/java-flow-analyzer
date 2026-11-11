@@ -114,6 +114,8 @@ public class AnalyzerConfig {
         public String directory = "output";
         /** Util 기능 목록(target.all-methods) 파일 폴더 — 실행마다 지우는 output/ 와 달리 계속 관리(git), 다시 돌리면 갱신 */
         public String catalogDir = "catalog";
+        /** Util 기능 목록을 만들 때 메서드마다 기존 출력도 <directory>/<클래스>/<메서드>/ 에 (흐름도·analysis.yaml …) */
+        public boolean catalogOutputs = true;
         public boolean yaml = true;
         public boolean tree = true;
         public boolean treeIncludeControlBlocks = true;

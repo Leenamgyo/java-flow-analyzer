@@ -3,6 +3,7 @@
 #   ./gradlew run --args="--config config/class-survey.yml"                      # 아래 class 의 목록 갱신
 #   ./gradlew run --args="--config config/class-survey.yml --class CountryUtil"  # 다른 클래스 (CLI 가 class 를 덮어씀)
 # 결과: catalog/<클래스>.yml — 다시 돌리면 분석 칸만 갱신, note(사람이 적는 칸)는 보존, 없어진 메서드는 removed: true
+#       + output/<클래스>/<메서드>/ — 메서드마다 기존 출력 (catalog-outputs)
 target:
   # 분석할 프로젝트 소스 (읽기 전용). 실제 프로젝트 경로로 바꿔 쓴다 — 멀티 모듈이면 source-roots
   source-root: src/test/resources/sample-project/src/main/java
@@ -23,3 +24,6 @@ analysis:
 
 output:
   catalog-dir: catalog        # 기능 목록 폴더 (git 으로 관리)
+  catalog-outputs: true       # 메서드마다 기존 출력도 output/<클래스>/<메서드>/ 에 (흐름도·analysis.yaml …, 실행마다 다시 만듦)
+  directory: output
+  flowchart-svg: false        # mmdc 가 없으면 메서드마다 경고가 나와 끔 (있으면 true 로)

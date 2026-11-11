@@ -64,6 +64,8 @@ public final class UtilCatalog {
         Path file = catalogFile(cfg, type.getNameAsString());
 
         List<Map<String, Object>> fresh = new ArrayList<>();
+        Path outDir = cfg.output.catalogOutputs ? Main.outputDir(cfg, type.getNameAsString()) : null;
+        Map<String, Integer> used = new java.util.HashMap<>();
         String savedMethod = cfg.target.entryMethod;
         List<String> savedTypes = cfg.target.entryMethodParameterTypes;
         String savedClass = cfg.target.className;
@@ -81,8 +83,14 @@ public final class UtilCatalog {
                 m.put("visibility", md.getAccessSpecifier().asString().isEmpty() ? "package-private" : md.getAccessSpecifier().asString());
                 m.put("static", md.isStatic());
                 m.put("returns", md.getType().asString());
+                int n = used.merge(md.getNameAsString(), 1, Integer::sum);
+                String folder = n == 1 ? md.getNameAsString() : md.getNameAsString() + "_" + n; // 오버로딩
                 try {
-                    describe(Main.analyze(cfg), fqn, m);
+                    AnalysisResult r = Main.analyze(cfg);
+                    describe(r, fqn, m);
+                    if (outDir != null) { // 메서드마다 기존 출력 (흐름도·analysis.yaml …)
+                        new analyzer.serializer.OutputWriter().write(r, cfg, outDir.resolve(folder));
+                    }
                 } catch (RuntimeException e) {
                     m.put("error", e.getMessage() == null ? e.toString() : e.getMessage().lines().findFirst().orElse(e.toString()));
                     System.err.println("[WARN] " + type.getNameAsString() + "." + m.get("signature") + " 분석 실패 — " + m.get("error"));
