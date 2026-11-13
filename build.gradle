@@ -40,6 +40,15 @@ tasks.named('run') {
 }
 
 // 전체 클래스 흐름도 (Action 분석과 따로): ./gradlew runClass --args="--config … --class ContentUtil"
+// 카탈로그 질의 (분석 없이 catalog/ 만 읽음): ./gradlew query --args="who-uses ContentUtil.getInfo"
+tasks.register('query', JavaExec) {
+    group = 'application'
+    description = '카탈로그 질의: who-uses · uses · common · shared · unused · usage · coverage'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'analyzer.query.QueryMain'
+    workingDir = projectDir
+}
+
 tasks.register('runClass', JavaExec) {
     group = 'application'
     description = '클래스의 메서드 전부를 한 번에 분석해 output/class/<클래스>/flowchart.html'

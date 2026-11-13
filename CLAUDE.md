@@ -58,9 +58,9 @@ analyzer/
   phase/                 PhaseAnalyzer(진입 메서드 요소 → 바인딩·체크·로직·후처리), PhaseModel, PhaseText(표시), PhaseReportWriter(phase-summary.md)
 ```
 
-## 메서드 사용처 — run 카탈로그 (`catalog/RunCatalog`, 설정 `output.run-catalog` 기본 true, CLI `--usage`·`--who-uses`·`--catalog-dir`)
+## 카탈로그 질의 — run 카탈로그 + `./gradlew query` (`catalog/RunCatalog`·`CatalogKeys`, `query/`)
 
-사용자: 공통화를 진행할 건데 각 Action 이 어떤 메서드를 쓰는지, "이 클래스의 메서드는 여기서 쓴다"가 필요 (Util 카탈로그 조합이 아니라). Action 분석(run) 끝에 `<catalog-dir>/run/<Action 단순명>.yml` 에 진입 메서드(`method` = 파라미터 이름까지) 항목 `uses` = 도달한 호출 위치의 대상·구현 후보 중 origin SOURCE 메서드(진입 자신 제외)를 클래스 FQN → 시그니처(TreeMap·TreeSet 정렬)로. 같은 진입 메서드 항목만 교체(note·추가 키 보존), 다른 항목·최상위 추가 키는 그대로(`merge`). `--usage` → `<catalog-dir>/usage.md`(클래스마다 메서드·쓰는 곳 수·쓰는 곳 `Action.진입메서드`, 많이 쓰는 순), `--who-uses 패턴`(클래스.메서드·클래스, 단순명·FQN, *) → 콘솔 — run 카탈로그만 읽고 분석·`--class` 없음. 테스트는 `--catalog-dir`/`output.catalog-dir` 로 임시 폴더(저장소 catalog/ 오염 방지). `RunCatalogTest`.
+사용자: 공통화 — 각 Action 이 어떤 메서드를 쓰는지, "이 클래스의 메서드는 여기서 쓴다"; 데이터로 쿼리, 콘솔로 보고 결과도 남김; **두 카탈로그 인터페이스가 맞아야**(데이터가 완벽해야). 공통 인터페이스(`CatalogKeys`): 메서드 = `key`(analysis.yaml 메서드 키 `클래스FQN#이름(erasure,…)` 그대로 — Util 기능 목록도 분석 키, 분석 실패 시 `keyOf` 선언에서 같은 규칙), `uses` = 진입에서 닿는 호출 대상·구현 후보 중 origin SOURCE·VO 아닌 메서드 key(정렬, 진입 자신 제외). run 카탈로그(`output.run-catalog` 기본 true): Action 분석 끝에 `<catalog-dir>/run/<Action>.yml` entries[{key, method(파라미터 이름), uses, note}] — key 로 같은 항목만 교체(note·추가 키 보존), 다른 항목·최상위 추가 키 유지. Util 기능 목록 메서드에도 key·uses(GENERATED). 질의 `QueryMain`(Gradle `query`, 분석 없음, `--class` 없음): who-uses(쓰는 Action + Util 기능 목록에서 쓰는 Util 메서드)·uses·common N·shared·unused(Util 기능 목록 메서드 − run uses)·usage·coverage(`Coverage`: 소스의 Action/Controller(파일명·@Controller 후보만 파싱) 중 run 카탈로그 없음, run uses 의 Util(이름 규칙 역할) 중 기능 목록 없음, 카탈로그 파일보다 소스 파일이 새로움). 필터 class= action=, 결과 `Table` → 콘솔(열 맞춤, 한글 폭 2)·`--md`·`--csv`(BOM), 결과 위 `basis()`(기준 데이터 수·이전 형식 항목 수). `Main` 의 `--who-uses`/`--usage` 는 query 로 옮김(제거). 테스트는 `--catalog-dir` 임시 폴더(저장소 catalog/ 오염 방지). `RunCatalogTest`.
 
 ## 전체 클래스 흐름도 (`classflow/ClassFlowMain`, Gradle `./gradlew runClass`)
 

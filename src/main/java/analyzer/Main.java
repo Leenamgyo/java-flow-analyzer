@@ -21,7 +21,7 @@ import java.util.List;
  *   ./gradlew run --args="--config my-project.yml --class ContentUtil --all-methods"   # Util 기능 목록 → catalog/ContentUtil.yml
  * </pre>
  * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output, --jsp, --all-methods, --catalog-reset, --catalog-prune,
- *       --usage(사용처 역색인 → catalog/usage.md), --who-uses <클래스.메서드>
+ *       --catalog-dir. 카탈로그 질의는 ./gradlew query (analyzer.query.QueryMain)
  */
 public final class Main {
 
@@ -43,8 +43,6 @@ public final class Main {
         List<String> sourceRoots = new java.util.ArrayList<>();
         String clazz = null, method = null, output = null;
         boolean allMethods = false;
-        boolean usage = false;
-        String whoUses = null;
         String catalogDir = null;
         analyzer.catalog.UtilCatalog.Mode catalogMode = analyzer.catalog.UtilCatalog.Mode.UPDATE;
         List<String> jsp = new java.util.ArrayList<>();
@@ -59,8 +57,6 @@ public final class Main {
                 case "--jsp" -> { jsp.add(require(v, "--jsp")); i++; }
                 case "--all-methods" -> allMethods = true;
                 case "--catalog-dir" -> { catalogDir = require(v, "--catalog-dir"); i++; }   // 카탈로그 폴더 (기본 catalog)
-                case "--usage" -> usage = true;                                      // run 카탈로그 → catalog/usage.md
-                case "--who-uses" -> { whoUses = require(v, "--who-uses"); i++; }    // 이 메서드를 쓰는 Action (콘솔)
                 case "--catalog-reset" -> catalogMode = analyzer.catalog.UtilCatalog.Mode.RESET;   // 기능 목록을 지금 소스로 새로 (백업 후)
                 case "--catalog-prune" -> catalogMode = analyzer.catalog.UtilCatalog.Mode.PRUNE;   // 없어진(removed) 메서드만 정리 (백업 후)
                 default -> throw new IllegalArgumentException("알 수 없는 옵션: " + args[i]);
@@ -81,20 +77,6 @@ public final class Main {
         if (output != null) cfg.output.directory = output;
         if (!jsp.isEmpty()) cfg.response.jsp = jsp;   // Action 마다 JSP 가 다르므로 실행 단위로 지정
         if (catalogDir != null) cfg.output.catalogDir = catalogDir;
-        if (usage || whoUses != null) { // 사용처 역색인: run 카탈로그만 읽음 (분석 없음)
-            if (whoUses != null) {
-                var found = analyzer.catalog.RunCatalog.whoUses(cfg, whoUses);
-                System.out.println("'" + whoUses + "' 사용처 (" + analyzer.catalog.RunCatalog.dir(cfg) + " 기준)");
-                if (found.isEmpty()) {
-                    System.out.println("  없음 — 이름을 확인하거나, 그 메서드를 쓰는 Action 을 먼저 run 으로 분석하세요");
-                }
-                found.forEach((m, where) -> System.out.println("  " + m + "  ← " + where.size() + "곳: " + String.join(", ", where)));
-            }
-            if (usage) {
-                System.out.println("사용처 역색인: " + analyzer.catalog.RunCatalog.writeUsage(cfg));
-            }
-            return 0;
-        }
         if (allMethods) cfg.target.allMethods = true;
         if (catalogMode != analyzer.catalog.UtilCatalog.Mode.UPDATE && !cfg.target.allMethods) {
             throw new IllegalArgumentException("--catalog-reset·--catalog-prune 은 기능 목록 모드(--all-methods 또는 target.all-methods)에서만 씁니다.");

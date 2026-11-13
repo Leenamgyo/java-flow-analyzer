@@ -8,7 +8,7 @@ Java 소스를 **정적 분석**해서 실행 흐름, Service·DAO 의존, 데�
 | **Action 하나** 분석 (흐름·명세·바인딩) | `./gradlew run --args="… --class OrderAction"` | `output/OrderAction/` |
 | **클래스 전체**를 흐름도 한 장으로 (Util 등) | `./gradlew runClass --args="… --class ContentUtil"` | `output/class/ContentUtil/flowchart.html` |
 | **Util 기능 목록**을 계속 관리 | `./gradlew run --args="… --class ContentUtil --all-methods"` | `catalog/ContentUtil.yml` |
-| **이 메서드를 어느 Action 이 쓰나** (공통화) | `./gradlew run --args="--who-uses ContentUtil.getInfo"` · `--usage` | 콘솔 · `catalog/usage.md` |
+| **이 메서드를 어느 Action 이 쓰나** (공통화) | `./gradlew query --args="who-uses ContentUtil.getInfo"` | 콘솔 (`--md`·`--csv` 로 저장) |
 
 **목차**
 
@@ -16,7 +16,7 @@ Java 소스를 **정적 분석**해서 실행 흐름, Service·DAO 의존, 데�
 2. [Action 분석](#1-action-분석--gradlew-run)
 3. [전체 클래스 흐름도](#2-전체-클래스-흐름도--gradlew-runclass)
 4. [Util 기능 목록 (카탈로그)](#3-util-기능-목록-카탈로그----all-methods)
-5. [메서드 사용처 (공통화)](#4-메서드-사용처-공통화--run-카탈로그)
+5. [메서드 사용처 (공통화)](#4-메서드-사용처-공통화--gradlew-query)
 6. [흐름도 뷰어 사용법](#흐름도-뷰어-flowcharthtml-사용법)
 7. [흐름도 읽는 법](#흐름도-읽는-법)
 8. [분석 규칙](#분석-규칙)
@@ -212,41 +212,64 @@ void-methods: [refresh(String id)]           # 반환 타입이 void 인 메서�
 
 ---
 
-## 4. 메서드 사용처 (공통화) — run 카탈로그
+## 4. 메서드 사용처 (공통화) — `./gradlew query`
 
-공통화할 때 "이 클래스의 이 메서드는 어느 Action 에서 쓰나"를 찾습니다.
+공통화할 때 "이 메서드는 어느 Action 이 쓰나", "이 Action 은 무엇을 쓰나"를 카탈로그 데이터로 묻습니다. 분석하지 않고 카탈로그만 읽어서 빠릅니다.
 
-**쌓기** — Action 을 `./gradlew run` 으로 분석할 때마다 `catalog/run/<Action>.yml` 에 그 진입 메서드가 (몇 단계를 거치든) 쓰는 프로젝트 메서드 전부가 클래스별로 쌓입니다(`output.run-catalog`, 기본 켜짐). 같은 Action 의 다른 진입 메서드를 따로 돌려도 각각 누적되고, `note`·직접 추가한 키는 보존됩니다.
+**데이터 쌓기** — 두 카탈로그가 같은 형식(`key` · `uses`)으로 쌓입니다.
+
+| 카탈로그 | 언제 | 내용 |
+|---|---|---|
+| `catalog/run/<Action>.yml` | Action 을 `./gradlew run` 할 때마다 (`output.run-catalog`, 기본 켜짐) | 진입 메서드마다 쓰는 프로젝트 메서드 전부 |
+| `catalog/<Util>.yml` | `--all-methods` | Util 메서드마다 쓰는 프로젝트 메서드 전부 + 요약 |
 
 ```yaml
 # catalog/run/OrderAction.yml
 class: com.x.action.OrderAction
 entries:
-  - method: execute(HttpServletRequest request, HttpServletResponse response)
-    uses:
-      com.x.common.ContentUtil: [getInfo(String), refresh(String)]
-      com.x.biz.ProductInfoBizImpl: [getInfo(String)]
-      com.x.dao.ProductDAO: [select(String)]
+  - key: com.x.action.OrderAction#execute(HttpServletRequest,HttpServletResponse)   # analysis.yaml 의 메서드 키
+    method: execute(HttpServletRequest request, HttpServletResponse response)
+    uses:                                         # (몇 단계를 거치든) 닿는 프로젝트 메서드 key — VO 제외
+      - com.x.biz.ProductInfoBizImpl#getInfo(String)
+      - com.x.common.ContentUtil#getInfo(String)
+      - com.x.dao.ProductDAO#select(String)
     note: ""
 ```
 
-**찾기** — 카탈로그만 읽습니다(다시 분석하지 않음, `--class` 불필요).
+- `key` = 분석 모델의 메서드 키(`클래스FQN#이름(타입…)`) — 오버로딩·같은 이름 클래스·중첩 클래스까지 정확히 구분해서, 두 카탈로그가 같은 메서드를 같은 키로 가리킵니다.
+- 같은 Action 의 다른 진입 메서드는 따로 쌓이고, `note`·직접 추가한 키는 다시 돌려도 남습니다.
+
+**묻기**
 
 ```bash
-./gradlew run --args="--config config/my-project.yml --who-uses ContentUtil.getInfo"   # 콘솔에 바로
-./gradlew run --args="--config config/my-project.yml --who-uses ContentUtil"           # 클래스의 메서드 전부
-./gradlew run --args="--config config/my-project.yml --usage"                          # 전체 → catalog/usage.md
+./gradlew query --args="who-uses ContentUtil.getInfo"        # 이 메서드를 쓰는 Action (+ 쓰는 Util 메서드)
+./gradlew query --args="who-uses ProductDAO"                 # 클래스의 메서드 전부
+./gradlew query --args="uses OrderAction"                    # 이 Action(.진입)이 쓰는 메서드
+./gradlew query --args="common 2 class=*Util"                # 2곳 이상에서 쓰는 메서드 — 공통화 후보
+./gradlew query --args="shared OrderAction ProductAction"    # 함께 쓰는 메서드
+./gradlew query --args="unused ContentUtil"                  # Util 기능 목록 중 어느 Action 도 안 쓰는 메서드
+./gradlew query --args="usage"                               # 메서드마다 쓰는 곳 전부
+./gradlew query --args="coverage --config config/my-project.yml"   # 빠진 데이터
 ```
 
 ```
-'ContentUtil.getInfo' 사용처
-  ContentUtil.getInfo(String)  ← 2곳: OrderAction.execute, ProductAction.list
+# who-uses ProductInfoBizImpl.getInfo
+기준: run 카탈로그 Action 2개 · 진입 메서드 4개 · Util 기능 목록 1개
+메서드                              쓰는 Action 수  쓰는 곳 (Action.진입)  쓰는 Util 메서드
+ProductInfoBizImpl.getInfo(String)  1               EdgeAction.utilBeans   ProductUtil.info, ProductUtil.infoInline, …
 ```
 
-`catalog/usage.md` 는 클래스마다 `메서드 | 쓰는 곳 수 | 쓰는 곳(Action.진입 메서드)` 표이고, 여러 Action 이 쓰는 메서드가 위로 옵니다(공통화 후보).
+- 결과는 **콘솔 표**로 나오고, `--md 파일` · `--csv 파일`(엑셀용 BOM) 을 붙이면 같은 결과를 **파일로도 남깁니다**.
+- 필터: `class=패턴`(쓰이는 메서드의 클래스), `action=패턴`(쓰는 Action). 패턴은 단순명·FQN, `*`.
+- 옵션: `--config`(카탈로그 폴더·소스 경로), `--catalog-dir`.
 
-- 결과는 **분석해 둔 Action 기준**입니다. 아직 `run` 하지 않은 Action 은 빠집니다.
-- 패턴: `클래스.메서드`(단순명·FQN), `클래스`, `*` (`"*DAO.select*"`).
+**데이터가 다 있는지** — 결과는 **쌓아 둔 카탈로그 기준**입니다. 매 결과 위에 `기준: Action n개 · 진입 메서드 m개 · Util 기능 목록 k개` 가 나오고, `coverage` 가 빠진 것을 알려 줍니다.
+
+| 빠진 것 | 채우는 법 |
+|---|---|
+| run 카탈로그가 없는 Action/Controller (소스와 비교) | 그 Action 을 `run` |
+| Action 이 쓰는데 기능 목록이 없는 Util | 그 Util 을 `--all-methods` |
+| 카탈로그를 만든 뒤 소스가 바뀐 클래스 | 다시 `run` / `--all-methods` |
 
 ## 흐름도 뷰어 (`flowchart.html`) 사용법
 
@@ -366,8 +389,16 @@ bean.getClass().getMethod("getInfo", String.class).invoke(bean, id);       // �
 | `--jsp <path>` | Response 로 분석할 JSP 파일명·경로 (반복 가능) |
 | `--all-methods` | Util 기능 목록 모드 → `catalog/<클래스>.yml` |
 | `--catalog-prune` · `--catalog-reset` | 기능 목록 정리 · 초기화 (백업 후) |
-| `--who-uses <패턴>` · `--usage` | 메서드 사용처 조회 (콘솔) · 전체 역색인 `catalog/usage.md` — run 카탈로그만 읽음 |
 | `--catalog-dir <dir>` | 카탈로그 폴더 (기본 `catalog`) |
+
+**`./gradlew query`** (카탈로그 질의 — [4장](#4-메서드-사용처-공통화--gradlew-query))
+
+| 질의 · 옵션 | 설명 |
+|---|---|
+| `who-uses` · `uses` · `common [N]` · `shared` · `unused` · `usage` · `coverage` | 질의 종류 |
+| `class=패턴` · `action=패턴` | 필터 |
+| `--md <파일>` · `--csv <파일>` | 결과를 파일로도 저장 |
+| `--config` · `--catalog-dir` | 설정 · 카탈로그 폴더 |
 
 **`./gradlew runClass`** (전체 클래스 흐름도)
 

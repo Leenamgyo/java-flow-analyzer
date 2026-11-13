@@ -39,7 +39,7 @@ import java.util.Set;
 public final class UtilCatalog {
 
     /** 분석이 매번 새로 쓰는 칸 — 그 밖의 키(note 등)는 사람이 관리하는 칸으로 보존 */
-    static final Set<String> GENERATED = Set.of("signature", "visibility", "static", "returns", "services", "daos", "sql",
+    static final Set<String> GENERATED = Set.of("key", "uses", "signature", "visibility", "static", "returns", "services", "daos", "sql",
             "uses-utils", "internal-calls", "beans", "reflection", "unresolved", "error", "removed");
 
     private static final Set<ClassRole> SERVICE = java.util.EnumSet.of(ClassRole.SERVICE, ClassRole.BIZ);
@@ -90,6 +90,7 @@ public final class UtilCatalog {
                 cfg.target.entryMethodParameterTypes = md.getParameters().stream()
                         .map(p -> p.getType().asString() + (p.isVarArgs() ? "..." : "")).toList();
                 Map<String, Object> m = new LinkedHashMap<>();
+                m.put("key", CatalogKeys.keyOf(fqn, md)); // 공통 인터페이스 (run 카탈로그·쿼리와 같은 키)
                 m.put("signature", signature(md));
                 m.put("visibility", md.getAccessSpecifier().asString().isEmpty() ? "package-private" : md.getAccessSpecifier().asString());
                 m.put("static", md.isStatic());
@@ -98,7 +99,9 @@ public final class UtilCatalog {
                 String folder = n == 1 ? md.getNameAsString() : md.getNameAsString() + "_" + n; // 오버로딩
                 try {
                     AnalysisResult r = Main.analyze(cfg);
+                    m.put("key", r.method(r.entryMethodId).key); // 분석 모델의 키 그대로
                     describe(r, fqn, m);
+                    m.put("uses", CatalogKeys.uses(r)); // 공통 인터페이스: 닿는 프로젝트 메서드 key 전부
                     if (outDir != null) { // 메서드마다 기존 출력 (흐름도·analysis.yaml …)
                         new analyzer.serializer.OutputWriter().write(r, cfg, outDir.resolve(folder));
                     }
