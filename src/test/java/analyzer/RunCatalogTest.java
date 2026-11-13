@@ -52,7 +52,8 @@ class RunCatalogTest {
         Map<String, Object> biz = ((List<Map<String, Object>>) run.get("entries")).stream()
                 .filter(e -> "com.example.action.EdgeAction#bizVo(HttpServletRequest)".equals(e.get("key"))).findFirst().orElseThrow();
         assertEquals(List.of("com.example.biz.NoticeWriteBiz#write(NoticeVO,String)", "com.example.dao.NoticeDAO#insert(NoticeVO)",
-                "com.example.dao.NoticeDAO#insertHistory(NoticeVO)"), biz.get("uses")); // VO setter 는 제외
+                "com.example.dao.NoticeDAO#insertHistory(NoticeVO)", "com.example.model.NoticeVO#setBody(String)",
+                "com.example.model.NoticeVO#setTitle(String)"), biz.get("uses")); // 흐름도 내용 그대로 (VO setter = 값 설정 줄)
         Map<String, Object> util = yaml.readValue(cat.resolve("ProductUtil.yml").toFile(), Map.class);
         Map<String, Object> info = ((List<Map<String, Object>>) util.get("methods")).get(0);
         assertEquals("com.example.util.ProductUtil#info(String)", info.get("key"));
@@ -74,10 +75,10 @@ class RunCatalogTest {
         assertEquals("EdgeAction.utilBeans", who.get(0).get(2));
         assertTrue(who.get(0).get(3).contains("ProductUtil.info"), who.toString());
         // common 2 = bizVo·bizVoOrder 가 함께 쓰는 Biz·DAO
-        var common = q.common(2, CatalogQuery.Filters.NONE).rows();
-        assertEquals(List.of("NoticeWriteBiz.write(NoticeVO,String)", "NoticeDAO.insert(NoticeVO)", "NoticeDAO.insertHistory(NoticeVO)"),
-                common.stream().map(r -> r.get(0)).sorted((a, b) -> a.startsWith("NoticeWriteBiz") ? -1 : b.startsWith("NoticeWriteBiz") ? 1 : a.compareTo(b)).toList());
-        assertEquals(3, q.shared(List.of("EdgeAction.bizVo", "EdgeAction.bizVoOrder"), CatalogQuery.Filters.NONE).rows().size());
+        var common = q.common(2, CatalogQuery.Filters.NONE).rows().stream().map(r -> r.get(0)).toList();
+        assertTrue(common.containsAll(List.of("NoticeWriteBiz.write(NoticeVO,String)", "NoticeDAO.insert(NoticeVO)", "NoticeDAO.insertHistory(NoticeVO)",
+                "NoticeVO.setBody(String)", "NoticeVO.setTitle(String)")), common.toString());
+        assertEquals(5, q.shared(List.of("EdgeAction.bizVo", "EdgeAction.bizVoOrder"), CatalogQuery.Filters.NONE).rows().size());
         // class= 필터
         assertEquals(2, q.common(2, new CatalogQuery.Filters("*DAO", null)).rows().size());
         // unused: Util 기능 목록 중 어느 Action 도 안 쓰는 메서드 (utilBeans 는 refresh 를 안 씀)
@@ -88,7 +89,6 @@ class RunCatalogTest {
         assertEquals(0, QueryMain.run(new String[]{"who-uses", "NoticeDAO", "--catalog-dir", cat.toString(), "--md", md.toString(), "--csv", csv.toString()}));
         assertTrue(Files.readString(md).contains("| NoticeDAO.insert(NoticeVO) | 2 | EdgeAction.bizVo, EdgeAction.bizVoOrder |"), Files.readString(md));
         assertTrue(Files.readString(csv).contains("\"NoticeDAO.insertHistory(NoticeVO)\",\"2\""));
-        assertFalse(Files.readString(md).contains("NoticeVO.set"));
 
         // coverage: run 안 한 Action · 기능 목록 없는 Util (사용자: 데이터가 완벽해야)
         Path cov = tmp.resolve("cov.md");

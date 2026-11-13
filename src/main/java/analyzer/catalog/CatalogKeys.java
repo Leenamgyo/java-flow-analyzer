@@ -22,17 +22,40 @@ public final class CatalogKeys {
     private CatalogKeys() {
     }
 
-    /** 진입 메서드에서 닿는 source 메서드의 key (호출 대상·구현 후보, 진입 메서드 자신·VO 제외, 정렬) */
-    public static List<String> uses(AnalysisResult r) {
+    /**
+     * 그 분석의 흐름도에 그려진 메서드의 key — 사용자: 흐름도의 노드를 그대로 옮겨서, 흐름도에 있는 내용이 모두 매칭되어야.
+     * Action 분석과 같은 설정(로직 역할·flowchart-exclude)으로 흐름도 그래프를 만들어, ① 상자로 그린 메서드 ② 흐름도에 그린 메서드
+     * (진입·상자·펼쳐 보이는 바인딩 함수) 안 호출(flowchart-exclude 제외)의 대상·구현 후보 중 프로젝트 소스 메서드를 모은다(진입 메서드
+     * 자신 제외, 정렬). VO setter·getter 도 흐름도에 있으면(값 설정 줄) 포함.
+     */
+    public static List<String> uses(AnalysisResult r, analyzer.config.AnalyzerConfig cfg) {
+        analyzer.mermaid.MermaidGraph g = new analyzer.mermaid.FlowchartGenerator(
+                analyzer.mermaid.FlowchartGenerator.roles(cfg.phases.logicRoles)).exclude(cfg.output.flowchartExclude).checked(r);
         Set<String> out = new TreeSet<>();
+        for (MethodInfo m : r.methods()) {
+            if (!r.isEntry(m.id) && g.isSubgraph("sg_" + m.id)) {
+                out.add(m.key); // 상자로 그린 메서드
+            }
+        }
+        // 흐름도에 그려진 메서드(진입·상자) 와 상자 없이 부른 줄 아래 ▸·│ 로 본문을 펼쳐 보이는 바인딩 함수(createCommand 등) —
+        // 흐름도는 그린 메서드 안의 코드를 빠짐없이 보이므로(FlowchartSweepTest) 그 안의 호출 전부가 흐름도에 있는 내용이다.
+        // 노드 단위로 고르면 값 설정 줄 안에 펼친 호출(StringUtil.getParameter 등)이 빠졌다. 뺄 것은 flowchart-exclude 뿐.
+        Set<String> drawn = new java.util.HashSet<>(analyzer.mermaid.FlowchartGenerator.bindingFunctions(r));
+        for (MethodInfo m : r.methods()) {
+            if (r.isEntry(m.id) || g.isSubgraph("sg_" + m.id)) {
+                drawn.add(m.id);
+            }
+        }
         for (CallSiteInfo s : r.callSites) {
+            if (!drawn.contains(s.callerMethodId) || analyzer.serializer.Excludes.call(r, cfg.output.flowchartExclude, s)) {
+                continue;
+            }
             for (String t : new String[]{s.targetMethodId, s.implementationMethodId}) {
                 if (t == null || r.isEntry(t)) {
                     continue;
                 }
                 MethodInfo m = r.method(t);
-                // VO(setter·getter)는 빼다 — 공통화 후보 목록을 어지럽힘 (VO 사용은 vo.md·VO 연결)
-                if (m.origin == Origin.SOURCE && r.classOf(m).role != analyzer.model.ClassRole.VO) {
+                if (m.origin == Origin.SOURCE) {
                     out.add(m.key);
                 }
             }

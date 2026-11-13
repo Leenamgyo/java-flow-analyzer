@@ -45,7 +45,7 @@ public final class RunCatalog {
         Map<String, Object> fresh = new LinkedHashMap<>();
         fresh.put("key", entry.key);                 // 공통 인터페이스 (Util 카탈로그·쿼리와 같은 키)
         fresh.put("method", declaration(entry));
-        fresh.put("uses", CatalogKeys.uses(r));      // 닿는 프로젝트 메서드 key 전부
+        fresh.put("uses", CatalogKeys.uses(r, cfg)); // 흐름도에 그려진 메서드 key 전부 (흐름도 노드 그대로)
         Map<String, Object> old = read(file);
         Files.createDirectories(file.getParent());
         Files.writeString(file, YAML.writeValueAsString(merge(target.qualifiedName, fresh, old)));

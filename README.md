@@ -229,7 +229,7 @@ class: com.x.action.OrderAction
 entries:
   - key: com.x.action.OrderAction#execute(HttpServletRequest,HttpServletResponse)   # analysis.yaml 의 메서드 키
     method: execute(HttpServletRequest request, HttpServletResponse response)
-    uses:                                         # (몇 단계를 거치든) 닿는 프로젝트 메서드 key — VO 제외
+    uses:                                         # 흐름도에 있는 프로젝트 메서드 key 전부 (흐름도 내용 그대로)
       - com.x.biz.ProductInfoBizImpl#getInfo(String)
       - com.x.common.ContentUtil#getInfo(String)
       - com.x.dao.ProductDAO#select(String)

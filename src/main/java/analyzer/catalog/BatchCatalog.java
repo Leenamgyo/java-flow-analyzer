@@ -57,7 +57,7 @@ public final class BatchCatalog {
                         new OutputWriter().write(r, cfg, t.many ? dir.resolve(t.m.getNameAsString()) : dir);
                     }
                     ok++;
-                    System.out.println("  [" + (i + 1) + "/" + targets.size() + "] " + label + " — 쓰는 메서드 " + CatalogKeys.uses(r).size() + "개");
+                    System.out.println("  [" + (i + 1) + "/" + targets.size() + "] " + label + " — 쓰는 메서드 " + CatalogKeys.uses(r, cfg).size() + "개");
                 } catch (RuntimeException e) {
                     String msg = e.getMessage() == null ? e.toString() : e.getMessage().lines().findFirst().orElse(e.toString());
                     failed.add(label + " — " + msg);

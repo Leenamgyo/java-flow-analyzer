@@ -101,7 +101,7 @@ public final class UtilCatalog {
                     AnalysisResult r = Main.analyze(cfg);
                     m.put("key", r.method(r.entryMethodId).key); // 분석 모델의 키 그대로
                     describe(r, fqn, m);
-                    m.put("uses", CatalogKeys.uses(r)); // 공통 인터페이스: 닿는 프로젝트 메서드 key 전부
+                    m.put("uses", CatalogKeys.uses(r, cfg)); // 공통 인터페이스: 흐름도에 그려진 메서드 key 전부
                     if (outDir != null) { // 메서드마다 기존 출력 (흐름도·analysis.yaml …)
                         new analyzer.serializer.OutputWriter().write(r, cfg, outDir.resolve(folder));
                     }
