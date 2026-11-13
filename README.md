@@ -270,7 +270,7 @@ entries:
 ProductInfoBizImpl.getInfo(String)  1               EdgeAction.utilBeans   ProductUtil.info, ProductUtil.infoInline, …
 ```
 
-- 결과는 **콘솔 표**로 나오고, `--md 파일` · `--csv 파일`(엑셀용 BOM) 을 붙이면 같은 결과를 **파일로도 남깁니다**.
+- 결과는 **콘솔 표**로 나오고, `--md 파일` · `--csv 파일`(엑셀용 BOM) 을 붙이면 같은 결과를 **파일로도 남깁니다**. 파일 이름만 주면 `query/` 폴더 아래(`--md usage.md` → `query/usage.md`, 설정 `output.query-dir`), 절대 경로는 그대로.
 - 필터: `class=패턴`(쓰이는 메서드의 클래스), `action=패턴`(쓰는 Action). 패턴은 단순명·FQN, `*`.
 - 옵션: `--config`(카탈로그 폴더·소스 경로), `--catalog-dir`.
 

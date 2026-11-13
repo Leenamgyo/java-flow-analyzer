@@ -69,6 +69,8 @@ output:
   # Action 분석(run) 때 <catalog-dir>/run/<Action>.yml 에 그 진입 메서드가 (전이적으로) 쓰는 프로젝트 메서드를 누적 (계속 관리, git)
   #   → --usage (catalog/usage.md: 클래스·메서드마다 쓰는 Action) · --who-uses <클래스.메서드> (콘솔)
   run-catalog: true
+  # 질의 결과 파일 폴더 — ./gradlew query --args="… --md usage.md" 처럼 파일 이름만 주면 <query-dir>/usage.md (절대 경로는 그대로)
+  query-dir: query
   yaml: true
   tree: true
   tree-include-control-blocks: true

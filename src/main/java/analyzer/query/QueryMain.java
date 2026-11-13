@@ -21,7 +21,8 @@ import java.util.List;
  *   ./gradlew query --args="usage"                                  메서드마다 쓰는 곳 전부
  *   ./gradlew query --args="coverage --config my-project.yml"       빠진 데이터 (run 안 한 Action · 기능 목록 없는 Util · 바뀐 소스)
  * </pre>
- * 필터: class=패턴 (쓰이는 메서드의 클래스), action=패턴 (쓰는 Action). 옵션: --config, --catalog-dir, --md 파일, --csv 파일.
+ * 필터: class=패턴 (쓰이는 메서드의 클래스), action=패턴 (쓰는 Action). 옵션: --config, --catalog-dir, --md 파일, --csv 파일
+ * (파일 이름만 주면 output.query-dir 기본 query/ 아래, 절대 경로는 그대로).
  */
 public final class QueryMain {
 
@@ -105,6 +106,8 @@ public final class QueryMain {
         System.out.println(q.basis());
         System.out.println(TableFormat.text(t));
         System.out.println("(" + t.rows().size() + "행)");
+        md = md == null ? null : place(cfg, md);
+        csv = csv == null ? null : place(cfg, csv);
         if (md != null) {
             Files.writeString(md, "# " + title + "\n\n" + q.basis() + "\n\n" + TableFormat.markdown(t), StandardCharsets.UTF_8);
             System.out.println("저장: " + md.toAbsolutePath());
@@ -114,6 +117,16 @@ public final class QueryMain {
             System.out.println("저장: " + csv.toAbsolutePath());
         }
         return 0;
+    }
+
+    /** 파일 이름·상대 경로는 output.query-dir(기본 query/) 아래로, 절대 경로는 그대로 (사용자: md 는 query 폴더 아래로) */
+    public static Path place(AnalyzerConfig cfg, Path file) throws java.io.IOException {
+        Path p = file.isAbsolute() ? file : Path.of(cfg.output.queryDir).resolve(file);
+        p = p.toAbsolutePath().normalize();
+        if (p.getParent() != null) {
+            Files.createDirectories(p.getParent());
+        }
+        return p;
     }
 
     private static String one(List<String> rest, String usage) {

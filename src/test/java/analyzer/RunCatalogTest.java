@@ -98,4 +98,16 @@ class RunCatalogTest {
         assertFalse(c.contains("com.example.action.EdgeAction |"), c); // 분석해 둔 Action 은 빠짐 없음
         assertFalse(c.contains("| Util 기능 목록 없음 | com.example.util.ProductUtil |"), c);
     }
+
+    /** --md·--csv 에 파일 이름만 주면 output.query-dir(기본 query/) 아래 */
+    @Test
+    void relativeResultFilesGoUnderQueryDir(@TempDir Path tmp) throws Exception {
+        var cfg = analyzer.config.ConfigLoader.defaults();
+        cfg.output.queryDir = tmp.resolve("query").toString();
+        assertEquals(tmp.resolve("query/usage.md").toAbsolutePath().normalize(), QueryMain.place(cfg, Path.of("usage.md")));
+        assertEquals(tmp.resolve("query/order/a.csv").toAbsolutePath().normalize(), QueryMain.place(cfg, Path.of("order/a.csv")));
+        Path abs = tmp.resolve("elsewhere/x.md").toAbsolutePath();
+        assertEquals(abs, QueryMain.place(cfg, abs));
+        assertTrue(Files.isDirectory(tmp.resolve("query/order")));
+    }
 }

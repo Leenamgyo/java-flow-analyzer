@@ -118,6 +118,8 @@ public class AnalyzerConfig {
         public boolean catalogOutputs = true;
         /** Action 분석(run) 때 <catalog-dir>/run/<Action>.yml 에 그 진입 메서드가 쓰는 메서드를 누적 (사용처 역색인 --usage·--who-uses 용) */
         public boolean runCatalog = true;
+        /** 질의 결과 파일(--md·--csv 에 파일 이름만 줄 때) 폴더 */
+        public String queryDir = "query";
         public boolean yaml = true;
         public boolean tree = true;
         public boolean treeIncludeControlBlocks = true;
