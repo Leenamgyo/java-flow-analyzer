@@ -239,6 +239,17 @@ entries:
 - `key` = 분석 모델의 메서드 키(`클래스FQN#이름(타입…)`) — 오버로딩·같은 이름 클래스·중첩 클래스까지 정확히 구분해서, 두 카탈로그가 같은 메서드를 같은 키로 가리킵니다.
 - 같은 Action 의 다른 진입 메서드는 따로 쌓이고, `note`·직접 추가한 키는 다시 돌려도 남습니다.
 
+**한 번에 쌓기 (일괄)** — 소스에서 찾아 전부 돌립니다(`--class` 불필요).
+
+```bash
+./gradlew run --args="--config config/my-project.yml --all-actions"   # Action/Controller 전부 → catalog/run/ (진입 메서드마다)
+./gradlew run --args="--config config/my-project.yml --all-utils"     # Util 전부 → catalog/<Util>.yml
+./gradlew query --args="usage --config config/my-project.yml --md usage.md --csv usage.csv"   # 모든 메서드의 역색인
+```
+
+- 진입 메서드 = 매핑 어노테이션(`@RequestMapping`·`@GetMapping` …)이 붙은 메서드 전부, 없으면 `public execute(…)`. 둘 다 없는 Action 은 건너뛰고 사유를 출력합니다(그런 Action 은 `--class --method` 로 직접).
+- 하나가 실패해도 계속하고 마지막에 성공·실패·건너뜀을 요약합니다. 기본은 카탈로그만 쓰고(빠르게) `output/` 상세는 만들지 않습니다 — 함께 만들려면 `--with-outputs`.
+
 **묻기**
 
 ```bash
@@ -388,6 +399,7 @@ bean.getClass().getMethod("getInfo", String.class).invoke(bean, id);       // �
 | `--output <dir>` | 출력 폴더 (결과는 `<dir>/<클래스>/`) |
 | `--jsp <path>` | Response 로 분석할 JSP 파일명·경로 (반복 가능) |
 | `--all-methods` | Util 기능 목록 모드 → `catalog/<클래스>.yml` |
+| `--all-actions` · `--all-utils` | 일괄: 소스의 Action/Controller 전부 → run 카탈로그 · Util 전부 → 기능 목록 (`--class` 불필요, `--with-outputs` 로 output/ 상세도) |
 | `--catalog-prune` · `--catalog-reset` | 기능 목록 정리 · 초기화 (백업 후) |
 | `--catalog-dir <dir>` | 카탈로그 폴더 (기본 `catalog`) |
 

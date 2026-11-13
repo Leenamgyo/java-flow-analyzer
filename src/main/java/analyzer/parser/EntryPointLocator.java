@@ -9,7 +9,7 @@ import java.util.Set;
 
 /** 분석 대상 클래스와 진입 메서드를 식별한다. 후보가 여러 개면 임의로 고르지 않고 실패한다. */
 public final class EntryPointLocator {
-    private static final Set<String> MAPPING_ANNOTATIONS = Set.of(
+    public static final Set<String> MAPPING_ANNOTATIONS = Set.of(
             "RequestMapping", "GetMapping", "PostMapping", "PutMapping", "DeleteMapping", "PatchMapping");
 
     public record EntryPoint(TypeDeclaration<?> type, MethodDeclaration method, String selection) {

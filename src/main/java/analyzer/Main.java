@@ -21,7 +21,7 @@ import java.util.List;
  *   ./gradlew run --args="--config my-project.yml --class ContentUtil --all-methods"   # Util 기능 목록 → catalog/ContentUtil.yml
  * </pre>
  * 옵션: --config, --source-root(반복 가능: 멀티 모듈), --class, --method, --output, --jsp, --all-methods, --catalog-reset, --catalog-prune,
- *       --catalog-dir. 카탈로그 질의는 ./gradlew query (analyzer.query.QueryMain)
+ *       --catalog-dir, --all-actions·--all-utils(일괄 카탈로그, --with-outputs). 카탈로그 질의는 ./gradlew query (analyzer.query.QueryMain)
  */
 public final class Main {
 
@@ -44,6 +44,7 @@ public final class Main {
         String clazz = null, method = null, output = null;
         boolean allMethods = false;
         String catalogDir = null;
+        boolean allActions = false, allUtils = false, withOutputs = false;
         analyzer.catalog.UtilCatalog.Mode catalogMode = analyzer.catalog.UtilCatalog.Mode.UPDATE;
         List<String> jsp = new java.util.ArrayList<>();
         for (int i = 0; i < args.length; i++) {
@@ -57,6 +58,9 @@ public final class Main {
                 case "--jsp" -> { jsp.add(require(v, "--jsp")); i++; }
                 case "--all-methods" -> allMethods = true;
                 case "--catalog-dir" -> { catalogDir = require(v, "--catalog-dir"); i++; }   // 카탈로그 폴더 (기본 catalog)
+                case "--all-actions" -> allActions = true;    // 소스의 Action/Controller 전부 → run 카탈로그 (진입 메서드마다)
+                case "--all-utils" -> allUtils = true;        // 소스의 Util 전부 → Util 기능 목록
+                case "--with-outputs" -> withOutputs = true;  // 일괄 때 output/ 상세 파일도
                 case "--catalog-reset" -> catalogMode = analyzer.catalog.UtilCatalog.Mode.RESET;   // 기능 목록을 지금 소스로 새로 (백업 후)
                 case "--catalog-prune" -> catalogMode = analyzer.catalog.UtilCatalog.Mode.PRUNE;   // 없어진(removed) 메서드만 정리 (백업 후)
                 default -> throw new IllegalArgumentException("알 수 없는 옵션: " + args[i]);
@@ -77,6 +81,27 @@ public final class Main {
         if (output != null) cfg.output.directory = output;
         if (!jsp.isEmpty()) cfg.response.jsp = jsp;   // Action 마다 JSP 가 다르므로 실행 단위로 지정
         if (catalogDir != null) cfg.output.catalogDir = catalogDir;
+        if (allActions || allUtils) { // 일괄 카탈로그 (--class 불필요)
+            if (cfg.target.effectiveSourceRoots().isEmpty()) {
+                throw new IllegalArgumentException("target.source-root 또는 target.source-roots 가 필요합니다.");
+            }
+            List<String> failed = new java.util.ArrayList<>();
+            if (allActions) {
+                var s = analyzer.catalog.BatchCatalog.actions(cfg, withOutputs);
+                System.out.println("run 카탈로그: 성공 " + s.ok() + " · 실패 " + s.failed().size() + " · 건너뜀 " + s.skipped().size()
+                        + " → " + analyzer.catalog.RunCatalog.dir(cfg));
+                s.skipped().forEach(x -> System.out.println("  건너뜀: " + x));
+                failed.addAll(s.failed());
+            }
+            if (allUtils) {
+                var s = analyzer.catalog.BatchCatalog.utils(cfg, withOutputs);
+                System.out.println("Util 기능 목록: 성공 " + s.ok() + " · 실패 " + s.failed().size());
+                failed.addAll(s.failed());
+            }
+            failed.forEach(x -> System.out.println("  실패: " + x));
+            System.out.println("다음: ./gradlew query --args=\"usage --md usage.md\" (빠진 것은 coverage)");
+            return failed.isEmpty() ? 0 : 3;
+        }
         if (allMethods) cfg.target.allMethods = true;
         if (catalogMode != analyzer.catalog.UtilCatalog.Mode.UPDATE && !cfg.target.allMethods) {
             throw new IllegalArgumentException("--catalog-reset·--catalog-prune 은 기능 목록 모드(--all-methods 또는 target.all-methods)에서만 씁니다.");

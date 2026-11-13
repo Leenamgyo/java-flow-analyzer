@@ -33,32 +33,11 @@ final class Coverage {
     static CatalogQuery.Table check(CatalogQuery q, ProjectSources sources) throws IOException {
         List<List<String>> rows = new ArrayList<>();
         ClassRoleClassifier classifier = new ClassRoleClassifier();
-        // 1. Action/Controller (파일명·어노테이션으로 후보만 파싱)
-        for (Path f : sources.allFiles()) {
-            String name = f.getFileName().toString();
-            String text;
-            try {
-                text = Files.readString(f, StandardCharsets.UTF_8);
-            } catch (IOException | java.io.UncheckedIOException e) {
-                text = new String(Files.readAllBytes(f), java.nio.charset.Charset.forName("MS949"));
-            }
-            if (!name.matches(".*(Action|Controller)\\.java") && !text.contains("@Controller") && !text.contains("@RestController")) {
-                continue;
-            }
-            var cu = sources.parse(f);
-            if (cu.isEmpty()) {
-                continue;
-            }
-            for (ClassOrInterfaceDeclaration ci : cu.get().findAll(ClassOrInterfaceDeclaration.class)) {
-                if (ci.isInterface() || ci.isAbstract() || ci.isNestedType()) {
-                    continue;
-                }
-                ClassRole role = classifier.classify(ci.getNameAsString(), ci.getAnnotations().stream().map(a -> a.getNameAsString()).toList(),
-                        ci.getExtendedTypes().stream().map(t -> t.asString()).toList()).role();
-                String fqn = ci.getFullyQualifiedName().orElse(ci.getNameAsString());
-                if ((role == ClassRole.ACTION || role == ClassRole.CONTROLLER) && !q.runFiles.containsKey(fqn)) {
-                    rows.add(List.of("run 카탈로그 없음", fqn, "./gradlew run --args=\"… --class " + ci.getNameAsString() + "\""));
-                }
+        // 1. Action/Controller (일괄 카탈로그 --all-actions 와 같은 찾기)
+        for (ClassOrInterfaceDeclaration ci : analyzer.catalog.SourceScan.actions(sources)) {
+            String fqn = analyzer.catalog.SourceScan.fqn(ci);
+            if (!q.runFiles.containsKey(fqn)) {
+                rows.add(List.of("run 카탈로그 없음", fqn, "./gradlew run --args=\"… --class " + ci.getNameAsString() + "\"  (전부: --all-actions)"));
             }
         }
         // 2. 쓰이는 Util 중 기능 목록 없는 것 (역할은 이름 규칙으로 — 카탈로그에는 역할이 없음)
