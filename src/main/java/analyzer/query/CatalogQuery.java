@@ -184,6 +184,44 @@ public final class CatalogQuery {
         return new Table(List.of("메서드", "쓰는 곳"), rows);
     }
 
+    /**
+     * diff A B: 두 Action(.진입) 패턴이 쓰는 메서드를 A 만 · B 만 · 둘 다 로 나눔 (사용자: StubDownload 만 쓰는 / StubUpdate 만 쓰는 /
+     * 둘이 같이 쓰는 DAO·Biz·Service).
+     */
+    public Table diff(String a, String b, Filters f) {
+        Map<String, Set<String>> inA = new TreeMap<>(), inB = new TreeMap<>();
+        for (Use u : uses) {
+            if (!f.accept(u)) {
+                continue;
+            }
+            if (matchEntry(u.entryKey, a)) {
+                inA.computeIfAbsent(u.usedKey, k -> new TreeSet<>()).add(u.where());
+            }
+            if (matchEntry(u.entryKey, b)) {
+                inB.computeIfAbsent(u.usedKey, k -> new TreeSet<>()).add(u.where());
+            }
+        }
+        List<List<String>> rows = new ArrayList<>();
+        inA.forEach((k, w) -> {
+            if (!inB.containsKey(k)) {
+                rows.add(List.of(a + " 만", CatalogKeys.display(k), String.join(", ", w)));
+            }
+        });
+        inB.forEach((k, w) -> {
+            if (!inA.containsKey(k)) {
+                rows.add(List.of(b + " 만", CatalogKeys.display(k), String.join(", ", w)));
+            }
+        });
+        inA.forEach((k, w) -> {
+            if (inB.containsKey(k)) {
+                Set<String> all = new TreeSet<>(w);
+                all.addAll(inB.get(k));
+                rows.add(List.of("둘 다", CatalogKeys.display(k), String.join(", ", all)));
+            }
+        });
+        return new Table(List.of("구분", "메서드", "쓰는 곳"), rows);
+    }
+
     /** unused 클래스패턴: Util 기능 목록의 메서드 중 run 카탈로그의 어느 Action 도 쓰지 않는 것 (기능 목록이 있는 클래스만) */
     public Table unused(String classPattern) {
         Set<String> used = new TreeSet<>();
@@ -220,8 +258,13 @@ public final class CatalogQuery {
 
         boolean accept(Use u) {
             String cls = CatalogKeys.classOf(u.usedKey);
-            return (classPattern == null || Excludes.matches(List.of(classPattern), List.of(CatalogKeys.simple(cls), cls)))
-                    && (actionPattern == null || matchEntry(u.entryKey, actionPattern));
+            return (classPattern == null || Excludes.matches(split(classPattern), List.of(CatalogKeys.simple(cls), cls)))
+                    && (actionPattern == null || split(actionPattern).stream().anyMatch(p -> matchEntry(u.entryKey, p)));
+        }
+
+        /** 쉼표로 여러 패턴 (어느 하나라도 맞으면) — class=*DAO,*Biz*,*Service* */
+        private static List<String> split(String patterns) {
+            return java.util.Arrays.stream(patterns.split(",")).map(String::trim).filter(x -> !x.isEmpty()).toList();
         }
     }
 

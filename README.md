@@ -258,6 +258,7 @@ entries:
 ./gradlew query --args="uses OrderAction"                    # 이 Action(.진입)이 쓰는 메서드
 ./gradlew query --args="common 2 class=*Util"                # 2곳 이상에서 쓰는 메서드 — 공통화 후보
 ./gradlew query --args="shared OrderAction ProductAction"    # 함께 쓰는 메서드
+./gradlew query --args="diff StubDownload StubUpdate class=*DAO,*Biz*,*Service*"   # A 만 · B 만 · 둘 다
 ./gradlew query --args="unused ContentUtil"                  # Util 기능 목록 중 어느 Action 도 안 쓰는 메서드
 ./gradlew query --args="usage"                               # 메서드마다 쓰는 곳 전부
 ./gradlew query --args="coverage --config config/my-project.yml"   # 빠진 데이터
@@ -271,7 +272,7 @@ ProductInfoBizImpl.getInfo(String)  1               EdgeAction.utilBeans   Produ
 ```
 
 - 결과는 **콘솔 표**로 나오고, `--md 파일` · `--csv 파일`(엑셀용 BOM) 을 붙이면 같은 결과를 **파일로도 남깁니다**. 파일 이름만 주면 `query/` 폴더 아래(`--md usage.md` → `query/usage.md`, 설정 `output.query-dir`), 절대 경로는 그대로.
-- 필터: `class=패턴`(쓰이는 메서드의 클래스), `action=패턴`(쓰는 Action). 패턴은 단순명·FQN, `*`.
+- 필터: `class=패턴`(쓰이는 메서드의 클래스), `action=패턴`(쓰는 Action). 패턴은 단순명·FQN, `*`, 쉼표로 여러 개(`class=*DAO,*Biz*,*Service*`, 하나라도 맞으면).
 - 옵션: `--config`(카탈로그 폴더·소스 경로), `--catalog-dir`.
 
 **데이터가 다 있는지** — 결과는 **쌓아 둔 카탈로그 기준**입니다. 매 결과 위에 `기준: Action n개 · 진입 메서드 m개 · Util 기능 목록 k개` 가 나오고, `coverage` 가 빠진 것을 알려 줍니다.
@@ -407,7 +408,7 @@ bean.getClass().getMethod("getInfo", String.class).invoke(bean, id);       // �
 
 | 질의 · 옵션 | 설명 |
 |---|---|
-| `who-uses` · `uses` · `common [N]` · `shared` · `unused` · `usage` · `coverage` | 질의 종류 |
+| `who-uses` · `uses` · `common [N]` · `shared` · `diff` · `unused` · `usage` · `coverage` | 질의 종류 |
 | `class=패턴` · `action=패턴` | 필터 |
 | `--md <파일>` · `--csv <파일>` | 결과를 파일로도 저장 |
 | `--config` · `--catalog-dir` | 설정 · 카탈로그 폴더 |

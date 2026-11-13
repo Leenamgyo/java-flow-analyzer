@@ -79,6 +79,13 @@ class RunCatalogTest {
         assertTrue(common.containsAll(List.of("NoticeWriteBiz.write(NoticeVO,String)", "NoticeDAO.insert(NoticeVO)", "NoticeDAO.insertHistory(NoticeVO)",
                 "NoticeVO.setBody(String)", "NoticeVO.setTitle(String)")), common.toString());
         assertEquals(5, q.shared(List.of("EdgeAction.bizVo", "EdgeAction.bizVoOrder"), CatalogQuery.Filters.NONE).rows().size());
+        // diff: A 만 · B 만 · 둘 다 (+ class= 여러 패턴)
+        var diff = q.diff("EdgeAction.bizVo", "EdgeAction.utilBeans", new CatalogQuery.Filters("*DAO,*Biz*", null)).rows();
+        assertTrue(diff.contains(List.of("EdgeAction.bizVo 만", "NoticeDAO.insert(NoticeVO)", "EdgeAction.bizVo")), diff.toString());
+        assertTrue(diff.contains(List.of("EdgeAction.utilBeans 만", "ProductDAO.select(String)", "EdgeAction.utilBeans")), diff.toString());
+        assertTrue(diff.stream().noneMatch(r -> r.get(1).startsWith("NoticeVO") || r.get(1).startsWith("ProductUtil")), diff.toString());
+        var both = q.diff("EdgeAction.bizVo", "EdgeAction.bizVoOrder", new CatalogQuery.Filters("*DAO", null)).rows();
+        assertEquals(List.of("둘 다", "NoticeDAO.insert(NoticeVO)", "EdgeAction.bizVo, EdgeAction.bizVoOrder"), both.get(0));
         // class= 필터
         assertEquals(2, q.common(2, new CatalogQuery.Filters("*DAO", null)).rows().size());
         // unused: Util 기능 목록 중 어느 Action 도 안 쓰는 메서드 (utilBeans 는 refresh 를 안 씀)

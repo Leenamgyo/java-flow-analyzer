@@ -17,6 +17,7 @@ import java.util.List;
  *   ./gradlew query --args="uses OrderAction"                       이 Action(.진입)이 쓰는 메서드
  *   ./gradlew query --args="common 2 class=*Util"                   2곳 이상에서 쓰는 메서드 (공통화 후보)
  *   ./gradlew query --args="shared OrderAction ProductAction"       함께 쓰는 메서드
+ *   ./gradlew query --args="diff StubDownload StubUpdate class=*DAO,*Biz*,*Service*"   A 만 · B 만 · 둘 다
  *   ./gradlew query --args="unused ContentUtil"                     어느 Action 도 안 쓰는 메서드 (Util 기능 목록 기준)
  *   ./gradlew query --args="usage"                                  메서드마다 쓰는 곳 전부
  *   ./gradlew query --args="coverage --config my-project.yml"       빠진 데이터 (run 안 한 Action · 기능 목록 없는 Util · 바뀐 소스)
@@ -45,10 +46,12 @@ public final class QueryMain {
               uses <Action[.진입]>                  이 Action 이 쓰는 메서드
               common [N]                            N곳(기본 2) 이상에서 쓰는 메서드 — 공통화 후보
               shared <Action> <Action> …            모두 함께 쓰는 메서드
+              diff <Action A> <Action B>            A 만 · B 만 · 둘 다 쓰는 메서드
               unused [클래스 패턴]                   Util 기능 목록 중 어느 Action 도 안 쓰는 메서드
               usage                                 메서드마다 쓰는 곳 전부
               coverage                              빠진 데이터 (소스 경로가 있는 --config 필요)
-            필터: class=패턴 action=패턴      옵션: --config <yml> --catalog-dir <dir> --md <파일> --csv <파일>""";
+            필터: class=패턴 action=패턴 (쉼표로 여러 개: class=*DAO,*Biz*,*Service*)
+            옵션: --config <yml> --catalog-dir <dir> --md <파일> --csv <파일>""";
 
     public static int run(String[] args) throws Exception {
         Path config = null, md = null, csv = null;
@@ -94,6 +97,12 @@ public final class QueryMain {
                     throw new IllegalArgumentException("shared 는 Action 을 2개 이상: shared OrderAction ProductAction");
                 }
                 yield q.shared(rest, f);
+            }
+            case "diff" -> {
+                if (rest.size() != 2) {
+                    throw new IllegalArgumentException("diff 는 Action 2개: diff StubDownload StubUpdate");
+                }
+                yield q.diff(rest.get(0), rest.get(1), f);
             }
             case "unused" -> q.unused(rest.isEmpty() ? "*" : rest.get(0));
             case "usage" -> q.usage(f);
