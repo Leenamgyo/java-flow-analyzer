@@ -102,7 +102,8 @@ class MultiModuleTest {
                   link-single-implementation: true
                 output:
                   directory: %s
-                """.formatted(Path.of(ACTIONS).toAbsolutePath(), Path.of(LIB).toAbsolutePath(), tmp.resolve("out")));
+                  catalog-dir: %s
+                """.formatted(Path.of(ACTIONS).toAbsolutePath(), Path.of(LIB).toAbsolutePath(), tmp.resolve("out"), tmp.resolve("catalog")));
         assertEquals(0, Main.run(new String[]{"--config", conf.toString()}));
         String yaml = Files.readString(tmp.resolve("out/MemberAction/analysis.yaml"));
         assertTrue(yaml.contains("sourceRoots:"), yaml);

@@ -83,7 +83,7 @@ class ConfigLoaderTest {
         assertEquals(0, Main.run(new String[]{
                 "--source-root", Path.of(MultiModuleTest.ACTIONS).toAbsolutePath().toString(),
                 "--source-root", Path.of(MultiModuleTest.LIB).toAbsolutePath().toString(),
-                "--class", "MemberAction", "--output", tmp.resolve("out").toString()}));
+                "--class", "MemberAction", "--output", tmp.resolve("out").toString(), "--catalog-dir", tmp.resolve("catalog").toString()}));
         Path dir = tmp.resolve("out/MemberAction");
         for (String name : List.of("analysis.yaml", "flowchart.mmd", "phase-flowchart.mmd", "phase-summary.md", "mapping.md")) {
             assertTrue(Files.isRegularFile(dir.resolve(name)), name);

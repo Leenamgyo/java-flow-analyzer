@@ -8,6 +8,7 @@ Java 소스를 **정적 분석**해서 실행 흐름, Service·DAO 의존, 데�
 | **Action 하나** 분석 (흐름·명세·바인딩) | `./gradlew run --args="… --class OrderAction"` | `output/OrderAction/` |
 | **클래스 전체**를 흐름도 한 장으로 (Util 등) | `./gradlew runClass --args="… --class ContentUtil"` | `output/class/ContentUtil/flowchart.html` |
 | **Util 기능 목록**을 계속 관리 | `./gradlew run --args="… --class ContentUtil --all-methods"` | `catalog/ContentUtil.yml` |
+| **이 메서드를 어느 Action 이 쓰나** (공통화) | `./gradlew run --args="--who-uses ContentUtil.getInfo"` · `--usage` | 콘솔 · `catalog/usage.md` |
 
 **목차**
 
@@ -15,12 +16,13 @@ Java 소스를 **정적 분석**해서 실행 흐름, Service·DAO 의존, 데�
 2. [Action 분석](#1-action-분석--gradlew-run)
 3. [전체 클래스 흐름도](#2-전체-클래스-흐름도--gradlew-runclass)
 4. [Util 기능 목록 (카탈로그)](#3-util-기능-목록-카탈로그----all-methods)
-5. [흐름도 뷰어 사용법](#흐름도-뷰어-flowcharthtml-사용법)
-6. [흐름도 읽는 법](#흐름도-읽는-법)
-7. [분석 규칙](#분석-규칙)
-8. [설정](#설정)
-9. [CLI 옵션](#cli-옵션)
-10. [테스트](#테스트)
+5. [메서드 사용처 (공통화)](#4-메서드-사용처-공통화--run-카탈로그)
+6. [흐름도 뷰어 사용법](#흐름도-뷰어-flowcharthtml-사용법)
+7. [흐름도 읽는 법](#흐름도-읽는-법)
+8. [분석 규칙](#분석-규칙)
+9. [설정](#설정)
+10. [CLI 옵션](#cli-옵션)
+11. [테스트](#테스트)
 
 ---
 
@@ -210,6 +212,42 @@ void-methods: [refresh(String id)]           # 반환 타입이 void 인 메서�
 
 ---
 
+## 4. 메서드 사용처 (공통화) — run 카탈로그
+
+공통화할 때 "이 클래스의 이 메서드는 어느 Action 에서 쓰나"를 찾습니다.
+
+**쌓기** — Action 을 `./gradlew run` 으로 분석할 때마다 `catalog/run/<Action>.yml` 에 그 진입 메서드가 (몇 단계를 거치든) 쓰는 프로젝트 메서드 전부가 클래스별로 쌓입니다(`output.run-catalog`, 기본 켜짐). 같은 Action 의 다른 진입 메서드를 따로 돌려도 각각 누적되고, `note`·직접 추가한 키는 보존됩니다.
+
+```yaml
+# catalog/run/OrderAction.yml
+class: com.x.action.OrderAction
+entries:
+  - method: execute(HttpServletRequest request, HttpServletResponse response)
+    uses:
+      com.x.common.ContentUtil: [getInfo(String), refresh(String)]
+      com.x.biz.ProductInfoBizImpl: [getInfo(String)]
+      com.x.dao.ProductDAO: [select(String)]
+    note: ""
+```
+
+**찾기** — 카탈로그만 읽습니다(다시 분석하지 않음, `--class` 불필요).
+
+```bash
+./gradlew run --args="--config config/my-project.yml --who-uses ContentUtil.getInfo"   # 콘솔에 바로
+./gradlew run --args="--config config/my-project.yml --who-uses ContentUtil"           # 클래스의 메서드 전부
+./gradlew run --args="--config config/my-project.yml --usage"                          # 전체 → catalog/usage.md
+```
+
+```
+'ContentUtil.getInfo' 사용처
+  ContentUtil.getInfo(String)  ← 2곳: OrderAction.execute, ProductAction.list
+```
+
+`catalog/usage.md` 는 클래스마다 `메서드 | 쓰는 곳 수 | 쓰는 곳(Action.진입 메서드)` 표이고, 여러 Action 이 쓰는 메서드가 위로 옵니다(공통화 후보).
+
+- 결과는 **분석해 둔 Action 기준**입니다. 아직 `run` 하지 않은 Action 은 빠집니다.
+- 패턴: `클래스.메서드`(단순명·FQN), `클래스`, `*` (`"*DAO.select*"`).
+
 ## 흐름도 뷰어 (`flowchart.html`) 사용법
 
 브라우저로 열기만 하면 됩니다 — 설치·인터넷 불필요(배치 엔진 ELK 내장). Action 흐름도와 전체 클래스 흐름도가 같은 뷰어입니다.
@@ -310,6 +348,7 @@ bean.getClass().getMethod("getInfo", String.class).invoke(bean, id);       // �
 | `output.flowchart-exclude` | 없음 | 흐름도에서 뺄 호출·메서드 (`"*Util.*"`, `"LOG.debug"`) |
 | `output.color-theme` | light | `dark` 가능 |
 | `output.catalog-dir` · `catalog-outputs` | catalog · true | 기능 목록 폴더 · 메서드별 출력도 만들지 |
+| `output.run-catalog` | true | run 할 때 `catalog/run/<Action>.yml` 에 쓰는 메서드 누적 |
 
 ---
 
@@ -327,6 +366,8 @@ bean.getClass().getMethod("getInfo", String.class).invoke(bean, id);       // �
 | `--jsp <path>` | Response 로 분석할 JSP 파일명·경로 (반복 가능) |
 | `--all-methods` | Util 기능 목록 모드 → `catalog/<클래스>.yml` |
 | `--catalog-prune` · `--catalog-reset` | 기능 목록 정리 · 초기화 (백업 후) |
+| `--who-uses <패턴>` · `--usage` | 메서드 사용처 조회 (콘솔) · 전체 역색인 `catalog/usage.md` — run 카탈로그만 읽음 |
+| `--catalog-dir <dir>` | 카탈로그 폴더 (기본 `catalog`) |
 
 **`./gradlew runClass`** (전체 클래스 흐름도)
 

@@ -66,6 +66,9 @@ output:
   catalog-dir: catalog
   # 기능 목록을 만들 때 메서드마다 기존 출력도 <directory>/<클래스>/<메서드>/ 에 (flowchart.html·analysis.yaml … — output 이라 실행마다 다시 만듦)
   catalog-outputs: true
+  # Action 분석(run) 때 <catalog-dir>/run/<Action>.yml 에 그 진입 메서드가 (전이적으로) 쓰는 프로젝트 메서드를 누적 (계속 관리, git)
+  #   → --usage (catalog/usage.md: 클래스·메서드마다 쓰는 Action) · --who-uses <클래스.메서드> (콘솔)
+  run-catalog: true
   yaml: true
   tree: true
   tree-include-control-blocks: true

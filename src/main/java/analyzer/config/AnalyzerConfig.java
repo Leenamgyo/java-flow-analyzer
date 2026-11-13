@@ -116,6 +116,8 @@ public class AnalyzerConfig {
         public String catalogDir = "catalog";
         /** Util 기능 목록을 만들 때 메서드마다 기존 출력도 <directory>/<클래스>/<메서드>/ 에 (흐름도·analysis.yaml …) */
         public boolean catalogOutputs = true;
+        /** Action 분석(run) 때 <catalog-dir>/run/<Action>.yml 에 그 진입 메서드가 쓰는 메서드를 누적 (사용처 역색인 --usage·--who-uses 용) */
+        public boolean runCatalog = true;
         public boolean yaml = true;
         public boolean tree = true;
         public boolean treeIncludeControlBlocks = true;
